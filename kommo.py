@@ -1,27 +1,30 @@
 from flask import Flask, request, jsonify
-import sqlite3
 import json
 from datetime import datetime
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
-DB_PATH = 'kommo_data.db'
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # ========================
 # BASE DE DATOS
 # ========================
+def get_conn():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
+
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute('DROP TABLE IF EXISTS eventos')
     c.execute('''
         CREATE TABLE IF NOT EXISTS eventos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             subdomain TEXT,
             tipo_evento TEXT,
             lead_id TEXT,
-            timestamp INTEGER,
+            timestamp BIGINT,
             raw_data TEXT,
             capturado_at TEXT
         )
@@ -34,12 +37,12 @@ def init_db():
 # GUARDAR EVENTO
 # ========================
 def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     try:
         c.execute('''
             INSERT INTO eventos (subdomain, tipo_evento, lead_id, timestamp, raw_data, capturado_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         ''', (
             subdomain,
             tipo_evento,
@@ -114,7 +117,7 @@ def webhook():
 # ========================
 @app.route('/')
 def home():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     c.execute('SELECT subdomain, tipo_evento, COUNT(*) FROM eventos GROUP BY subdomain, tipo_evento')
     rows = c.fetchall()
@@ -134,21 +137,20 @@ def ver_datos():
     tipo = request.args.get('tipo')
     lead = request.args.get('lead_id')
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
+    conn = get_conn()
+    c = conn.cursor(cursor_factory=RealDictCursor)
 
     query = 'SELECT * FROM eventos WHERE 1=1'
     params = []
 
     if subdomain:
-        query += ' AND subdomain = ?'
+        query += ' AND subdomain = %s'
         params.append(subdomain)
     if tipo:
-        query += ' AND tipo_evento = ?'
+        query += ' AND tipo_evento = %s'
         params.append(tipo)
     if lead:
-        query += ' AND lead_id = ?'
+        query += ' AND lead_id = %s'
         params.append(lead)
 
     query += ' ORDER BY timestamp DESC LIMIT 50'
