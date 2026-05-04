@@ -33,6 +33,9 @@ def init_db():
     conn.close()
     print("✅ Base de datos lista")
 
+# Ejecutar init_db al arrancar
+init_db()
+
 # ========================
 # GUARDAR EVENTO
 # ========================
@@ -163,6 +166,5 @@ def ver_datos():
 # MAIN
 # ========================
 if __name__ == '__main__':
-    init_db()
     print("🚀 Servidor corriendo en puerto 5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
