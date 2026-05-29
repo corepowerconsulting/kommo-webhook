@@ -8,6 +8,8 @@ from psycopg2.extras import RealDictCursor
 app = Flask(__name__)
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL no está configurada")
 
 # ========================
 # BASE DE DATOS
@@ -29,12 +31,36 @@ def init_db():
             capturado_at TEXT
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS tiempos_respuesta (
+            id SERIAL PRIMARY KEY,
+            subdomain TEXT,
+            lead_id TEXT,
+            f_ult_msj_cliente BIGINT,
+            f_ult_msj_asesor BIGINT,
+            tiempo_respuesta_seg INTEGER,
+            capturado_at TEXT,
+            UNIQUE (lead_id, f_ult_msj_asesor)
+        )
+    ''')
     conn.commit()
     conn.close()
     print("✅ Base de datos lista")
 
-# Ejecutar init_db al arrancar
 init_db()
+
+# ========================
+# HELPERS
+# ========================
+def get_custom_field(data, prefix, field_name):
+    for i in range(20):
+        if data.get(f'{prefix}[custom_fields][{i}][name]') == field_name:
+            val = data.get(f'{prefix}[custom_fields][{i}][values][0]')
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                return None
+    return None
 
 # ========================
 # GUARDAR EVENTO
@@ -50,7 +76,7 @@ def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
             subdomain,
             tipo_evento,
             lead_id,
-            timestamp,
+            int(timestamp) if timestamp else None,
             json.dumps(data),
             datetime.now().isoformat()
         ))
@@ -58,6 +84,24 @@ def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
         print(f"💾 {subdomain} | {tipo_evento} | lead: {lead_id}")
     except Exception as e:
         print(f"❌ Error: {e}")
+    finally:
+        conn.close()
+
+def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor):
+    tiempo_seg = f_asesor - f_cliente
+    conn = get_conn()
+    c = conn.cursor()
+    try:
+        c.execute('''
+            INSERT INTO tiempos_respuesta
+                (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (lead_id, f_ult_msj_asesor) DO NOTHING
+        ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat()))
+        conn.commit()
+        print(f"⏱️  {subdomain} | lead {lead_id} | asesor respondió en {tiempo_seg // 60}min {tiempo_seg % 60}s")
+    except Exception as e:
+        print(f"❌ Error tiempo respuesta: {e}")
     finally:
         conn.close()
 
@@ -80,13 +124,20 @@ def webhook():
             )
 
         elif any(k.startswith('leads[update]') for k in data.keys()):
+            lead_id = data.get('leads[update][0][id]')
             guardar_evento(
                 subdomain=subdomain,
                 tipo_evento='lead_update',
-                lead_id=data.get('leads[update][0][id]'),
+                lead_id=lead_id,
                 timestamp=data.get('leads[update][0][updated_at]'),
                 data=data
             )
+            # Calcular tiempo de respuesta del asesor
+            prefix = 'leads[update][0]'
+            f_cliente = get_custom_field(data, prefix, 'F Ult msj cliente')
+            f_asesor = get_custom_field(data, prefix, 'F ult msj asesor')
+            if f_cliente and f_asesor and f_asesor > f_cliente:
+                guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor)
 
         elif any(k.startswith('leads[status]') for k in data.keys()):
             guardar_evento(
@@ -121,18 +172,20 @@ def webhook():
 @app.route('/')
 def home():
     conn = get_conn()
-    c = conn.cursor()
-    c.execute('SELECT subdomain, tipo_evento, COUNT(*) FROM eventos GROUP BY subdomain, tipo_evento')
-    rows = c.fetchall()
-    c.execute('SELECT COUNT(*) FROM eventos')
-    total = c.fetchone()[0]
-    conn.close()
-    resumen = {}
-    for subdomain, tipo, count in rows:
-        if subdomain not in resumen:
-            resumen[subdomain] = {}
-        resumen[subdomain][tipo] = count
-    return jsonify({'total': total, 'por_cliente': resumen})
+    try:
+        c = conn.cursor()
+        c.execute('SELECT subdomain, tipo_evento, COUNT(*) FROM eventos GROUP BY subdomain, tipo_evento')
+        rows = c.fetchall()
+        c.execute('SELECT COUNT(*) FROM eventos')
+        total = c.fetchone()[0]
+        resumen = {}
+        for subdomain, tipo, count in rows:
+            if subdomain not in resumen:
+                resumen[subdomain] = {}
+            resumen[subdomain][tipo] = count
+        return jsonify({'total': total, 'por_cliente': resumen})
+    finally:
+        conn.close()
 
 @app.route('/data')
 def ver_datos():
@@ -141,26 +194,65 @@ def ver_datos():
     lead = request.args.get('lead_id')
 
     conn = get_conn()
-    c = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        query = 'SELECT * FROM eventos WHERE 1=1'
+        params = []
+        if subdomain:
+            query += ' AND subdomain = %s'
+            params.append(subdomain)
+        if tipo:
+            query += ' AND tipo_evento = %s'
+            params.append(tipo)
+        if lead:
+            query += ' AND lead_id = %s'
+            params.append(lead)
+        query += ' ORDER BY timestamp DESC LIMIT 50'
+        c.execute(query, params)
+        rows = [dict(r) for r in c.fetchall()]
+        return jsonify(rows)
+    finally:
+        conn.close()
 
-    query = 'SELECT * FROM eventos WHERE 1=1'
-    params = []
+@app.route('/respuestas')
+def ver_respuestas():
+    subdomain = request.args.get('subdomain')
+    lead = request.args.get('lead_id')
 
-    if subdomain:
-        query += ' AND subdomain = %s'
-        params.append(subdomain)
-    if tipo:
-        query += ' AND tipo_evento = %s'
-        params.append(tipo)
-    if lead:
-        query += ' AND lead_id = %s'
-        params.append(lead)
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
 
-    query += ' ORDER BY timestamp DESC LIMIT 50'
-    c.execute(query, params)
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return jsonify(rows)
+        # Resumen agregado por subdomain
+        c.execute('''
+            SELECT
+                subdomain,
+                COUNT(*) AS total_mediciones,
+                ROUND(AVG(tiempo_respuesta_seg))       AS promedio_seg,
+                ROUND(AVG(tiempo_respuesta_seg) / 60.0, 1) AS promedio_min,
+                MIN(tiempo_respuesta_seg)              AS minimo_seg,
+                MAX(tiempo_respuesta_seg)              AS maximo_seg
+            FROM tiempos_respuesta
+            GROUP BY subdomain
+        ''')
+        resumen = [dict(r) for r in c.fetchall()]
+
+        # Detalle con filtros opcionales
+        query = 'SELECT * FROM tiempos_respuesta WHERE 1=1'
+        params = []
+        if subdomain:
+            query += ' AND subdomain = %s'
+            params.append(subdomain)
+        if lead:
+            query += ' AND lead_id = %s'
+            params.append(lead)
+        query += ' ORDER BY f_ult_msj_asesor DESC LIMIT 100'
+        c.execute(query, params)
+        detalle = [dict(r) for r in c.fetchall()]
+
+        return jsonify({'resumen': resumen, 'detalle': detalle})
+    finally:
+        conn.close()
 
 # ========================
 # MAIN
