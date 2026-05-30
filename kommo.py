@@ -40,7 +40,7 @@ def init_db():
             f_ult_msj_asesor BIGINT,
             tiempo_respuesta_seg INTEGER,
             capturado_at TEXT,
-            UNIQUE (lead_id, f_ult_msj_asesor)
+            UNIQUE (subdomain, lead_id, f_ult_msj_asesor)
         )
     ''')
     conn.commit()
