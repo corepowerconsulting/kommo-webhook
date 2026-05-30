@@ -256,12 +256,18 @@ def ver_respuestas():
 
 @app.route('/backfill')
 def backfill():
+    offset = int(request.args.get('offset', 0))
+    limit  = 300
+
     conn = get_conn()
     try:
         read_c  = conn.cursor(cursor_factory=RealDictCursor)
         write_c = conn.cursor()
 
-        read_c.execute("SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update'")
+        read_c.execute(
+            "SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update' ORDER BY id LIMIT %s OFFSET %s",
+            (limit, offset)
+        )
         rows = read_c.fetchall()
 
         procesados = 0
@@ -273,8 +279,8 @@ def backfill():
             try:
                 if not row['raw_data']:
                     continue
-                data     = json.loads(row['raw_data'])
-                prefix   = 'leads[update][0]'
+                data      = json.loads(row['raw_data'])
+                prefix    = 'leads[update][0]'
                 f_cliente = get_custom_field(data, prefix, 'F Ult msj cliente')
                 f_asesor  = get_custom_field(data, prefix, 'F ult msj asesor')
 
@@ -297,7 +303,15 @@ def backfill():
                 continue
 
         conn.commit()
-        return jsonify({'procesados': procesados, 'insertados': insertados, 'errores': errores})
+        hay_mas = len(rows) == limit
+        return jsonify({
+            'offset': offset,
+            'procesados': procesados,
+            'insertados': insertados,
+            'errores': errores,
+            'siguiente': f'/backfill?offset={offset + limit}' if hay_mas else None,
+            'listo': not hay_mas
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
