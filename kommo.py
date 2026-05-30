@@ -265,7 +265,7 @@ def backfill():
         write_c = conn.cursor()
 
         read_c.execute(
-            "SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update' ORDER BY id LIMIT %s OFFSET %s",
+            "SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update' ORDER BY id DESC LIMIT %s OFFSET %s",
             (limit, offset)
         )
         rows = read_c.fetchall()
