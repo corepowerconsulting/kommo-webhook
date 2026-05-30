@@ -254,6 +254,43 @@ def ver_respuestas():
     finally:
         conn.close()
 
+@app.route('/backfill')
+def backfill():
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute("SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update'")
+        rows = c.fetchall()
+
+        procesados = 0
+        insertados = 0
+
+        for row in rows:
+            data = json.loads(row['raw_data'])
+            prefix = 'leads[update][0]'
+            f_cliente = get_custom_field(data, prefix, 'F Ult msj cliente')
+            f_asesor  = get_custom_field(data, prefix, 'F ult msj asesor')
+            procesados += 1
+
+            if f_cliente and f_asesor and f_asesor > f_cliente:
+                c.execute('''
+                    INSERT INTO tiempos_respuesta
+                        (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor) DO NOTHING
+                ''', (
+                    row['subdomain'], row['lead_id'],
+                    f_cliente, f_asesor, f_asesor - f_cliente,
+                    datetime.now().isoformat()
+                ))
+                if c.rowcount > 0:
+                    insertados += 1
+
+        conn.commit()
+        return jsonify({'procesados': procesados, 'insertados': insertados})
+    finally:
+        conn.close()
+
 # ========================
 # MAIN
 # ========================
