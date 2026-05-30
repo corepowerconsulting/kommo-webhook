@@ -256,18 +256,25 @@ def ver_respuestas():
 
 @app.route('/backfill')
 def backfill():
-    offset = int(request.args.get('offset', 0))
-    limit  = 300
+    offset    = int(request.args.get('offset', 0))
+    subdomain = request.args.get('subdomain')
+    limit     = 300
 
     conn = get_conn()
     try:
         read_c  = conn.cursor(cursor_factory=RealDictCursor)
         write_c = conn.cursor()
 
-        read_c.execute(
-            "SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update' ORDER BY id DESC LIMIT %s OFFSET %s",
-            (limit, offset)
-        )
+        if subdomain:
+            read_c.execute(
+                "SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update' AND subdomain = %s ORDER BY id DESC LIMIT %s OFFSET %s",
+                (subdomain, limit, offset)
+            )
+        else:
+            read_c.execute(
+                "SELECT subdomain, lead_id, raw_data FROM eventos WHERE tipo_evento = 'lead_update' ORDER BY id DESC LIMIT %s OFFSET %s",
+                (limit, offset)
+            )
         rows = read_c.fetchall()
 
         procesados = 0
