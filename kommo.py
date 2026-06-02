@@ -458,7 +458,7 @@ def pulse_data():
             daily[dia].append(r['tiempo_respuesta_seg'])
         tendencia = [
             {'fecha': dia, 'promedio_min': round(sum(v) / len(v) / 60, 1), 'total': len(v)}
-            for dia in sorted(daily)[-30:]
+            for dia, v in sorted(daily.items())[-30:]
         ]
 
         return jsonify({
