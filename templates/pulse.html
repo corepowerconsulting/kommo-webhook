@@ -190,8 +190,11 @@ document.getElementById('desde').value = hace30.toISOString().split('T')[0];
 function fmtSeg(seg) {
   if (!seg || seg <= 0) return '< 1 min';
   if (seg < 60) return `${seg}s`;
-  if (seg < 3600) { const m=seg//60, s=seg%60; return s ? `${m}m ${s}s` : `${m}m`; }
-  const h=Math.floor(seg/3600), m=Math.floor((seg%3600)/60);
+  if (seg < 3600) {
+    const m = Math.floor(seg / 60), s = seg % 60;
+    return s ? `${m}m ${s}s` : `${m}m`;
+  }
+  const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60);
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
