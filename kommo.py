@@ -337,8 +337,7 @@ def _ts_to_local(ts, tz_offset):
 
 def _local_date_to_ts(date_str, tz_offset):
     dt = datetime.strptime(date_str, '%Y-%m-%d')
-    dt_utc = dt - timedelta(hours=tz_offset)
-    return calendar.timegm(dt_utc.timetuple())
+    return calendar.timegm((dt - timedelta(hours=tz_offset)).timetuple())
 
 def _fmt_horario(h_ini, h_fin):
     def fh(h):
@@ -348,47 +347,96 @@ def _fmt_horario(h_ini, h_fin):
         return f'{h - 12}:00 PM'
     return f'{fh(h_ini)} – {fh(h_fin)}'
 
+def _fmt_seg(seg):
+    if seg <= 0: return '< 1 min'
+    if seg < 60: return f'{seg}s'
+    if seg < 3600:
+        m, s = seg // 60, seg % 60
+        return f'{m}m {s}s' if s else f'{m}m'
+    h, m = seg // 3600, (seg % 3600) // 60
+    return f'{h}h {m}m' if m else f'{h}h'
+
+def _next_work_moment(dt, hora_ini, hora_fin, dias_lab):
+    dt = dt.replace(second=0, microsecond=0)
+    if dt.weekday() in dias_lab and hora_ini <= dt.hour < hora_fin:
+        return dt
+    if dt.weekday() in dias_lab and dt.hour < hora_ini:
+        return dt.replace(hour=hora_ini, minute=0, second=0)
+    next_d = (dt + timedelta(days=1)).replace(hour=hora_ini, minute=0, second=0)
+    while next_d.weekday() not in dias_lab:
+        next_d += timedelta(days=1)
+    return next_d
+
+def _work_seconds_between(dt_start, dt_end, hora_ini, hora_fin, dias_lab):
+    if dt_start >= dt_end:
+        return 0
+    total = 0.0
+    current = dt_start
+    while current < dt_end:
+        if current.weekday() in dias_lab:
+            ws = current.replace(hour=hora_ini, minute=0, second=0, microsecond=0)
+            we = current.replace(hour=hora_fin, minute=0, second=0, microsecond=0)
+            ps = max(current, ws)
+            pe = min(dt_end, we)
+            if ps < pe:
+                total += (pe - ps).total_seconds()
+        current = (current + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(total)
+
+def _calc_tiempo_efectivo(ts_cliente, ts_asesor, tz_offset, hora_ini, hora_fin, dias_lab):
+    dt_cliente = _ts_to_local(ts_cliente, tz_offset)
+    dt_asesor  = _ts_to_local(ts_asesor,  tz_offset)
+    dt_inicio  = _next_work_moment(dt_cliente, hora_ini, hora_fin, dias_lab)
+    if dt_asesor <= dt_inicio:
+        return 0
+    return _work_seconds_between(dt_inicio, dt_asesor, hora_ini, hora_fin, dias_lab)
+
 def _get_franja_idx(seg, franjas):
     for i, f in enumerate(franjas):
         if f['max_seg'] is None or seg < f['max_seg']:
             return i
     return len(franjas) - 1
 
-def _calc_metricas(registros, franjas):
+def _calc_metricas(registros, franjas, tz_offset):
     if not registros:
         return {
             'total': 0,
             'promedio_seg': 0,
             'distribucion': [
-                {'label': f['label'], 'tag': f['tag'], 'count': 0, 'pct': 0.0, 'color': f['color']}
+                {'label': f['label'], 'tag': f['tag'], 'count': 0, 'pct': 0.0, 'color': f['color'], 'leads': []}
                 for f in franjas
             ]
         }
     total = len(registros)
-    promedio_seg = round(sum(r['tiempo_respuesta_seg'] for r in registros) / total)
-    counts = [0] * len(franjas)
+    promedio_seg = round(sum(r['efectivo_seg'] for r in registros) / total)
+    groups = [[] for _ in franjas]
     for r in registros:
-        counts[_get_franja_idx(r['tiempo_respuesta_seg'], franjas)] += 1
-    distribucion = [
-        {'label': franjas[i]['label'], 'tag': franjas[i]['tag'],
-         'count': counts[i], 'pct': round(counts[i] / total * 100, 1), 'color': franjas[i]['color']}
-        for i in range(len(franjas))
-    ]
+        groups[_get_franja_idx(r['efectivo_seg'], franjas)].append(r)
+    distribucion = []
+    for i, f in enumerate(franjas):
+        leads = []
+        for r in sorted(groups[i], key=lambda x: x['efectivo_seg'], reverse=True)[:50]:
+            local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
+            leads.append({
+                'lead_id': r['lead_id'],
+                'fmt': _fmt_seg(r['efectivo_seg']),
+                'fecha': local_dt.strftime('%d/%m %H:%M'),
+            })
+        distribucion.append({
+            'label': f['label'], 'tag': f['tag'],
+            'count': len(groups[i]),
+            'pct': round(len(groups[i]) / total * 100, 1),
+            'color': f['color'],
+            'leads': leads,
+        })
     return {'total': total, 'promedio_seg': promedio_seg, 'distribucion': distribucion}
 
 def _fmt_row(r, tz_offset):
-    seg = r['tiempo_respuesta_seg']
     local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
-    if seg >= 3600:
-        fmt = f"{seg // 3600}h {(seg % 3600) // 60}m"
-    elif seg >= 60:
-        fmt = f"{seg // 60}m {seg % 60}s"
-    else:
-        fmt = f"{seg}s"
     return {
         'lead_id': r['lead_id'],
-        'seg': seg,
-        'fmt': fmt,
+        'seg': r['efectivo_seg'],
+        'fmt': _fmt_seg(r['efectivo_seg']),
         'fecha': local_dt.strftime('%d/%m %H:%M'),
     }
 
@@ -403,11 +451,11 @@ def pulse_data():
     if not subdomain or subdomain not in PULSE_CONFIG:
         return jsonify({'error': f'Subdomain "{subdomain}" no configurado en PULSE'}), 400
 
-    cfg = PULSE_CONFIG[subdomain]
+    cfg       = PULSE_CONFIG[subdomain]
     tz_offset = cfg['tz_offset']
     h_ini, h_fin = cfg['horario']
-    dias_lab = set(cfg['dias_laborables'])
-    franjas = cfg['franjas']
+    dias_lab  = set(cfg['dias_laborables'])
+    franjas   = cfg['franjas']
 
     desde_str = request.args.get('desde')
     hasta_str = request.args.get('hasta')
@@ -415,64 +463,65 @@ def pulse_data():
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
-
         query = '''
-            SELECT lead_id, f_ult_msj_cliente, tiempo_respuesta_seg
+            SELECT lead_id, f_ult_msj_cliente, f_ult_msj_asesor
             FROM tiempos_respuesta
-            WHERE subdomain = %s AND tiempo_respuesta_seg > 0 AND f_ult_msj_cliente IS NOT NULL
+            WHERE subdomain = %s
+              AND f_ult_msj_cliente IS NOT NULL
+              AND f_ult_msj_asesor  IS NOT NULL
+              AND f_ult_msj_asesor > f_ult_msj_cliente
         '''
         params = [subdomain]
-
         if desde_str:
             query += ' AND f_ult_msj_cliente >= %s'
             params.append(_local_date_to_ts(desde_str, tz_offset))
         if hasta_str:
             query += ' AND f_ult_msj_cliente <= %s'
             params.append(_local_date_to_ts(hasta_str, tz_offset) + 86399)
-
         c.execute(query, params)
         rows = c.fetchall()
     except Exception as e:
-        print(f'❌ PULSE /data error: {e}')
+        print(f'❌ PULSE /data query: {e}')
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
 
     try:
-
-        laboral, fuera = [], []
+        registros = []
         for row in rows:
-            local_dt = _ts_to_local(row['f_ult_msj_cliente'], tz_offset)
-            if local_dt.weekday() in dias_lab and h_ini <= local_dt.hour < h_fin:
-                laboral.append(row)
-            else:
-                fuera.append(row)
+            efectivo = _calc_tiempo_efectivo(
+                row['f_ult_msj_cliente'], row['f_ult_msj_asesor'],
+                tz_offset, h_ini, h_fin, dias_lab
+            )
+            registros.append({
+                'lead_id':          row['lead_id'],
+                'f_ult_msj_cliente': row['f_ult_msj_cliente'],
+                'efectivo_seg':      efectivo,
+            })
 
-        todos = laboral + fuera
-        top_lentos = sorted(todos, key=lambda r: r['tiempo_respuesta_seg'], reverse=True)[:10]
-        top_rapidos = sorted(todos, key=lambda r: r['tiempo_respuesta_seg'])[:10]
+        top_lentos  = sorted(registros, key=lambda r: r['efectivo_seg'], reverse=True)[:10]
+        top_rapidos = sorted(registros, key=lambda r: r['efectivo_seg'])[:10]
 
         daily = defaultdict(list)
-        for r in todos:
+        for r in registros:
             dia = _ts_to_local(r['f_ult_msj_cliente'], tz_offset).strftime('%Y-%m-%d')
-            daily[dia].append(r['tiempo_respuesta_seg'])
+            daily[dia].append(r['efectivo_seg'])
         tendencia = [
-            {'fecha': dia, 'promedio_min': round(sum(v) / len(v) / 60, 1), 'total': len(v)}
+            {'fecha': dia, 'promedio_h': round(sum(v) / len(v) / 3600, 1), 'total': len(v)}
             for dia, v in sorted(daily.items())[-30:]
         ]
 
         return jsonify({
             'config': {
-                'nombre': cfg['nombre'],
+                'nombre':      cfg['nombre'],
                 'horario_fmt': _fmt_horario(h_ini, h_fin),
-                'dias_fmt': ' · '.join(DIAS_LABEL[d] for d in sorted(dias_lab)),
-                'franjas': franjas,
+                'dias_fmt':    ' · '.join(DIAS_LABEL[d] for d in sorted(dias_lab)),
+                'franjas':     franjas,
             },
-            'laboral': _calc_metricas(laboral, franjas),
-            'fuera_horario': _calc_metricas(fuera, franjas),
-            'top_lentos': [_fmt_row(r, tz_offset) for r in top_lentos],
+            'metricas':    _calc_metricas(registros, franjas, tz_offset),
+            'top_lentos':  [_fmt_row(r, tz_offset) for r in top_lentos],
             'top_rapidos': [_fmt_row(r, tz_offset) for r in top_rapidos],
-            'tendencia': tendencia,
+            'tendencia':   tendencia,
         })
     except Exception as e:
         print(f'❌ PULSE /data procesamiento: {e}')
