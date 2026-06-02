@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>PULSE — Métricas de Respuesta</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    .kpi-num { font-size: 2.4rem; font-weight: 900; line-height: 1; letter-spacing: -0.03em; }
+    .kpi-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin-top: 6px; }
+    .section-title { font-size: 0.95rem; font-weight: 700; color: #1e293b; }
+    .section-sub { font-size: 0.78rem; color: #94a3b8; margin-top: 2px; }
+    .tag {
+      font-size: 0.65rem; font-weight: 700; letter-spacing: .05em;
+      padding: 2px 8px; border-radius: 99px;
+    }
+    .tag-green  { background: #dcfce7; color: #166534; }
+    .tag-amber  { background: #fef3c7; color: #92400e; }
+    .tag-orange { background: #ffedd5; color: #9a3412; }
+    .tag-red    { background: #fee2e2; color: #991b1b; }
+    .row-hover:hover { background: #f8fafc; border-radius: 8px; }
+    .pulse-icon path { stroke: #4f46e5; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<!-- ═══════════════════ NAVBAR ═══════════════════ -->
+<nav class="bg-white border-b border-slate-100 sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
+
+    <div class="flex items-center gap-2.5 flex-shrink-0">
+      <div class="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      </div>
+      <span class="text-base font-900 text-slate-900 tracking-tight">PULSE</span>
+      <span class="text-slate-200 font-light text-xl">|</span>
+      <span id="nombre-cliente" class="text-slate-400 text-sm font-medium">—</span>
+    </div>
+
+    <div class="flex items-center gap-2 text-sm flex-wrap justify-end">
+      <label class="text-slate-400 text-xs font-medium">DESDE</label>
+      <input type="date" id="desde"
+        class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition" />
+      <label class="text-slate-400 text-xs font-medium">HASTA</label>
+      <input type="date" id="hasta"
+        class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition" />
+      <button onclick="cargarDatos()"
+        class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-1.5 rounded-lg text-xs font-600 transition shadow-sm">
+        Aplicar
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════════════ MAIN ═══════════════════ -->
+<main class="max-w-7xl mx-auto px-6 py-8">
+
+  <!-- Loading -->
+  <div id="loading" class="flex flex-col items-center justify-center py-32 gap-3">
+    <div class="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+    <span class="text-slate-400 text-sm">Cargando datos…</span>
+  </div>
+
+  <!-- Error -->
+  <div id="error-state" class="hidden text-center py-32">
+    <div class="text-4xl mb-4">⚠️</div>
+    <div id="error-msg" class="text-slate-500 text-sm"></div>
+  </div>
+
+  <!-- Content -->
+  <div id="content" class="hidden space-y-6">
+
+    <!-- Horario info bar -->
+    <div class="flex items-center gap-6 text-xs text-slate-400 bg-white border border-slate-100 rounded-xl px-4 py-2.5 flex-wrap">
+      <div class="flex items-center gap-1.5">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Horario laboral: <span id="horario-txt" class="font-600 text-slate-600"></span></span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span>Días hábiles: <span id="dias-txt" class="font-600 text-slate-600"></span></span>
+      </div>
+      <div class="flex items-center gap-1.5 ml-auto">
+        <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+        <span>Datos en tiempo real</span>
+      </div>
+    </div>
+
+    <!-- ── KPI CARDS ── -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+      <div class="card">
+        <div class="kpi-num text-slate-800" id="kpi-total">—</div>
+        <div class="kpi-label">Respuestas totales</div>
+        <div class="mt-3 flex gap-2 text-xs text-slate-400">
+          <span id="kpi-sub-lab"></span>
+          <span id="kpi-sub-fuera"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kpi-num text-indigo-600" id="kpi-prom-lab">—</div>
+        <div class="kpi-label">Promedio en horario laboral</div>
+        <div class="mt-3">
+          <span id="kpi-badge-lab" class="tag hidden"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kpi-num text-slate-500" id="kpi-prom-fuera">—</div>
+        <div class="kpi-label">Promedio fuera de horario</div>
+        <div class="mt-3">
+          <span id="kpi-badge-fuera" class="tag hidden"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kpi-num text-emerald-600" id="kpi-pct-ideal">—</div>
+        <div class="kpi-label">Respondieron en &lt; 5 min</div>
+        <div class="mt-3">
+          <span id="kpi-badge-critico" class="tag tag-red hidden"></span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── BENCHMARK REFERENCE ── -->
+    <div class="card py-3 px-5">
+      <div class="flex items-center gap-1.5 mb-2">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span class="text-xs font-600 text-slate-400 uppercase tracking-widest">Referencia de velocidad de respuesta</span>
+      </div>
+      <div class="flex flex-wrap gap-3" id="benchmark-list"></div>
+    </div>
+
+    <!-- ── DISTRIBUCIÓN ── -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <div class="card">
+        <div class="section-title">Distribución — Horario laboral</div>
+        <div class="section-sub" id="dist-lab-sub"></div>
+        <div class="mt-6 flex flex-col items-center">
+          <div class="relative" style="width:200px;height:200px">
+            <canvas id="chart-lab"></canvas>
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div class="text-2xl font-900 text-slate-800" id="donut-lab-n">—</div>
+              <div class="text-xs text-slate-400 font-500">respuestas</div>
+            </div>
+          </div>
+          <div id="legend-lab" class="mt-5 w-full divide-y divide-slate-50"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Distribución — Fuera de horario</div>
+        <div class="section-sub" id="dist-fuera-sub"></div>
+        <div class="mt-6 flex flex-col items-center">
+          <div class="relative" style="width:200px;height:200px">
+            <canvas id="chart-fuera"></canvas>
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div class="text-2xl font-900 text-slate-800" id="donut-fuera-n">—</div>
+              <div class="text-xs text-slate-400 font-500">respuestas</div>
+            </div>
+          </div>
+          <div id="legend-fuera" class="mt-5 w-full divide-y divide-slate-50"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── TENDENCIA ── -->
+    <div class="card">
+      <div class="flex items-start justify-between mb-1">
+        <div>
+          <div class="section-title">Tendencia diaria</div>
+          <div class="section-sub">Promedio de tiempo de respuesta por día (minutos)</div>
+        </div>
+        <span id="trend-rango" class="text-xs text-slate-300"></span>
+      </div>
+      <div class="mt-5" style="height:180px">
+        <canvas id="chart-trend"></canvas>
+      </div>
+    </div>
+
+    <!-- ── TOP 10 ── -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="w-2 h-2 rounded-full bg-red-400 flex-shrink-0"></span>
+          <div class="section-title">Top 10 — Respuestas más lentas</div>
+        </div>
+        <div id="tabla-lentos"></div>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0"></span>
+          <div class="section-title">Top 10 — Respuestas más rápidas</div>
+        </div>
+        <div id="tabla-rapidos"></div>
+      </div>
+
+    </div>
+
+  </div><!-- /content -->
+</main>
+
+<!-- Footer -->
+<footer class="text-center py-8 text-xs text-slate-300">
+  PULSE · Core Power Consulting
+</footer>
+
+<script>
+const SUBDOMAIN = "{{ subdomain }}";
+const DIAS_LABEL = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+let charts = {};
+
+// Default: últimos 30 días
+const hoy = new Date();
+const hace30 = new Date(); hace30.setDate(hoy.getDate() - 30);
+document.getElementById('hasta').value = hoy.toISOString().split('T')[0];
+document.getElementById('desde').value = hace30.toISOString().split('T')[0];
+
+function fmtSeg(seg) {
+  if (!seg || seg <= 0) return '—';
+  if (seg < 60) return `${seg}s`;
+  const h = Math.floor(seg / 3600);
+  const m = Math.floor((seg % 3600) / 60);
+  const s = seg % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${s}s`;
+}
+
+function getBadgeTag(promedio_seg, franjas) {
+  if (!franjas || !promedio_seg) return null;
+  for (const f of franjas) {
+    if (!f.max_seg || promedio_seg < f.max_seg) return f;
+  }
+  return franjas[franjas.length - 1];
+}
+
+function tagClass(tag) {
+  const map = { 'Ideal': 'tag-green', 'Bueno': 'tag-amber', 'Regular': 'tag-orange', 'Crítico': 'tag-red' };
+  return map[tag] || 'tag-amber';
+}
+
+function renderDonut(id, distribucion) {
+  const ctx = document.getElementById(id).getContext('2d');
+  const existing = Chart.getChart(id);
+  if (existing) existing.destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: distribucion.map(d => d.label),
+      datasets: [{
+        data: distribucion.map(d => d.count),
+        backgroundColor: distribucion.map(d => d.color),
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      cutout: '74%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.parsed} respuestas (${ctx.dataset.data.reduce((a,b)=>a+b,0)>0?Math.round(ctx.parsed/ctx.dataset.data.reduce((a,b)=>a+b,0)*100):0}%)`
+          }
+        }
+      },
+      animation: { duration: 700, easing: 'easeInOutQuart' }
+    }
+  });
+}
+
+function renderLegend(containerId, distribucion) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = distribucion.map(d => `
+    <div class="row-hover flex items-center justify-between px-2 py-2.5">
+      <div class="flex items-center gap-2.5">
+        <span class="w-3 h-3 rounded flex-shrink-0" style="background:${d.color}"></span>
+        <span class="text-sm text-slate-700">${d.label}</span>
+        <span class="tag ${tagClass(d.tag)} hidden sm:inline">${d.tag}</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-700 text-slate-800">${d.count}</span>
+        <span class="text-xs text-slate-300 w-10 text-right">${d.pct}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTrend(tendencia) {
+  const ctx = document.getElementById('chart-trend').getContext('2d');
+  const existing = Chart.getChart('chart-trend');
+  if (existing) existing.destroy();
+
+  const labels = tendencia.map(d => {
+    const [,m,dia] = d.fecha.split('-');
+    return `${dia}/${m}`;
+  });
+
+  charts['trend'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Promedio (min)',
+        data: tendencia.map(d => d.promedio_min),
+        backgroundColor: '#6366f122',
+        borderColor: '#6366f1',
+        borderWidth: 2,
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} min promedio` } }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 11 }, color: '#94a3b8', maxTicksLimit: 15 }
+        },
+        y: {
+          grid: { color: '#f1f5f9', lineWidth: 1 },
+          ticks: { font: { size: 11 }, color: '#94a3b8', callback: v => v + ' min' },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+function renderTabla(containerId, rows, tipo) {
+  const el = document.getElementById(containerId);
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="text-slate-300 text-sm py-6 text-center">Sin datos en este rango</div>';
+    return;
+  }
+  const colorClass = tipo === 'lento' ? 'text-red-500' : 'text-emerald-600';
+  el.innerHTML = rows.map((r, i) => `
+    <div class="row-hover flex items-center justify-between px-2 py-2.5">
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-200 w-5 text-right font-600">${i + 1}</span>
+        <span class="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+          #${r.lead_id}
+        </span>
+      </div>
+      <div class="flex items-center gap-4">
+        <span class="text-xs text-slate-300">${r.fecha}</span>
+        <span class="text-sm font-800 ${colorClass} w-16 text-right">${r.fmt}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderBenchmark(franjas) {
+  const refs = [
+    { tag: 'Ideal',   desc: 'Lead activo, alta probabilidad de cierre' },
+    { tag: 'Bueno',   desc: 'Aceptable, lead aún receptivo' },
+    { tag: 'Regular', desc: 'Riesgo de perder el interés' },
+    { tag: 'Crítico', desc: 'Lead abandona la conversación' },
+  ];
+  const el = document.getElementById('benchmark-list');
+  el.innerHTML = franjas.map((f, i) => `
+    <div class="flex items-center gap-2">
+      <span class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:${f.color}"></span>
+      <span class="text-xs font-600 text-slate-600">${f.label}</span>
+      <span class="text-xs text-slate-300">—</span>
+      <span class="text-xs text-slate-400">${refs[i]?.desc || ''}</span>
+    </div>
+  `).join('');
+}
+
+async function cargarDatos() {
+  document.getElementById('loading').classList.remove('hidden');
+  document.getElementById('content').classList.add('hidden');
+  document.getElementById('error-state').classList.add('hidden');
+
+  const desde = document.getElementById('desde').value;
+  const hasta = document.getElementById('hasta').value;
+  const params = new URLSearchParams({ subdomain: SUBDOMAIN });
+  if (desde) params.append('desde', desde);
+  if (hasta) params.append('hasta', hasta);
+
+  try {
+    const res = await fetch('/pulse/data?' + params.toString());
+    const d = await res.json();
+
+    if (d.error) {
+      document.getElementById('error-msg').textContent = d.error;
+      document.getElementById('error-state').classList.remove('hidden');
+      document.getElementById('loading').classList.add('hidden');
+      return;
+    }
+
+    // Navbar
+    document.getElementById('nombre-cliente').textContent = d.config.nombre;
+    document.getElementById('horario-txt').textContent = d.config.horario_fmt;
+    document.getElementById('dias-txt').textContent = d.config.dias_fmt;
+
+    // Benchmark
+    renderBenchmark(d.config.franjas);
+
+    // KPI
+    const total = d.laboral.total + d.fuera_horario.total;
+    document.getElementById('kpi-total').textContent = total.toLocaleString('es');
+    document.getElementById('kpi-sub-lab').textContent = `${d.laboral.total} laborales`;
+    document.getElementById('kpi-sub-fuera').textContent = `· ${d.fuera_horario.total} fuera`;
+
+    document.getElementById('kpi-prom-lab').textContent = fmtSeg(d.laboral.promedio_seg);
+    document.getElementById('kpi-prom-fuera').textContent = fmtSeg(d.fuera_horario.promedio_seg);
+
+    const badgeLab = getBadgeTag(d.laboral.promedio_seg, d.config.franjas);
+    if (badgeLab && d.laboral.total > 0) {
+      const el = document.getElementById('kpi-badge-lab');
+      el.textContent = badgeLab.tag;
+      el.className = `tag ${tagClass(badgeLab.tag)}`;
+      el.classList.remove('hidden');
+    }
+
+    const badgeFuera = getBadgeTag(d.fuera_horario.promedio_seg, d.config.franjas);
+    if (badgeFuera && d.fuera_horario.total > 0) {
+      const el = document.getElementById('kpi-badge-fuera');
+      el.textContent = badgeFuera.tag;
+      el.className = `tag ${tagClass(badgeFuera.tag)}`;
+      el.classList.remove('hidden');
+    }
+
+    const idealLab = d.laboral.distribucion[0];
+    const idealFuera = d.fuera_horario.distribucion[0];
+    const totalIdeal = (idealLab?.count || 0) + (idealFuera?.count || 0);
+    const pctIdeal = total > 0 ? Math.round(totalIdeal / total * 100) : 0;
+    document.getElementById('kpi-pct-ideal').textContent = pctIdeal + '%';
+
+    const criticoLab = d.laboral.distribucion[d.laboral.distribucion.length - 1];
+    if (criticoLab && criticoLab.pct > 0 && d.laboral.total > 0) {
+      const el = document.getElementById('kpi-badge-critico');
+      el.textContent = `${criticoLab.pct}% esperaron +30 min`;
+      el.classList.remove('hidden');
+    }
+
+    // Distribución charts
+    const emptyDist = d.config.franjas.map(f => ({ ...f, count: 1, pct: 25 }));
+
+    if (d.laboral.total > 0) {
+      renderDonut('chart-lab', d.laboral.distribucion);
+      renderLegend('legend-lab', d.laboral.distribucion);
+    } else {
+      renderDonut('chart-lab', emptyDist.map(f => ({...f, color: '#e2e8f0'})));
+      document.getElementById('legend-lab').innerHTML = '<div class="text-xs text-slate-300 text-center py-3">Sin datos en horario laboral</div>';
+    }
+    document.getElementById('donut-lab-n').textContent = d.laboral.total.toLocaleString('es');
+    document.getElementById('dist-lab-sub').textContent = d.config.horario_fmt + ' · ' + d.config.dias_fmt;
+
+    if (d.fuera_horario.total > 0) {
+      renderDonut('chart-fuera', d.fuera_horario.distribucion);
+      renderLegend('legend-fuera', d.fuera_horario.distribucion);
+    } else {
+      renderDonut('chart-fuera', emptyDist.map(f => ({...f, color: '#e2e8f0'})));
+      document.getElementById('legend-fuera').innerHTML = '<div class="text-xs text-slate-300 text-center py-3">Sin datos fuera de horario</div>';
+    }
+    document.getElementById('donut-fuera-n').textContent = d.fuera_horario.total.toLocaleString('es');
+    document.getElementById('dist-fuera-sub').textContent = 'Mensajes recibidos fuera del horario configurado';
+
+    // Tendencia
+    if (d.tendencia.length > 0) {
+      renderTrend(d.tendencia);
+      document.getElementById('trend-rango').textContent =
+        `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
+    } else {
+      document.getElementById('chart-trend').parentElement.innerHTML =
+        '<div class="text-xs text-slate-300 text-center py-10">Sin datos en este período</div>';
+    }
+
+    // Tablas
+    renderTabla('tabla-lentos', d.top_lentos, 'lento');
+    renderTabla('tabla-rapidos', d.top_rapidos, 'rapido');
+
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+
+  } catch (e) {
+    document.getElementById('error-msg').textContent = 'Error de conexión: ' + e.message;
+    document.getElementById('error-state').classList.remove('hidden');
+    document.getElementById('loading').classList.add('hidden');
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (SUBDOMAIN) {
+    cargarDatos();
+  } else {
+    document.getElementById('loading').innerHTML =
+      '<div class="text-center py-32 text-slate-400 text-sm">Accede con <code class="bg-slate-100 px-2 py-1 rounded text-slate-600">?subdomain=nombre</code></div>';
+  }
+});
+</script>
+</body>
+</html>

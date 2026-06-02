@@ -1,9 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+import calendar
+from collections import defaultdict
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from pulse_config import PULSE_CONFIG
 
 app = Flask(__name__)
 
@@ -321,6 +324,149 @@ def backfill():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+# ========================
+# PULSE
+# ========================
+DIAS_LABEL = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+def _ts_to_local(ts, tz_offset):
+    return datetime.utcfromtimestamp(ts) + timedelta(hours=tz_offset)
+
+def _local_date_to_ts(date_str, tz_offset):
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    dt_utc = dt - timedelta(hours=tz_offset)
+    return calendar.timegm(dt_utc.timetuple())
+
+def _fmt_horario(h_ini, h_fin):
+    def fh(h):
+        if h == 0: return '12:00 AM'
+        if h < 12: return f'{h}:00 AM'
+        if h == 12: return '12:00 PM'
+        return f'{h - 12}:00 PM'
+    return f'{fh(h_ini)} – {fh(h_fin)}'
+
+def _get_franja_idx(seg, franjas):
+    for i, f in enumerate(franjas):
+        if f['max_seg'] is None or seg < f['max_seg']:
+            return i
+    return len(franjas) - 1
+
+def _calc_metricas(registros, franjas):
+    if not registros:
+        return {
+            'total': 0,
+            'promedio_seg': 0,
+            'distribucion': [
+                {'label': f['label'], 'tag': f['tag'], 'count': 0, 'pct': 0.0, 'color': f['color']}
+                for f in franjas
+            ]
+        }
+    total = len(registros)
+    promedio_seg = round(sum(r['tiempo_respuesta_seg'] for r in registros) / total)
+    counts = [0] * len(franjas)
+    for r in registros:
+        counts[_get_franja_idx(r['tiempo_respuesta_seg'], franjas)] += 1
+    distribucion = [
+        {'label': franjas[i]['label'], 'tag': franjas[i]['tag'],
+         'count': counts[i], 'pct': round(counts[i] / total * 100, 1), 'color': franjas[i]['color']}
+        for i in range(len(franjas))
+    ]
+    return {'total': total, 'promedio_seg': promedio_seg, 'distribucion': distribucion}
+
+def _fmt_row(r, tz_offset):
+    seg = r['tiempo_respuesta_seg']
+    local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
+    if seg >= 3600:
+        fmt = f"{seg // 3600}h {(seg % 3600) // 60}m"
+    elif seg >= 60:
+        fmt = f"{seg // 60}m {seg % 60}s"
+    else:
+        fmt = f"{seg}s"
+    return {
+        'lead_id': r['lead_id'],
+        'seg': seg,
+        'fmt': fmt,
+        'fecha': local_dt.strftime('%d/%m %H:%M'),
+    }
+
+@app.route('/pulse')
+def pulse():
+    subdomain = request.args.get('subdomain', '')
+    return render_template('pulse.html', subdomain=subdomain)
+
+@app.route('/pulse/data')
+def pulse_data():
+    subdomain = request.args.get('subdomain', '').strip()
+    if not subdomain or subdomain not in PULSE_CONFIG:
+        return jsonify({'error': f'Subdomain "{subdomain}" no configurado en PULSE'}), 400
+
+    cfg = PULSE_CONFIG[subdomain]
+    tz_offset = cfg['tz_offset']
+    h_ini, h_fin = cfg['horario']
+    dias_lab = set(cfg['dias_laborables'])
+    franjas = cfg['franjas']
+
+    desde_str = request.args.get('desde')
+    hasta_str = request.args.get('hasta')
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = '''
+            SELECT lead_id, f_ult_msj_cliente, tiempo_respuesta_seg
+            FROM tiempos_respuesta
+            WHERE subdomain = %s AND tiempo_respuesta_seg > 0
+        '''
+        params = [subdomain]
+
+        if desde_str:
+            query += ' AND f_ult_msj_cliente >= %s'
+            params.append(_local_date_to_ts(desde_str, tz_offset))
+        if hasta_str:
+            query += ' AND f_ult_msj_cliente <= %s'
+            params.append(_local_date_to_ts(hasta_str, tz_offset) + 86399)
+
+        c.execute(query, params)
+        rows = c.fetchall()
+
+        laboral, fuera = [], []
+        for row in rows:
+            local_dt = _ts_to_local(row['f_ult_msj_cliente'], tz_offset)
+            if local_dt.weekday() in dias_lab and h_ini <= local_dt.hour < h_fin:
+                laboral.append(row)
+            else:
+                fuera.append(row)
+
+        todos = laboral + fuera
+        top_lentos = sorted(todos, key=lambda r: r['tiempo_respuesta_seg'], reverse=True)[:10]
+        top_rapidos = sorted(todos, key=lambda r: r['tiempo_respuesta_seg'])[:10]
+
+        daily = defaultdict(list)
+        for r in todos:
+            dia = _ts_to_local(r['f_ult_msj_cliente'], tz_offset).strftime('%Y-%m-%d')
+            daily[dia].append(r['tiempo_respuesta_seg'])
+        tendencia = [
+            {'fecha': dia, 'promedio_min': round(sum(v) / len(v) / 60, 1), 'total': len(v)}
+            for dia in sorted(daily)[-30:]
+        ]
+
+        return jsonify({
+            'config': {
+                'nombre': cfg['nombre'],
+                'horario_fmt': _fmt_horario(h_ini, h_fin),
+                'dias_fmt': ' · '.join(DIAS_LABEL[d] for d in sorted(dias_lab)),
+                'franjas': franjas,
+            },
+            'laboral': _calc_metricas(laboral, franjas),
+            'fuera_horario': _calc_metricas(fuera, franjas),
+            'top_lentos': [_fmt_row(r, tz_offset) for r in top_lentos],
+            'top_rapidos': [_fmt_row(r, tz_offset) for r in top_rapidos],
+            'tendencia': tendencia,
+        })
     finally:
         conn.close()
 
