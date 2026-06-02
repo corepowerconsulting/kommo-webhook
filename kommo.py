@@ -419,7 +419,7 @@ def pulse_data():
         query = '''
             SELECT lead_id, f_ult_msj_cliente, tiempo_respuesta_seg
             FROM tiempos_respuesta
-            WHERE subdomain = %s AND tiempo_respuesta_seg > 0
+            WHERE subdomain = %s AND tiempo_respuesta_seg > 0 AND f_ult_msj_cliente IS NOT NULL
         '''
         params = [subdomain]
 
@@ -432,6 +432,13 @@ def pulse_data():
 
         c.execute(query, params)
         rows = c.fetchall()
+    except Exception as e:
+        print(f'❌ PULSE /data error: {e}')
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+    try:
 
         laboral, fuera = [], []
         for row in rows:
@@ -467,8 +474,9 @@ def pulse_data():
             'top_rapidos': [_fmt_row(r, tz_offset) for r in top_rapidos],
             'tendencia': tendencia,
         })
-    finally:
-        conn.close()
+    except Exception as e:
+        print(f'❌ PULSE /data procesamiento: {e}')
+        return jsonify({'error': str(e)}), 500
 
 # ========================
 # MAIN
