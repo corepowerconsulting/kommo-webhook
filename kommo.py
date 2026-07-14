@@ -117,7 +117,7 @@ def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
         conn.close()
 
 def nombre_asesor(responsible_user_id):
-    if not responsible_user_id:
+    if responsible_user_id in (None, '', 0, '0'):
         return None
     return ASESORES.get(int(responsible_user_id), f'Usuario {responsible_user_id}')
 
@@ -636,10 +636,9 @@ def _lista_asesores(subdomain):
         ids = [row[0] for row in c.fetchall()]
     finally:
         conn.close()
-    return sorted(
-        ({'id': uid, 'nombre': nombre_asesor(uid)} for uid in ids),
-        key=lambda x: x['nombre']
-    )
+    asesores = [{'id': uid, 'nombre': nombre_asesor(uid)} for uid in ids]
+    asesores = [a for a in asesores if a['nombre']]
+    return sorted(asesores, key=lambda x: x['nombre'])
 
 @app.route('/pulse')
 def pulse():
