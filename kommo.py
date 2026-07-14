@@ -80,6 +80,14 @@ def get_custom_field(data, prefix, field_name):
                 return None
     return None
 
+CAMPOS_DEFAULT = {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'}
+
+def campos_de(subdomain):
+    """Cada cuenta de Kommo nombra distinto sus campos custom de
+    'ultimo mensaje cliente/asesor' (mayusculas, typos, sufijos).
+    Se configuran por subdominio en PULSE_CONFIG['campos']."""
+    return PULSE_CONFIG.get(subdomain, {}).get('campos', CAMPOS_DEFAULT)
+
 def get_batch_indices(data, key_root):
     """Kommo puede agrupar varios eventos del mismo tipo en un solo POST
     (message[add][0], message[add][1], ...). Devuelve todos los índices presentes."""
@@ -207,8 +215,9 @@ def _procesar_webhook(data):
             )
             # Calcular tiempo de respuesta del asesor
             prefix = f'leads[update][{i}]'
-            f_cliente = get_custom_field(data, prefix, 'F Ult msj cliente')
-            f_asesor = get_custom_field(data, prefix, 'F ult msj asesor')
+            campos = campos_de(subdomain)
+            f_cliente = get_custom_field(data, prefix, campos['cliente'])
+            f_asesor = get_custom_field(data, prefix, campos['asesor'])
             responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
             evento_ts = data.get(f'{prefix}[updated_at]')
 
@@ -369,8 +378,9 @@ def backfill():
                     continue
                 data      = json.loads(row['raw_data'])
                 prefix    = 'leads[update][0]'
-                f_cliente = get_custom_field(data, prefix, 'F Ult msj cliente')
-                f_asesor  = get_custom_field(data, prefix, 'F ult msj asesor')
+                campos    = campos_de(row['subdomain'])
+                f_cliente = get_custom_field(data, prefix, campos['cliente'])
+                f_asesor  = get_custom_field(data, prefix, campos['asesor'])
                 responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
                 evento_ts = data.get(f'{prefix}[updated_at]')
 
