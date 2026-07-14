@@ -440,6 +440,12 @@ def backfill():
 # ========================
 DIAS_LABEL = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
+# Si la brecha entre el ultimo mensaje del cliente y la respuesta del asesor
+# supera esto, no es una "respuesta" real sino una reactivacion de un lead
+# abandonado (ej. asesor le escribe 600 dias despues) y no debe contar en
+# las metricas de tiempo de respuesta.
+GAP_REACTIVACION_SEG = 3 * 86400
+
 def _ts_to_local(ts, tz_offset):
     return datetime.utcfromtimestamp(ts) + timedelta(hours=tz_offset)
 
@@ -681,8 +687,9 @@ def pulse_data():
               AND f_ult_msj_cliente IS NOT NULL
               AND f_ult_msj_asesor  IS NOT NULL
               AND f_ult_msj_asesor > f_ult_msj_cliente
+              AND (f_ult_msj_asesor - f_ult_msj_cliente) <= %s
         '''
-        params = [subdomain]
+        params = [subdomain, GAP_REACTIVACION_SEG]
         if desde_str:
             query += ' AND f_ult_msj_cliente >= %s'
             params.append(_local_date_to_ts(desde_str, tz_offset))
