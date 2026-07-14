@@ -43,6 +43,10 @@
       <span id="nombre-cliente" class="text-slate-400 text-sm font-medium">—</span>
     </div>
     <div class="flex items-center gap-2 text-sm flex-wrap justify-end">
+      <label class="text-slate-400 text-xs font-medium">ASESOR</label>
+      <select id="asesor-select" class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition">
+        <option value="">Todos</option>
+      </select>
       <label class="text-slate-400 text-xs font-medium">DESDE</label>
       <input type="date" id="desde" class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
       <label class="text-slate-400 text-xs font-medium">HASTA</label>
@@ -83,16 +87,41 @@
       </div>
     </div>
 
-    <!-- KPIs -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Leads accionables: no respondidos / trabajados hoy -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div class="card">
-        <div class="kpi-num text-slate-800" id="kpi-total">—</div>
-        <div class="kpi-label">Respuestas totales</div>
+        <div class="flex items-center justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
+          <div>
+            <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
+            <div class="kpi-label">Leads no respondidos</div>
+            <div class="mt-2 text-xs text-slate-400">Último mensaje es del cliente, sin responder</div>
+          </div>
+          <svg id="chev-no-respondidos" class="chevron flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div id="panel-no-respondidos" class="hidden mt-4"></div>
       </div>
+      <div class="card">
+        <div class="flex items-center justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
+          <div>
+            <div class="kpi-num text-indigo-600" id="kpi-trabajados-hoy">—</div>
+            <div class="kpi-label">Leads trabajados hoy</div>
+            <div class="mt-2 text-xs text-slate-400">Al menos un mensaje del asesor hoy en horario</div>
+          </div>
+          <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="card">
         <div class="kpi-num text-indigo-600" id="kpi-promedio">—</div>
         <div class="kpi-label">Tiempo efectivo promedio</div>
-        <div class="mt-2"><span id="kpi-badge-prom" class="tag hidden"></span></div>
+        <div class="mt-2 flex items-center gap-2">
+          <span id="kpi-badge-prom" class="tag hidden"></span>
+          <span class="text-xs text-slate-400">Máximo: <span id="kpi-maximo" class="font-semibold text-slate-500">—</span></span>
+        </div>
       </div>
       <div class="card">
         <div class="kpi-num text-emerald-600" id="kpi-pct-ideal">—</div>
@@ -113,6 +142,15 @@
         <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Referencia</span>
       </div>
       <div class="flex flex-wrap gap-4" id="benchmark-list"></div>
+    </div>
+
+    <!-- Por asesor -->
+    <div class="card" id="card-por-asesor">
+      <div class="mb-5">
+        <div class="section-title">Tiempo de respuesta promedio por asesor</div>
+        <div class="section-sub">Tiempo laboral efectivo — de más rápido a más lento</div>
+      </div>
+      <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
     </div>
 
     <!-- Distribución -->
@@ -180,6 +218,12 @@
 const SUBDOMAIN = "{{ subdomain }}";
 const DIAS_LABEL = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 let distData = [];
+let CRM_URL = null;
+let asesoresListados = false;
+
+function leadHref(leadId) {
+  return CRM_URL ? `${CRM_URL}/leads/detail/${leadId}` : '#';
+}
 
 // Últimos 30 días por defecto
 const hoy = new Date();
@@ -222,6 +266,32 @@ function toggleLeads(idx) {
   chevron.style.transform = hidden ? '' : 'rotate(180deg)';
 }
 
+function toggleExtra(key) {
+  const panel = document.getElementById(`panel-${key}`);
+  const chevron = document.getElementById(`chev-${key}`);
+  const hidden = panel.classList.toggle('hidden');
+  chevron.style.transform = hidden ? '' : 'rotate(180deg)';
+}
+
+function renderExtraLeads(containerId, leads) {
+  const el = document.getElementById(containerId);
+  if (!leads || leads.length === 0) {
+    el.innerHTML = '<div class="text-xs text-slate-300 text-center py-4">Sin leads</div>';
+    return;
+  }
+  el.innerHTML = `<div class="bg-slate-50 rounded-xl overflow-hidden max-h-52 overflow-y-auto divide-y divide-white">
+    ${leads.map(l => `
+      <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center justify-between px-4 py-2 hover:bg-slate-100 transition">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xs font-mono text-slate-500 flex-shrink-0">#${l.lead_id}</span>
+          <span class="text-xs text-slate-400 truncate">${l.asesor || ''}</span>
+        </div>
+        <span class="text-xs text-slate-400 flex-shrink-0">${l.fecha}</span>
+      </a>
+    `).join('')}
+  </div>`;
+}
+
 function renderDist(distribucion) {
   distData = distribucion;
   const el = document.getElementById('legend-dist');
@@ -245,13 +315,16 @@ function renderDist(distribucion) {
             ? '<div class="text-xs text-slate-300 text-center py-4">Sin leads en este rango</div>'
             : `<div class="max-h-52 overflow-y-auto divide-y divide-white">
                 ${d.leads.map(l => `
-                  <div class="flex items-center justify-between px-4 py-2 hover:bg-slate-100 transition">
-                    <span class="text-xs font-mono text-slate-500">#${l.lead_id}</span>
-                    <div class="flex items-center gap-4">
+                  <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center justify-between px-4 py-2 hover:bg-slate-100 transition">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-xs font-mono text-slate-500 flex-shrink-0">#${l.lead_id}</span>
+                      <span class="text-xs text-slate-400 truncate">${l.asesor || ''}</span>
+                    </div>
+                    <div class="flex items-center gap-4 flex-shrink-0">
                       <span class="text-xs text-slate-400">${l.fecha}</span>
                       <span class="text-xs font-bold text-slate-700 w-16 text-right">${l.fmt}</span>
                     </div>
-                  </div>
+                  </a>
                 `).join('')}
               </div>`
           }
@@ -332,15 +405,33 @@ function renderTabla(containerId, rows, tipo) {
   }
   const colorClass = tipo === 'lento' ? 'text-red-500' : 'text-emerald-600';
   el.innerHTML = rows.map((r, i) => `
-    <div class="row-hover flex items-center justify-between px-2 py-2.5">
-      <div class="flex items-center gap-3">
-        <span class="text-xs text-slate-200 w-5 text-right font-semibold">${i+1}</span>
-        <span class="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">#${r.lead_id}</span>
+    <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center justify-between px-2 py-2.5">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-xs text-slate-200 w-5 text-right font-semibold flex-shrink-0">${i+1}</span>
+        <span class="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded flex-shrink-0">#${r.lead_id}</span>
+        <span class="text-xs text-slate-400 truncate">${r.asesor || ''}</span>
       </div>
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-4 flex-shrink-0">
         <span class="text-xs text-slate-300">${r.fecha}</span>
         <span class="text-sm font-black ${colorClass} w-16 text-right">${r.fmt}</span>
       </div>
+    </a>
+  `).join('');
+}
+
+function renderAsesores(porAsesor) {
+  const el = document.getElementById('tabla-asesores');
+  if (!porAsesor || porAsesor.length === 0) {
+    el.innerHTML = '<div class="text-slate-300 text-sm py-6 text-center">Sin datos</div>';
+    return;
+  }
+  el.innerHTML = porAsesor.map(a => `
+    <div class="row-hover flex items-center justify-between px-2 py-2.5">
+      <div class="flex items-center gap-2.5">
+        <span class="text-sm font-medium text-slate-700">${a.asesor}</span>
+        <span class="text-xs text-slate-300">${a.total} respuestas</span>
+      </div>
+      <span class="text-sm font-black text-indigo-600">${fmtSeg(a.promedio_seg)}</span>
     </div>
   `).join('');
 }
@@ -367,11 +458,13 @@ async function cargarDatos() {
   document.getElementById('content').classList.add('hidden');
   document.getElementById('error-state').classList.add('hidden');
 
-  const desde = document.getElementById('desde').value;
+  const desde  = document.getElementById('desde').value;
   const hasta  = document.getElementById('hasta').value;
+  const asesor = document.getElementById('asesor-select').value;
   const params = new URLSearchParams({ subdomain: SUBDOMAIN });
-  if (desde) params.append('desde', desde);
+  if (desde)  params.append('desde',  desde);
   if (hasta)  params.append('hasta',  hasta);
+  if (asesor) params.append('asesor', asesor);
 
   try {
     const res = await fetch('/pulse/data?' + params.toString());
@@ -388,12 +481,40 @@ async function cargarDatos() {
     document.getElementById('nombre-cliente').textContent = d.config.nombre;
     document.getElementById('horario-txt').textContent    = d.config.horario_fmt;
     document.getElementById('dias-txt').textContent       = d.config.dias_fmt;
+    CRM_URL = d.config.crm_url || null;
+
+    // Selector de asesor (solo se puebla una vez, para no perder la selección actual)
+    if (!asesoresListados && d.config.asesores) {
+      const sel = document.getElementById('asesor-select');
+      d.config.asesores.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.nombre;
+        sel.appendChild(opt);
+      });
+      asesoresListados = true;
+    }
 
     renderBenchmark(d.config.franjas);
 
+    // Leads accionables
+    document.getElementById('kpi-no-respondidos').textContent = d.no_respondidos.length.toLocaleString('es');
+    document.getElementById('kpi-trabajados-hoy').textContent = d.trabajados_hoy.length.toLocaleString('es');
+    renderExtraLeads('panel-no-respondidos', d.no_respondidos);
+    renderExtraLeads('panel-trabajados-hoy', d.trabajados_hoy);
+
+    // Por asesor (solo tiene sentido en la vista "Todos")
+    const cardPorAsesor = document.getElementById('card-por-asesor');
+    if (d.por_asesor) {
+      cardPorAsesor.classList.remove('hidden');
+      renderAsesores(d.por_asesor);
+    } else {
+      cardPorAsesor.classList.add('hidden');
+    }
+
     // KPIs
-    document.getElementById('kpi-total').textContent = d.metricas.total.toLocaleString('es');
     document.getElementById('kpi-promedio').textContent  = fmtSeg(d.metricas.promedio_seg);
+    document.getElementById('kpi-maximo').textContent    = fmtSeg(d.metricas.maximo_seg);
 
     const badge = getBadgeTag(d.metricas.promedio_seg, d.config.franjas);
     if (badge && d.metricas.total > 0) {

@@ -1,12 +1,14 @@
 from flask import Flask, request, jsonify, render_template
 import json
+import re
+import threading
 from datetime import datetime, timedelta
 import calendar
 from collections import defaultdict
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from pulse_config import PULSE_CONFIG
+from pulse_config import PULSE_CONFIG, ASESORES
 
 app = Flask(__name__)
 
@@ -46,6 +48,19 @@ def init_db():
             UNIQUE (subdomain, lead_id, f_ult_msj_asesor)
         )
     ''')
+    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS responsible_user_id BIGINT')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS leads_estado (
+            subdomain TEXT,
+            lead_id TEXT,
+            responsible_user_id BIGINT,
+            f_ult_msj_cliente BIGINT,
+            f_ult_msj_asesor BIGINT,
+            evento_ts BIGINT,
+            actualizado_at TEXT,
+            PRIMARY KEY (subdomain, lead_id)
+        )
+    ''')
     conn.commit()
     conn.close()
     print("✅ Base de datos lista")
@@ -64,6 +79,17 @@ def get_custom_field(data, prefix, field_name):
             except (TypeError, ValueError):
                 return None
     return None
+
+def get_batch_indices(data, key_root):
+    """Kommo puede agrupar varios eventos del mismo tipo en un solo POST
+    (message[add][0], message[add][1], ...). Devuelve todos los índices presentes."""
+    idxs = set()
+    pattern = re.compile(re.escape(key_root) + r'\[(\d+)\]')
+    for k in data.keys():
+        m = pattern.match(k)
+        if m:
+            idxs.add(int(m.group(1)))
+    return sorted(idxs)
 
 # ========================
 # GUARDAR EVENTO
@@ -90,21 +116,55 @@ def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
     finally:
         conn.close()
 
-def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor):
+def nombre_asesor(responsible_user_id):
+    if not responsible_user_id:
+        return None
+    return ASESORES.get(int(responsible_user_id), f'Usuario {responsible_user_id}')
+
+def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id=None):
     tiempo_seg = f_asesor - f_cliente
     conn = get_conn()
     c = conn.cursor()
     try:
         c.execute('''
             INSERT INTO tiempos_respuesta
-                (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (lead_id, f_ult_msj_asesor) DO NOTHING
-        ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat()))
+                (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor)
+            DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id
+        ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat(), responsible_user_id))
         conn.commit()
         print(f"⏱️  {subdomain} | lead {lead_id} | asesor respondió en {tiempo_seg // 60}min {tiempo_seg % 60}s")
     except Exception as e:
         print(f"❌ Error tiempo respuesta: {e}")
+    finally:
+        conn.close()
+
+def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts):
+    """Guarda el estado vigente del lead (quién es responsable, cuándo escribió
+    cliente/asesor por última vez). Se llama en CADA leads[update], sin importar
+    quién respondió último. evento_ts evita que un evento viejo (ej. reprocesado
+    por /backfill) pise un estado más reciente."""
+    if not evento_ts:
+        return
+    conn = get_conn()
+    c = conn.cursor()
+    try:
+        c.execute('''
+            INSERT INTO leads_estado
+                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (subdomain, lead_id) DO UPDATE SET
+                responsible_user_id = EXCLUDED.responsible_user_id,
+                f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
+                f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
+                evento_ts           = EXCLUDED.evento_ts,
+                actualizado_at      = EXCLUDED.actualizado_at
+            WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
+        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat()))
+        conn.commit()
+    except Exception as e:
+        print(f"❌ Error lead_estado: {e}")
     finally:
         conn.close()
 
@@ -113,61 +173,77 @@ def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor):
 # ========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    try:
-        data = request.form.to_dict()
-        subdomain = data.get('account[subdomain]', 'desconocido')
+    # Kommo desactiva el webhook si la respuesta tarda o falla. Por eso
+    # confirmamos de inmediato (200) y el guardado en BD corre en background,
+    # así la lentitud de la base de datos nunca hace que Kommo lo desactive.
+    data = request.form.to_dict()
+    threading.Thread(target=_procesar_webhook, args=(data,), daemon=True).start()
+    return jsonify({'status': 'ok'}), 200
 
-        if any(k.startswith('message[add]') for k in data.keys()):
+def _procesar_webhook(data):
+    try:
+        subdomain = data.get('account[subdomain]', 'desconocido')
+        algo_procesado = False
+
+        for i in get_batch_indices(data, 'message[add]'):
+            algo_procesado = True
             guardar_evento(
                 subdomain=subdomain,
                 tipo_evento='mensaje',
-                lead_id=data.get('message[add][0][element_id]'),
-                timestamp=data.get('message[add][0][created_at]'),
+                lead_id=data.get(f'message[add][{i}][element_id]'),
+                timestamp=data.get(f'message[add][{i}][created_at]'),
                 data=data
             )
 
-        elif any(k.startswith('leads[update]') for k in data.keys()):
-            lead_id = data.get('leads[update][0][id]')
+        for i in get_batch_indices(data, 'leads[update]'):
+            algo_procesado = True
+            lead_id = data.get(f'leads[update][{i}][id]')
             guardar_evento(
                 subdomain=subdomain,
                 tipo_evento='lead_update',
                 lead_id=lead_id,
-                timestamp=data.get('leads[update][0][updated_at]'),
+                timestamp=data.get(f'leads[update][{i}][updated_at]'),
                 data=data
             )
             # Calcular tiempo de respuesta del asesor
-            prefix = 'leads[update][0]'
+            prefix = f'leads[update][{i}]'
             f_cliente = get_custom_field(data, prefix, 'F Ult msj cliente')
             f_asesor = get_custom_field(data, prefix, 'F ult msj asesor')
-            if f_cliente and f_asesor and f_asesor > f_cliente:
-                guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor)
+            responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
+            evento_ts = data.get(f'{prefix}[updated_at]')
 
-        elif any(k.startswith('leads[status]') for k in data.keys()):
+            # Estado vigente del lead (para "no respondidos" / "trabajados hoy"),
+            # se guarda siempre, sin importar quién escribió último.
+            guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts)
+
+            if f_cliente and f_asesor and f_asesor > f_cliente:
+                guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id)
+
+        for i in get_batch_indices(data, 'leads[status]'):
+            algo_procesado = True
             guardar_evento(
                 subdomain=subdomain,
                 tipo_evento='lead_status',
-                lead_id=data.get('leads[status][0][id]'),
-                timestamp=data.get('leads[status][0][updated_at]'),
+                lead_id=data.get(f'leads[status][{i}][id]'),
+                timestamp=data.get(f'leads[status][{i}][updated_at]'),
                 data=data
             )
 
-        elif any(k.startswith('leads[responsible]') for k in data.keys()):
+        for i in get_batch_indices(data, 'leads[responsible]'):
+            algo_procesado = True
             guardar_evento(
                 subdomain=subdomain,
                 tipo_evento='lead_responsible',
-                lead_id=data.get('leads[responsible][0][id]'),
-                timestamp=data.get('leads[responsible][0][updated_at]'),
+                lead_id=data.get(f'leads[responsible][{i}][id]'),
+                timestamp=data.get(f'leads[responsible][{i}][updated_at]'),
                 data=data
             )
 
-        else:
+        if not algo_procesado:
             print(f"⚠️  Ignorado | {subdomain} | {list(data.keys())[:2]}")
 
-        return jsonify({'status': 'ok'}), 200
-
     except Exception as e:
-        print(f"❌ ERROR: {e}")
-        return jsonify({'status': 'error'}), 200
+        print(f"❌ ERROR procesando webhook en background: {e}")
 
 # ========================
 # ENDPOINTS
@@ -252,6 +328,8 @@ def ver_respuestas():
         query += ' ORDER BY f_ult_msj_asesor DESC LIMIT 100'
         c.execute(query, params)
         detalle = [dict(r) for r in c.fetchall()]
+        for r in detalle:
+            r['asesor'] = nombre_asesor(r.get('responsible_user_id'))
 
         return jsonify({'resumen': resumen, 'detalle': detalle})
     finally:
@@ -293,17 +371,37 @@ def backfill():
                 prefix    = 'leads[update][0]'
                 f_cliente = get_custom_field(data, prefix, 'F Ult msj cliente')
                 f_asesor  = get_custom_field(data, prefix, 'F ult msj asesor')
+                responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
+                evento_ts = data.get(f'{prefix}[updated_at]')
+
+                if evento_ts:
+                    write_c.execute('''
+                        INSERT INTO leads_estado
+                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (subdomain, lead_id) DO UPDATE SET
+                            responsible_user_id = EXCLUDED.responsible_user_id,
+                            f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
+                            f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
+                            evento_ts           = EXCLUDED.evento_ts,
+                            actualizado_at      = EXCLUDED.actualizado_at
+                        WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
+                    ''', (
+                        row['subdomain'], row['lead_id'], responsible_user_id,
+                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat()
+                    ))
 
                 if f_cliente and f_asesor and f_asesor > f_cliente:
                     write_c.execute('''
                         INSERT INTO tiempos_respuesta
-                            (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor) DO NOTHING
+                            (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor)
+                        DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id
                     ''', (
                         row['subdomain'], row['lead_id'],
                         f_cliente, f_asesor, f_asesor - f_cliente,
-                        datetime.now().isoformat()
+                        datetime.now().isoformat(), responsible_user_id
                     ))
                     if write_c.rowcount > 0:
                         insertados += 1
@@ -402,6 +500,7 @@ def _calc_metricas(registros, franjas, tz_offset):
         return {
             'total': 0,
             'promedio_seg': 0,
+            'maximo_seg': 0,
             'distribucion': [
                 {'label': f['label'], 'tag': f['tag'], 'count': 0, 'pct': 0.0, 'color': f['color'], 'leads': []}
                 for f in franjas
@@ -409,6 +508,7 @@ def _calc_metricas(registros, franjas, tz_offset):
         }
     total = len(registros)
     promedio_seg = round(sum(r['efectivo_seg'] for r in registros) / total)
+    maximo_seg = max(r['efectivo_seg'] for r in registros)
     groups = [[] for _ in franjas]
     for r in registros:
         groups[_get_franja_idx(r['efectivo_seg'], franjas)].append(r)
@@ -421,6 +521,7 @@ def _calc_metricas(registros, franjas, tz_offset):
                 'lead_id': r['lead_id'],
                 'fmt': _fmt_seg(r['efectivo_seg']),
                 'fecha': local_dt.strftime('%d/%m %H:%M'),
+                'asesor': nombre_asesor(r.get('responsible_user_id')),
             })
         distribucion.append({
             'label': f['label'], 'tag': f['tag'],
@@ -429,7 +530,23 @@ def _calc_metricas(registros, franjas, tz_offset):
             'color': f['color'],
             'leads': leads,
         })
-    return {'total': total, 'promedio_seg': promedio_seg, 'distribucion': distribucion}
+    return {'total': total, 'promedio_seg': promedio_seg, 'maximo_seg': maximo_seg, 'distribucion': distribucion}
+
+def _calc_por_asesor(registros):
+    grupos = defaultdict(list)
+    for r in registros:
+        nombre = nombre_asesor(r.get('responsible_user_id')) or 'Sin asignar'
+        grupos[nombre].append(r['efectivo_seg'])
+    resultado = [
+        {
+            'asesor': nombre,
+            'total': len(segs),
+            'promedio_seg': round(sum(segs) / len(segs)),
+        }
+        for nombre, segs in grupos.items()
+    ]
+    resultado.sort(key=lambda x: x['promedio_seg'])
+    return resultado
 
 def _fmt_row(r, tz_offset):
     local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
@@ -438,7 +555,91 @@ def _fmt_row(r, tz_offset):
         'seg': r['efectivo_seg'],
         'fmt': _fmt_seg(r['efectivo_seg']),
         'fecha': local_dt.strftime('%d/%m %H:%M'),
+        'asesor': nombre_asesor(r.get('responsible_user_id')),
     }
+
+def _hoy_rango_ts(tz_offset):
+    hoy_local = datetime.utcnow() + timedelta(hours=tz_offset)
+    inicio = _local_date_to_ts(hoy_local.strftime('%Y-%m-%d'), tz_offset)
+    return inicio, inicio + 86400
+
+def _fmt_lead_estado(row, tz_offset, campo_fecha):
+    local_dt = _ts_to_local(row[campo_fecha], tz_offset)
+    return {
+        'lead_id': row['lead_id'],
+        'asesor':  nombre_asesor(row.get('responsible_user_id')),
+        'fecha':   local_dt.strftime('%d/%m %H:%M'),
+    }
+
+def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None):
+    """Leads cuyo último mensaje en la conversación es del cliente y el
+    asesor no ha respondido después. No depende de rango de fechas: es
+    el estado pendiente ahora mismo."""
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        query = '''
+            SELECT lead_id, responsible_user_id, f_ult_msj_cliente
+            FROM leads_estado
+            WHERE subdomain = %s
+              AND f_ult_msj_cliente IS NOT NULL
+              AND (f_ult_msj_asesor IS NULL OR f_ult_msj_cliente > f_ult_msj_asesor)
+        '''
+        params = [subdomain]
+        if responsible_user_id:
+            query += ' AND responsible_user_id = %s'
+            params.append(responsible_user_id)
+        query += ' ORDER BY f_ult_msj_cliente DESC'
+        c.execute(query, params)
+        rows = c.fetchall()
+    finally:
+        conn.close()
+    return [_fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente') for r in rows]
+
+def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_id=None):
+    """Leads a los que el asesor le escribió (respuesta o mensaje propio)
+    hoy, dentro del horario laboral configurado."""
+    inicio, fin = _hoy_rango_ts(tz_offset)
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        query = '''
+            SELECT lead_id, responsible_user_id, f_ult_msj_asesor
+            FROM leads_estado
+            WHERE subdomain = %s
+              AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
+        '''
+        params = [subdomain, inicio, fin]
+        if responsible_user_id:
+            query += ' AND responsible_user_id = %s'
+            params.append(responsible_user_id)
+        query += ' ORDER BY f_ult_msj_asesor DESC'
+        c.execute(query, params)
+        rows = c.fetchall()
+    finally:
+        conn.close()
+    resultado = []
+    for r in rows:
+        local_dt = _ts_to_local(r['f_ult_msj_asesor'], tz_offset)
+        if h_ini <= local_dt.hour < h_fin:
+            resultado.append(_fmt_lead_estado(r, tz_offset, 'f_ult_msj_asesor'))
+    return resultado
+
+def _lista_asesores(subdomain):
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            'SELECT DISTINCT responsible_user_id FROM leads_estado WHERE subdomain = %s AND responsible_user_id IS NOT NULL',
+            (subdomain,)
+        )
+        ids = [row[0] for row in c.fetchall()]
+    finally:
+        conn.close()
+    return sorted(
+        ({'id': uid, 'nombre': nombre_asesor(uid)} for uid in ids),
+        key=lambda x: x['nombre']
+    )
 
 @app.route('/pulse')
 def pulse():
@@ -459,12 +660,13 @@ def pulse_data():
 
     desde_str = request.args.get('desde')
     hasta_str = request.args.get('hasta')
+    asesor_id = request.args.get('asesor', '').strip() or None
 
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         query = '''
-            SELECT lead_id, f_ult_msj_cliente, f_ult_msj_asesor
+            SELECT lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id
             FROM tiempos_respuesta
             WHERE subdomain = %s
               AND f_ult_msj_cliente IS NOT NULL
@@ -478,6 +680,9 @@ def pulse_data():
         if hasta_str:
             query += ' AND f_ult_msj_cliente <= %s'
             params.append(_local_date_to_ts(hasta_str, tz_offset) + 86399)
+        if asesor_id:
+            query += ' AND responsible_user_id = %s'
+            params.append(asesor_id)
         c.execute(query, params)
         rows = c.fetchall()
     except Exception as e:
@@ -497,6 +702,7 @@ def pulse_data():
                 'lead_id':          row['lead_id'],
                 'f_ult_msj_cliente': row['f_ult_msj_cliente'],
                 'efectivo_seg':      efectivo,
+                'responsible_user_id': row['responsible_user_id'],
             })
 
         top_lentos  = sorted(registros, key=lambda r: r['efectivo_seg'], reverse=True)[:10]
@@ -511,17 +717,26 @@ def pulse_data():
             for dia, v in sorted(daily.items())[-30:]
         ]
 
+        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_id)
+        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_id)
+
         return jsonify({
             'config': {
                 'nombre':      cfg['nombre'],
                 'horario_fmt': _fmt_horario(h_ini, h_fin),
                 'dias_fmt':    ' · '.join(DIAS_LABEL[d] for d in sorted(dias_lab)),
                 'franjas':     franjas,
+                'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
+                'asesores':    _lista_asesores(subdomain),
+                'asesor_actual': nombre_asesor(asesor_id) if asesor_id else None,
             },
-            'metricas':    _calc_metricas(registros, franjas, tz_offset),
-            'top_lentos':  [_fmt_row(r, tz_offset) for r in top_lentos],
-            'top_rapidos': [_fmt_row(r, tz_offset) for r in top_rapidos],
-            'tendencia':   tendencia,
+            'metricas':      _calc_metricas(registros, franjas, tz_offset),
+            'top_lentos':    [_fmt_row(r, tz_offset) for r in top_lentos],
+            'top_rapidos':   [_fmt_row(r, tz_offset) for r in top_rapidos],
+            'tendencia':     tendencia,
+            'por_asesor':    _calc_por_asesor(registros) if not asesor_id else None,
+            'no_respondidos': no_respondidos,
+            'trabajados_hoy': trabajados_hoy,
         })
     except Exception as e:
         print(f'❌ PULSE /data procesamiento: {e}')

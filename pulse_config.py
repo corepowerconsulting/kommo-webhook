@@ -1,6 +1,20 @@
+ASESORES = {
+    6767570: 'Soporte Core Power Consulting',
+    6453065: 'Luis Marroquín',
+    11579748: 'Giulliana Vera',
+    15541872: 'Ana Mirian Moran',
+    15080019: 'Auto Nica',
+    13127364: 'Maria Ventura',
+    9482679: 'Sebastian Millan',
+    9494503: 'Paul Adams',
+    13127368: 'Mayte Jimenez',
+    13902356: 'Freddy Hernandez',
+}
+
 PULSE_CONFIG = {
     'corepowerconsulting': {
         'nombre': 'Core Power Consulting',
+        'crm_domain': 'corepowerconsulting.amocrm.com',
         'tz_offset': -5,
         'horario': (5, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
@@ -13,6 +27,7 @@ PULSE_CONFIG = {
     },
     'autonica': {
         'nombre': 'Autonica',
+        'crm_domain': 'autonica.amocrm.com',
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4, 5],
@@ -25,6 +40,7 @@ PULSE_CONFIG = {
     },
     'tucoytico': {
         'nombre': 'Tu Coy Tico',
+        'crm_domain': 'tucoytico.amocrm.com',
         'tz_offset': -6,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4, 5],
@@ -37,6 +53,7 @@ PULSE_CONFIG = {
     },
     'ventasdirectas': {
         'nombre': 'Ventas Directas',
+        'crm_domain': 'ventasdirectas.amocrm.com',
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
