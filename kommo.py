@@ -49,6 +49,7 @@ def init_db():
         )
     ''')
     c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS responsible_user_id BIGINT')
+    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
     c.execute('''
         CREATE TABLE IF NOT EXISTS leads_estado (
             subdomain TEXT,
@@ -61,6 +62,7 @@ def init_db():
             PRIMARY KEY (subdomain, lead_id)
         )
     ''')
+    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
     conn.commit()
     conn.close()
     print("✅ Base de datos lista")
@@ -129,18 +131,18 @@ def nombre_asesor(responsible_user_id):
         return None
     return ASESORES.get(int(responsible_user_id), f'Usuario {responsible_user_id}')
 
-def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id=None):
+def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id=None, lead_nombre=None):
     tiempo_seg = f_asesor - f_cliente
     conn = get_conn()
     c = conn.cursor()
     try:
         c.execute('''
             INSERT INTO tiempos_respuesta
-                (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id, lead_nombre)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor)
-            DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id
-        ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat(), responsible_user_id))
+            DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id, lead_nombre = EXCLUDED.lead_nombre
+        ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat(), responsible_user_id, lead_nombre))
         conn.commit()
         print(f"⏱️  {subdomain} | lead {lead_id} | asesor respondió en {tiempo_seg // 60}min {tiempo_seg % 60}s")
     except Exception as e:
@@ -148,7 +150,7 @@ def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsibl
     finally:
         conn.close()
 
-def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts):
+def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre=None):
     """Guarda el estado vigente del lead (quién es responsable, cuándo escribió
     cliente/asesor por última vez). Se llama en CADA leads[update], sin importar
     quién respondió último. evento_ts evita que un evento viejo (ej. reprocesado
@@ -160,16 +162,17 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
     try:
         c.execute('''
             INSERT INTO leads_estado
-                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                 responsible_user_id = EXCLUDED.responsible_user_id,
                 f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
                 f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
                 evento_ts           = EXCLUDED.evento_ts,
-                actualizado_at      = EXCLUDED.actualizado_at
+                actualizado_at      = EXCLUDED.actualizado_at,
+                lead_nombre         = EXCLUDED.lead_nombre
             WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
-        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat()))
+        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre))
         conn.commit()
     except Exception as e:
         print(f"❌ Error lead_estado: {e}")
@@ -220,13 +223,14 @@ def _procesar_webhook(data):
             f_asesor = get_custom_field(data, prefix, campos['asesor'])
             responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
             evento_ts = data.get(f'{prefix}[updated_at]')
+            lead_nombre = data.get(f'{prefix}[name]')
 
             # Estado vigente del lead (para "no respondidos" / "trabajados hoy"),
             # se guarda siempre, sin importar quién escribió último.
-            guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts)
+            guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre)
 
             if f_cliente and f_asesor and f_asesor > f_cliente:
-                guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id)
+                guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id, lead_nombre)
 
         for i in get_batch_indices(data, 'leads[status]'):
             algo_procesado = True
@@ -383,35 +387,37 @@ def backfill():
                 f_asesor  = get_custom_field(data, prefix, campos['asesor'])
                 responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
                 evento_ts = data.get(f'{prefix}[updated_at]')
+                lead_nombre = data.get(f'{prefix}[name]')
 
                 if evento_ts:
                     write_c.execute('''
                         INSERT INTO leads_estado
-                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                             responsible_user_id = EXCLUDED.responsible_user_id,
                             f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
                             f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
                             evento_ts           = EXCLUDED.evento_ts,
-                            actualizado_at      = EXCLUDED.actualizado_at
+                            actualizado_at      = EXCLUDED.actualizado_at,
+                            lead_nombre         = EXCLUDED.lead_nombre
                         WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
                     ''', (
                         row['subdomain'], row['lead_id'], responsible_user_id,
-                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat()
+                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre
                     ))
 
                 if f_cliente and f_asesor and f_asesor > f_cliente:
                     write_c.execute('''
                         INSERT INTO tiempos_respuesta
-                            (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id, lead_nombre)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor)
-                        DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id
+                        DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id, lead_nombre = EXCLUDED.lead_nombre
                     ''', (
                         row['subdomain'], row['lead_id'],
                         f_cliente, f_asesor, f_asesor - f_cliente,
-                        datetime.now().isoformat(), responsible_user_id
+                        datetime.now().isoformat(), responsible_user_id, lead_nombre
                     ))
                     if write_c.rowcount > 0:
                         insertados += 1
@@ -535,6 +541,7 @@ def _calc_metricas(registros, franjas, tz_offset):
             local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
             leads.append({
                 'lead_id': r['lead_id'],
+                'nombre': r.get('lead_nombre'),
                 'fmt': _fmt_seg(r['efectivo_seg']),
                 'fecha': local_dt.strftime('%d/%m %H:%M'),
                 'asesor': nombre_asesor(r.get('responsible_user_id')),
@@ -568,6 +575,7 @@ def _fmt_row(r, tz_offset):
     local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
     return {
         'lead_id': r['lead_id'],
+        'nombre': r.get('lead_nombre'),
         'seg': r['efectivo_seg'],
         'fmt': _fmt_seg(r['efectivo_seg']),
         'fecha': local_dt.strftime('%d/%m %H:%M'),
@@ -583,6 +591,7 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
     local_dt = _ts_to_local(row[campo_fecha], tz_offset)
     return {
         'lead_id': row['lead_id'],
+        'nombre':  row.get('lead_nombre'),
         'asesor':  nombre_asesor(row.get('responsible_user_id')),
         'fecha':   local_dt.strftime('%d/%m %H:%M'),
     }
@@ -595,7 +604,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None):
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         query = '''
-            SELECT lead_id, responsible_user_id, f_ult_msj_cliente
+            SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre
             FROM leads_estado
             WHERE subdomain = %s
               AND f_ult_msj_cliente IS NOT NULL
@@ -620,7 +629,7 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         query = '''
-            SELECT lead_id, responsible_user_id, f_ult_msj_asesor
+            SELECT lead_id, responsible_user_id, f_ult_msj_asesor, lead_nombre
             FROM leads_estado
             WHERE subdomain = %s
               AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
@@ -681,7 +690,7 @@ def pulse_data():
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         query = '''
-            SELECT lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id
+            SELECT lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id, lead_nombre
             FROM tiempos_respuesta
             WHERE subdomain = %s
               AND f_ult_msj_cliente IS NOT NULL
@@ -716,6 +725,7 @@ def pulse_data():
             )
             registros.append({
                 'lead_id':          row['lead_id'],
+                'lead_nombre':      row['lead_nombre'],
                 'f_ult_msj_cliente': row['f_ult_msj_cliente'],
                 'efectivo_seg':      efectivo,
                 'responsible_user_id': row['responsible_user_id'],

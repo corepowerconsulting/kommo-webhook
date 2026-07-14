@@ -14,7 +14,7 @@ ASESORES = {
 PULSE_CONFIG = {
     'corepowerconsulting': {
         'nombre': 'Core Power Consulting',
-        'crm_domain': 'corepowerconsulting.amocrm.com',
+        'crm_domain': 'corepowerconsulting.kommo.com',
         'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'},
         'tz_offset': -5,
         'horario': (5, 18),
@@ -28,7 +28,7 @@ PULSE_CONFIG = {
     },
     'autonica': {
         'nombre': 'Autonica',
-        'crm_domain': 'autonica.amocrm.com',
+        'crm_domain': 'autonica.kommo.com',
         'campos': {'cliente': 'F ult msj cliente seg', 'asesor': 'F ult msj asesor'},
         'tz_offset': -5,
         'horario': (8, 18),
@@ -42,7 +42,7 @@ PULSE_CONFIG = {
     },
     'tucoytico': {
         'nombre': 'Tu Coy Tico',
-        'crm_domain': 'tucoytico.amocrm.com',
+        'crm_domain': 'tucoytico.kommo.com',
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
         'tz_offset': -6,
         'horario': (8, 18),
@@ -56,7 +56,7 @@ PULSE_CONFIG = {
     },
     'ventasdirectas': {
         'nombre': 'Ventas Directas',
-        'crm_domain': 'ventasdirectas.amocrm.com',
+        'crm_domain': 'ventasdirectas.kommo.com',
         'campos': {'cliente': 'F utl msj cliente', 'asesor': 'F utl msj Asesor'},
         'tz_offset': -5,
         'horario': (8, 18),

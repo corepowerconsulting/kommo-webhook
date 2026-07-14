@@ -282,8 +282,11 @@ function renderExtraLeads(containerId, leads) {
   el.innerHTML = `<div class="bg-slate-50 rounded-xl overflow-hidden max-h-52 overflow-y-auto divide-y divide-white">
     ${leads.map(l => `
       <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center justify-between px-4 py-2 hover:bg-slate-100 transition">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-xs font-mono text-slate-500 flex-shrink-0">#${l.lead_id}</span>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xs font-mono text-slate-500 flex-shrink-0">#${l.lead_id}</span>
+            <span class="text-xs text-slate-700 font-medium truncate">${l.nombre || ''}</span>
+          </div>
           <span class="text-xs text-slate-400 truncate">${l.asesor || ''}</span>
         </div>
         <span class="text-xs text-slate-400 flex-shrink-0">${l.fecha}</span>
@@ -316,8 +319,11 @@ function renderDist(distribucion) {
             : `<div class="max-h-52 overflow-y-auto divide-y divide-white">
                 ${d.leads.map(l => `
                   <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center justify-between px-4 py-2 hover:bg-slate-100 transition">
-                    <div class="flex items-center gap-2 min-w-0">
-                      <span class="text-xs font-mono text-slate-500 flex-shrink-0">#${l.lead_id}</span>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-xs font-mono text-slate-500 flex-shrink-0">#${l.lead_id}</span>
+                        <span class="text-xs text-slate-700 font-medium truncate">${l.nombre || ''}</span>
+                      </div>
                       <span class="text-xs text-slate-400 truncate">${l.asesor || ''}</span>
                     </div>
                     <div class="flex items-center gap-4 flex-shrink-0">
@@ -408,8 +414,13 @@ function renderTabla(containerId, rows, tipo) {
     <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center justify-between px-2 py-2.5">
       <div class="flex items-center gap-3 min-w-0">
         <span class="text-xs text-slate-200 w-5 text-right font-semibold flex-shrink-0">${i+1}</span>
-        <span class="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded flex-shrink-0">#${r.lead_id}</span>
-        <span class="text-xs text-slate-400 truncate">${r.asesor || ''}</span>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded flex-shrink-0">#${r.lead_id}</span>
+            <span class="text-xs text-slate-700 font-medium truncate">${r.nombre || ''}</span>
+          </div>
+          <span class="text-xs text-slate-400 truncate">${r.asesor || ''}</span>
+        </div>
       </div>
       <div class="flex items-center gap-4 flex-shrink-0">
         <span class="text-xs text-slate-300">${r.fecha}</span>
