@@ -813,8 +813,14 @@ def pulse_data():
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
+        # DISTINCT ON: si el asesor manda varios mensajes seguidos respondiendo
+        # al MISMO mensaje del cliente, cada uno actualiza f_ult_msj_asesor y
+        # generaba una fila "respuesta" separada, inflando el conteo. Nos
+        # quedamos solo con la primera respuesta (f_ult_msj_asesor mas chico)
+        # por cada mensaje distinto del cliente.
         query = '''
-            SELECT lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id, lead_nombre
+            SELECT DISTINCT ON (lead_id, f_ult_msj_cliente)
+                lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id, lead_nombre
             FROM tiempos_respuesta
             WHERE subdomain = %s
               AND f_ult_msj_cliente IS NOT NULL
@@ -832,6 +838,7 @@ def pulse_data():
         if asesor_id:
             query += ' AND responsible_user_id = %s'
             params.append(asesor_id)
+        query += ' ORDER BY lead_id, f_ult_msj_cliente, f_ult_msj_asesor ASC'
         c.execute(query, params)
         rows = c.fetchall()
     except Exception as e:
