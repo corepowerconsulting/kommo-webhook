@@ -254,7 +254,7 @@
           </div>
           <div>
             <div class="section-title">Tendencia diaria</div>
-            <div class="section-sub" id="sub-tendencia">Promedio de tiempo efectivo de respuesta por día</div>
+            <div class="section-sub" id="sub-tendencia">Barras: respuestas por día (por asesor) — Línea: tiempo efectivo promedio</div>
           </div>
         </div>
         <span id="trend-rango" class="text-sm text-slate-400 mt-1"></span>
@@ -466,37 +466,94 @@ function renderDonut(distribucion) {
   });
 }
 
-function renderTrend(tendencia) {
+function renderTrend(tendencia, tendenciaPorAsesor) {
   const ctx = document.getElementById('chart-trend').getContext('2d');
   const existing = Chart.getChart('chart-trend');
   if (existing) existing.destroy();
+
+  const labels = tendencia.map(d => { const [,m,dia]=d.fecha.split('-'); return `${dia}/${m}`; });
+  const apilado = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
+  const datasets = [];
+
+  if (apilado) {
+    tendenciaPorAsesor.forEach(serie => {
+      datasets.push({
+        type: 'bar',
+        label: serie.asesor,
+        data: serie.data,
+        backgroundColor: serie.color,
+        borderRadius: 3,
+        borderSkipped: false,
+        stack: 'respuestas',
+        yAxisID: 'y',
+      });
+    });
+  } else {
+    datasets.push({
+      type: 'bar',
+      label: 'Respuestas',
+      data: tendencia.map(d => d.total),
+      backgroundColor: '#2563eb33',
+      borderColor: '#2563eb',
+      borderWidth: 1.5,
+      borderRadius: 6,
+      borderSkipped: false,
+      stack: 'respuestas',
+      yAxisID: 'y',
+    });
+  }
+
+  // Linea que une el tiempo promedio de cada dia, encima de las barras
+  datasets.push({
+    type: 'line',
+    label: 'Tiempo promedio',
+    data: tendencia.map(d => d.promedio_h),
+    borderColor: '#0f172a',
+    backgroundColor: '#0f172a',
+    borderWidth: 2,
+    pointRadius: 3,
+    pointBackgroundColor: '#0f172a',
+    tension: 0.3,
+    fill: false,
+    yAxisID: 'y1',
+  });
+
   new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels: tendencia.map(d => { const [,m,dia]=d.fecha.split('-'); return `${dia}/${m}`; }),
-      datasets: [{
-        label: 'Promedio',
-        data: tendencia.map(d => d.promedio_h),
-        backgroundColor: '#2563eb22',
-        borderColor: '#2563eb',
-        borderWidth: 2,
-        borderRadius: 6,
-        borderSkipped: false,
-      }]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${fmtHoras(ctx.parsed.y)} promedio · ${tendencia[ctx.dataIndex].total} respuestas` } }
+        legend: {
+          display: apilado,
+          position: 'bottom',
+          labels: { boxWidth: 10, font: { size: 10 }, color: '#64748b', filter: item => item.text !== 'Tiempo promedio' }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.dataset.yAxisID === 'y1'
+              ? ` Tiempo promedio: ${fmtHoras(ctx.parsed.y)}`
+              : ` ${ctx.dataset.label}: ${ctx.parsed.y} respuestas`
+          }
+        }
       },
       scales: {
-        x: { grid:{ display:false }, ticks:{ font:{size:11}, color:'#94a3b8', maxTicksLimit:15 } },
+        x: { grid:{ display:false }, ticks:{ font:{size:11}, color:'#94a3b8', maxTicksLimit:15 }, stacked: true },
         y: {
+          position: 'left',
+          stacked: true,
           grid:{ color:'#f1f5f9' },
+          ticks:{ font:{size:11}, color:'#94a3b8', precision: 0 },
+          beginAtZero: true,
+          title: { display: true, text: 'Respuestas', color:'#94a3b8', font:{size:10, weight:'600'} }
+        },
+        y1: {
+          position: 'right',
+          grid: { display: false },
           ticks:{ font:{size:11}, color:'#94a3b8', callback: v => v < 1 ? Math.round(v*60)+'m' : v+'h' },
-          beginAtZero: true
+          beginAtZero: true,
+          title: { display: true, text: 'Tiempo promedio', color:'#94a3b8', font:{size:10, weight:'600'} }
         }
       }
     }
@@ -608,8 +665,8 @@ async function cargarDatos() {
       ? 'Mensajes que llegaron fuera de horario — tiempo real hasta que se respondió'
       : 'Tiempo laboral que tardó el asesor — haz clic en una franja para ver los leads';
     document.getElementById('sub-tendencia').textContent = esFueraHorario
-      ? 'Promedio de tiempo real de espera por día (mensajes fuera de horario)'
-      : 'Promedio de tiempo efectivo de respuesta por día';
+      ? 'Barras: respuestas fuera de horario por día — Línea: tiempo real promedio'
+      : 'Barras: respuestas por día (por asesor) — Línea: tiempo efectivo promedio';
     document.getElementById('sub-por-asesor').textContent = esFueraHorario
       ? 'Tiempo real fuera de horario — de más rápido a más lento'
       : 'Tiempo laboral efectivo — de más rápido a más lento';
@@ -688,7 +745,7 @@ async function cargarDatos() {
 
     // Tendencia
     if (d.tendencia.length > 0) {
-      renderTrend(d.tendencia);
+      renderTrend(d.tendencia, d.tendencia_por_asesor);
       document.getElementById('trend-rango').textContent =
         `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
     }

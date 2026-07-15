@@ -891,13 +891,35 @@ def pulse_data():
         top_rapidos = sorted(registros, key=lambda r: r['efectivo_seg'])[:10]
 
         daily = defaultdict(list)
+        daily_asesor = defaultdict(lambda: defaultdict(int))
         for r in registros:
             dia = _ts_to_local(r['f_ult_msj_cliente'], tz_offset).strftime('%Y-%m-%d')
             daily[dia].append(r['efectivo_seg'])
+            if not asesor_id:
+                nombre = nombre_asesor(r.get('responsible_user_id')) or 'Sin asignar'
+                daily_asesor[dia][nombre] += 1
+
+        dias_ordenados = sorted(daily.items())[-30:]
         tendencia = [
             {'fecha': dia, 'promedio_h': round(sum(v) / len(v) / 3600, 1), 'total': len(v)}
-            for dia, v in sorted(daily.items())[-30:]
+            for dia, v in dias_ordenados
         ]
+
+        tendencia_por_asesor = None
+        if not asesor_id:
+            # Barras apiladas por asesor: solo tiene sentido en la vista "Todos"
+            # (con un asesor ya filtrado la barra seria una sola serie).
+            dias = [dia for dia, _ in dias_ordenados]
+            nombres = sorted({n for dia in dias for n in daily_asesor[dia]})
+            PALETA_ASESORES = ['#2563eb', '#16a34a', '#f59e0b', '#0891b2', '#e11d48', '#65a30d', '#0d9488', '#0284c7']
+            tendencia_por_asesor = [
+                {
+                    'asesor': nombre,
+                    'color': PALETA_ASESORES[i % len(PALETA_ASESORES)],
+                    'data': [daily_asesor[dia].get(nombre, 0) for dia in dias],
+                }
+                for i, nombre in enumerate(nombres)
+            ]
 
         no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_id)
         trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_id)
@@ -918,6 +940,7 @@ def pulse_data():
             'top_lentos':    [_fmt_row(r, tz_offset) for r in top_lentos],
             'top_rapidos':   [_fmt_row(r, tz_offset) for r in top_rapidos],
             'tendencia':     tendencia,
+            'tendencia_por_asesor': tendencia_por_asesor,
             'por_asesor':    _calc_por_asesor(registros) if not asesor_id else None,
             'no_respondidos': no_respondidos,
             'trabajados_hoy': trabajados_hoy,
