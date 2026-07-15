@@ -495,6 +495,17 @@ async function cargarDatos() {
     document.getElementById('dias-txt').textContent       = d.config.dias_fmt;
     CRM_URL = d.config.crm_url || null;
 
+    // No dejar elegir fechas anteriores al primer evento capturado para este cliente
+    if (d.config.fecha_minima) {
+      const desdeInput = document.getElementById('desde');
+      const hastaInput = document.getElementById('hasta');
+      desdeInput.min = d.config.fecha_minima;
+      hastaInput.min = d.config.fecha_minima;
+      if (desdeInput.value && desdeInput.value < d.config.fecha_minima) {
+        desdeInput.value = d.config.fecha_minima;
+      }
+    }
+
     // Selector de asesor (solo se puebla una vez, para no perder la selección actual)
     if (!asesoresListados && d.config.asesores) {
       const sel = document.getElementById('asesor-select');

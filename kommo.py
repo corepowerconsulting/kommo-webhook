@@ -723,6 +723,24 @@ def _lista_asesores(subdomain):
     asesores = [a for a in asesores if a['nombre']]
     return sorted(asesores, key=lambda x: x['nombre'])
 
+def _fecha_minima(subdomain, tz_offset):
+    """Fecha del primer evento capturado para este cliente (desde que se
+    conecto el webhook). No tiene sentido dejar seleccionar un 'desde'
+    anterior a eso, no hay como haber data de antes."""
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            'SELECT MIN(timestamp) FROM eventos WHERE subdomain = %s AND timestamp IS NOT NULL',
+            (subdomain,)
+        )
+        min_ts = c.fetchone()[0]
+    finally:
+        conn.close()
+    if not min_ts:
+        return None
+    return _ts_to_local(min_ts, tz_offset).strftime('%Y-%m-%d')
+
 @app.route('/pulse', methods=['GET', 'POST'])
 def pulse():
     subdomain = request.args.get('subdomain', '').strip()
@@ -836,6 +854,7 @@ def pulse_data():
                 'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
                 'asesores':    _lista_asesores(subdomain),
                 'asesor_actual': nombre_asesor(asesor_id) if asesor_id else None,
+                'fecha_minima': _fecha_minima(subdomain, tz_offset),
             },
             'metricas':      _calc_metricas(registros, franjas, tz_offset),
             'top_lentos':    [_fmt_row(r, tz_offset) for r in top_lentos],
