@@ -601,6 +601,9 @@ def _calc_tiempo_efectivo(ts_cliente, ts_asesor, tz_offset, hora_ini, hora_fin, 
         return 0
     return _work_seconds_between(dt_inicio, dt_asesor, hora_ini, hora_fin, dias_lab)
 
+def _en_horario_laboral(dt, hora_ini, hora_fin, dias_lab):
+    return dt.weekday() in dias_lab and hora_ini <= dt.hour < hora_fin
+
 def _get_franja_idx(seg, franjas):
     for i, f in enumerate(franjas):
         if f['max_seg'] is None or seg < f['max_seg']:
@@ -818,6 +821,7 @@ def pulse_data():
     desde_str = request.args.get('desde')
     hasta_str = request.args.get('hasta')
     asesor_id = request.args.get('asesor', '').strip() or None
+    fuera_horario = request.args.get('modo', 'laboral').strip() == 'fuera_horario'
 
     conn = get_conn()
     try:
@@ -859,10 +863,22 @@ def pulse_data():
     try:
         registros = []
         for row in rows:
-            efectivo = _calc_tiempo_efectivo(
-                row['f_ult_msj_cliente'], row['f_ult_msj_asesor'],
-                tz_offset, h_ini, h_fin, dias_lab
-            )
+            dt_cliente = _ts_to_local(row['f_ult_msj_cliente'], tz_offset)
+            en_horario = _en_horario_laboral(dt_cliente, h_ini, h_fin, dias_lab)
+
+            if fuera_horario:
+                # Solo mensajes que llegaron FUERA del horario configurado,
+                # medidos en tiempo real de reloj (sin saltar horas no
+                # laborables, al reves del calculo de "tiempo efectivo").
+                if en_horario:
+                    continue
+                efectivo = row['f_ult_msj_asesor'] - row['f_ult_msj_cliente']
+            else:
+                efectivo = _calc_tiempo_efectivo(
+                    row['f_ult_msj_cliente'], row['f_ult_msj_asesor'],
+                    tz_offset, h_ini, h_fin, dias_lab
+                )
+
             registros.append({
                 'lead_id':          row['lead_id'],
                 'lead_nombre':      row['lead_nombre'],
@@ -896,6 +912,7 @@ def pulse_data():
                 'asesores':    _lista_asesores(subdomain),
                 'asesor_actual': nombre_asesor(asesor_id) if asesor_id else None,
                 'fecha_minima': _fecha_minima(subdomain),
+                'modo':        'fuera_horario' if fuera_horario else 'laboral',
             },
             'metricas':      _calc_metricas(registros, franjas, tz_offset),
             'top_lentos':    [_fmt_row(r, tz_offset) for r in top_lentos],
