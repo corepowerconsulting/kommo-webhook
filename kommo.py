@@ -512,6 +512,7 @@ def health_campos():
                 'campo_cliente_encontrado': ok_cliente,
                 'campo_asesor': campos['asesor'],
                 'campo_asesor_encontrado': ok_asesor,
+                'fecha_minima': _fecha_minima(subdomain),
                 'ok': ok_cliente and ok_asesor,
             }
     finally:
