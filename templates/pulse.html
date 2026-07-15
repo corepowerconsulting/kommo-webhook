@@ -221,6 +221,7 @@ const DIAS_LABEL = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 let distData = [];
 let CRM_URL = null;
 let asesoresListados = false;
+let FECHA_MINIMA = null;
 
 function leadHref(leadId) {
   return CRM_URL ? `${CRM_URL}/leads/detail/${leadId}` : '#';
@@ -470,6 +471,13 @@ async function cargarDatos() {
   document.getElementById('content').classList.add('hidden');
   document.getElementById('error-state').classList.add('hidden');
 
+  // El navegador solo bloquea el calendario visual con min=, pero deja
+  // escribir una fecha manualmente. Forzamos el limite aca tambien.
+  const desdeInput = document.getElementById('desde');
+  if (FECHA_MINIMA && desdeInput.value && desdeInput.value < FECHA_MINIMA) {
+    desdeInput.value = FECHA_MINIMA;
+  }
+
   const desde  = document.getElementById('desde').value;
   const hasta  = document.getElementById('hasta').value;
   const asesor = document.getElementById('asesor-select').value;
@@ -497,12 +505,13 @@ async function cargarDatos() {
 
     // No dejar elegir fechas anteriores al primer evento capturado para este cliente
     if (d.config.fecha_minima) {
+      FECHA_MINIMA = d.config.fecha_minima;
       const desdeInput = document.getElementById('desde');
       const hastaInput = document.getElementById('hasta');
-      desdeInput.min = d.config.fecha_minima;
-      hastaInput.min = d.config.fecha_minima;
-      if (desdeInput.value && desdeInput.value < d.config.fecha_minima) {
-        desdeInput.value = d.config.fecha_minima;
+      desdeInput.min = FECHA_MINIMA;
+      hastaInput.min = FECHA_MINIMA;
+      if (desdeInput.value && desdeInput.value < FECHA_MINIMA) {
+        desdeInput.value = FECHA_MINIMA;
       }
     }
 
