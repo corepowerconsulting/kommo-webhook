@@ -455,6 +455,28 @@ def backfill():
     finally:
         conn.close()
 
+@app.route('/health/primer-evento')
+def health_primer_evento():
+    """Muestra el evento con el timestamp mas antiguo por subdominio,
+    crudo, para verificar que 'fecha_minima' no este mal calculada."""
+    subdomain = request.args.get('subdomain', '').strip()
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        query = 'SELECT id, subdomain, tipo_evento, lead_id, timestamp, capturado_at FROM eventos WHERE timestamp IS NOT NULL'
+        params = []
+        if subdomain:
+            query += ' AND subdomain = %s'
+            params.append(subdomain)
+        query += ' ORDER BY timestamp ASC LIMIT 5'
+        c.execute(query, params)
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+    for r in rows:
+        r['timestamp_fecha_utc'] = datetime.utcfromtimestamp(r['timestamp']).isoformat() if r['timestamp'] else None
+    return jsonify(rows)
+
 @app.route('/health/campos')
 def health_campos():
     """Verifica que los nombres de campo custom configurados por cliente
