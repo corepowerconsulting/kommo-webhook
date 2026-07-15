@@ -7,9 +7,14 @@
   <title>PULSE — Métricas de Respuesta</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
     * { font-family: 'Inter', sans-serif; }
+    .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:#6366f1; text-decoration-thickness:2px; text-underline-offset:2px; font-weight:700; }
+    .flatpickr-day.selected, .flatpickr-day.selected:hover { background:#6366f1; border-color:#6366f1; }
+    .flatpickr-day.today { border-color:#6366f1; }
     .card { background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,.04); }
     .kpi-num  { font-size:2.4rem; font-weight:900; line-height:1; letter-spacing:-0.03em; }
     .kpi-label{ font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; margin-top:6px; }
@@ -48,9 +53,9 @@
         <option value="">Todos</option>
       </select>
       <label class="text-slate-400 text-xs font-medium">DESDE</label>
-      <input type="date" id="desde" class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
+      <input type="text" id="desde" readonly class="w-28 cursor-pointer border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
       <label class="text-slate-400 text-xs font-medium">HASTA</label>
-      <input type="date" id="hasta" class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
+      <input type="text" id="hasta" readonly class="w-28 cursor-pointer border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
       <button onclick="cargarDatos()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition shadow-sm">Aplicar</button>
       <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="text-slate-300 hover:text-slate-500 text-xs font-medium transition">Salir</a>
     </div>
@@ -222,9 +227,23 @@ let distData = [];
 let CRM_URL = null;
 let asesoresListados = false;
 let FECHA_MINIMA = null;
+let fpDesde = null;
+let fpHasta = null;
 
 function leadHref(leadId) {
   return CRM_URL ? `${CRM_URL}/leads/detail/${leadId}` : '#';
+}
+
+function marcarPrimerDia(dObj, dStr, fp, dayElem) {
+  if (FECHA_MINIMA && dayElem.dateObj) {
+    const iso = dayElem.dateObj.getFullYear() + '-' +
+      String(dayElem.dateObj.getMonth() + 1).padStart(2, '0') + '-' +
+      String(dayElem.dateObj.getDate()).padStart(2, '0');
+    if (iso === FECHA_MINIMA) {
+      dayElem.classList.add('primer-dia-datos');
+      dayElem.title = 'Primer día con datos disponibles';
+    }
+  }
 }
 
 // Últimos 30 días por defecto
@@ -232,6 +251,9 @@ const hoy = new Date();
 const hace30 = new Date(); hace30.setDate(hoy.getDate() - 30);
 document.getElementById('hasta').value = hoy.toISOString().split('T')[0];
 document.getElementById('desde').value = hace30.toISOString().split('T')[0];
+
+fpDesde = flatpickr('#desde', { dateFormat: 'Y-m-d', onDayCreate: marcarPrimerDia });
+fpHasta = flatpickr('#hasta', { dateFormat: 'Y-m-d', onDayCreate: marcarPrimerDia });
 
 function fmtSeg(seg) {
   if (!seg || seg <= 0) return '< 1 min';
@@ -503,15 +525,20 @@ async function cargarDatos() {
     document.getElementById('dias-txt').textContent       = d.config.dias_fmt;
     CRM_URL = d.config.crm_url || null;
 
-    // No dejar elegir fechas anteriores al primer evento capturado para este cliente
+    // No dejar elegir fechas anteriores al primer evento capturado para este cliente.
+    // Ademas de bloquear el calendario, el dia se marca subrayado (marcarPrimerDia).
     if (d.config.fecha_minima) {
       FECHA_MINIMA = d.config.fecha_minima;
-      const desdeInput = document.getElementById('desde');
-      const hastaInput = document.getElementById('hasta');
-      desdeInput.min = FECHA_MINIMA;
-      hastaInput.min = FECHA_MINIMA;
-      if (desdeInput.value && desdeInput.value < FECHA_MINIMA) {
-        desdeInput.value = FECHA_MINIMA;
+      if (fpDesde) {
+        fpDesde.set('minDate', FECHA_MINIMA);
+        fpDesde.redraw();
+        if (document.getElementById('desde').value < FECHA_MINIMA) {
+          fpDesde.setDate(FECHA_MINIMA, true);
+        }
+      }
+      if (fpHasta) {
+        fpHasta.set('minDate', FECHA_MINIMA);
+        fpHasta.redraw();
       }
     }
 
