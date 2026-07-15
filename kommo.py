@@ -506,6 +506,12 @@ def health_campos():
                     ok_asesor = True
                 if ok_cliente and ok_asesor:
                     break
+            c.execute(
+                '''SELECT COUNT(*) AS total, COUNT(DISTINCT (lead_id, f_ult_msj_cliente)) AS distintos
+                   FROM tiempos_respuesta WHERE subdomain = %s''',
+                (subdomain,)
+            )
+            dup = c.fetchone()
             resultados[subdomain] = {
                 'eventos_revisados': len(rows),
                 'campo_cliente': campos['cliente'],
@@ -513,6 +519,9 @@ def health_campos():
                 'campo_asesor': campos['asesor'],
                 'campo_asesor_encontrado': ok_asesor,
                 'fecha_minima': _fecha_minima(subdomain),
+                'tiempos_respuesta_total': dup['total'],
+                'tiempos_respuesta_distintos': dup['distintos'],
+                'duplicados_por_rafaga': dup['total'] - dup['distintos'],
                 'ok': ok_cliente and ok_asesor,
             }
     finally:
