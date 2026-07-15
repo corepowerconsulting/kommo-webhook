@@ -136,6 +136,12 @@
     </div>
 
     <!-- Leads accionables: no respondidos / trabajados hoy -->
+    <div class="flex items-center justify-end gap-2 -mb-1">
+      <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
+        <input type="checkbox" id="chk-solo-abiertas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
+        Solo conversaciones abiertas (excluir ganadas/perdidas)
+      </label>
+    </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div class="card border-l-4 !border-l-red-400">
         <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
@@ -634,6 +640,7 @@ async function cargarDatos() {
   if (hasta)  params.append('hasta',  hasta);
   if (asesor) params.append('asesor', asesor);
   params.append('modo', MODO);
+  if (document.getElementById('chk-solo-abiertas').checked) params.append('abiertas', '1');
 
   try {
     const res = await fetch('/pulse/data?' + params.toString());

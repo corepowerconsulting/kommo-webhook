@@ -77,6 +77,7 @@ def init_db():
         )
     ''')
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
+    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS status_id BIGINT')
     conn.commit()
     conn.close()
     print("✅ Base de datos lista")
@@ -164,11 +165,14 @@ def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsibl
     finally:
         conn.close()
 
-def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre=None):
+def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre=None, status_id=None):
     """Guarda el estado vigente del lead (quién es responsable, cuándo escribió
-    cliente/asesor por última vez). Se llama en CADA leads[update], sin importar
-    quién respondió último. evento_ts evita que un evento viejo (ej. reprocesado
-    por /backfill) pise un estado más reciente."""
+    cliente/asesor por última vez, en qué status esta). Se llama en CADA
+    leads[update], sin importar quién respondió último. evento_ts evita que
+    un evento viejo (ej. reprocesado por /backfill) pise un estado más reciente.
+
+    status_id 142/143 son constantes reservadas de Kommo (Ganado/Perdido),
+    iguales en todas las cuentas - se usan para filtrar "solo abiertas"."""
     if not evento_ts:
         return
     conn = get_conn()
@@ -176,17 +180,18 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
     try:
         c.execute('''
             INSERT INTO leads_estado
-                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                 responsible_user_id = EXCLUDED.responsible_user_id,
                 f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
                 f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
                 evento_ts           = EXCLUDED.evento_ts,
                 actualizado_at      = EXCLUDED.actualizado_at,
-                lead_nombre         = EXCLUDED.lead_nombre
+                lead_nombre         = EXCLUDED.lead_nombre,
+                status_id           = EXCLUDED.status_id
             WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
-        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre))
+        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id))
         conn.commit()
     except Exception as e:
         print(f"❌ Error lead_estado: {e}")
@@ -238,10 +243,11 @@ def _procesar_webhook(data):
             responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
             evento_ts = data.get(f'{prefix}[updated_at]')
             lead_nombre = data.get(f'{prefix}[name]')
+            status_id = data.get(f'{prefix}[status_id]')
 
             # Estado vigente del lead (para "no respondidos" / "trabajados hoy"),
             # se guarda siempre, sin importar quién escribió último.
-            guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre)
+            guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre, status_id)
 
             if f_cliente and f_asesor and f_asesor > f_cliente:
                 guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id, lead_nombre)
@@ -402,23 +408,25 @@ def backfill():
                 responsible_user_id = data.get(f'{prefix}[responsible_user_id]')
                 evento_ts = data.get(f'{prefix}[updated_at]')
                 lead_nombre = data.get(f'{prefix}[name]')
+                status_id = data.get(f'{prefix}[status_id]')
 
                 if evento_ts:
                     write_c.execute('''
                         INSERT INTO leads_estado
-                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                             responsible_user_id = EXCLUDED.responsible_user_id,
                             f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
                             f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
                             evento_ts           = EXCLUDED.evento_ts,
                             actualizado_at      = EXCLUDED.actualizado_at,
-                            lead_nombre         = EXCLUDED.lead_nombre
+                            lead_nombre         = EXCLUDED.lead_nombre,
+                            status_id           = EXCLUDED.status_id
                         WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
                     ''', (
                         row['subdomain'], row['lead_id'], responsible_user_id,
-                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre
+                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id
                     ))
 
                 if f_cliente and f_asesor and f_asesor > f_cliente:
@@ -689,7 +697,13 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
         'fecha':   local_dt.strftime('%d/%m %H:%M'),
     }
 
-def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None):
+# Constantes reservadas de Kommo, iguales en cualquier cuenta/pipeline:
+# 142 = lead Ganado, 143 = lead Perdido. Un status_id NULL (lead sin
+# eventos de status capturados aun) se trata como abierto por defecto.
+STATUS_CERRADOS = (142, 143)
+FILTRO_SOLO_ABIERTAS = 'AND (status_id IS NULL OR status_id NOT IN (142, 143))'
+
+def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None, solo_abiertas=False):
     """Leads cuyo último mensaje en la conversación es del cliente y el
     asesor no ha respondido después. No depende de rango de fechas: es
     el estado pendiente ahora mismo."""
@@ -707,6 +721,8 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None):
         if responsible_user_id:
             query += ' AND responsible_user_id = %s'
             params.append(responsible_user_id)
+        if solo_abiertas:
+            query += ' ' + FILTRO_SOLO_ABIERTAS
         query += ' ORDER BY f_ult_msj_cliente DESC'
         c.execute(query, params)
         rows = c.fetchall()
@@ -714,7 +730,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None):
         conn.close()
     return [_fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente') for r in rows]
 
-def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_id=None):
+def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_id=None, solo_abiertas=False):
     """Leads a los que el asesor le escribió (respuesta o mensaje propio)
     hoy, dentro del horario laboral configurado."""
     inicio, fin = _hoy_rango_ts(tz_offset)
@@ -731,6 +747,8 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
         if responsible_user_id:
             query += ' AND responsible_user_id = %s'
             params.append(responsible_user_id)
+        if solo_abiertas:
+            query += ' ' + FILTRO_SOLO_ABIERTAS
         query += ' ORDER BY f_ult_msj_asesor DESC'
         c.execute(query, params)
         rows = c.fetchall()
@@ -822,6 +840,7 @@ def pulse_data():
     hasta_str = request.args.get('hasta')
     asesor_id = request.args.get('asesor', '').strip() or None
     fuera_horario = request.args.get('modo', 'laboral').strip() == 'fuera_horario'
+    solo_abiertas = request.args.get('abiertas', '').strip() == '1'
 
     conn = get_conn()
     try:
@@ -921,8 +940,8 @@ def pulse_data():
                 for i, nombre in enumerate(nombres)
             ]
 
-        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_id)
-        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_id)
+        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_id, solo_abiertas)
+        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_id, solo_abiertas)
 
         return jsonify({
             'config': {
