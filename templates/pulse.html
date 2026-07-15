@@ -12,9 +12,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
     * { font-family: 'Inter', sans-serif; }
-    .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:#6366f1; text-decoration-thickness:2px; text-underline-offset:2px; font-weight:700; }
-    .flatpickr-day.selected, .flatpickr-day.selected:hover { background:#6366f1; border-color:#6366f1; }
-    .flatpickr-day.today { border-color:#6366f1; }
+    .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:#2563eb; text-decoration-thickness:2px; text-underline-offset:2px; font-weight:700; }
+    .flatpickr-day.selected, .flatpickr-day.selected:hover { background:#2563eb; border-color:#2563eb; }
+    .flatpickr-day.today { border-color:#2563eb; }
 
     .card { background:#fff; border-radius:18px; padding:24px; border:1px solid #e5e9f0; box-shadow:0 1px 3px rgba(15,23,42,.04); }
     .kpi-num  { font-size:2.4rem; font-weight:900; line-height:1; letter-spacing:-0.03em; }
@@ -37,12 +37,12 @@
       border:1px solid #e2e8f0; border-radius:10px; padding:9px 12px; font-size:0.875rem;
       color:#334155; background:#f8fafc; transition:.15s; line-height:1.2;
     }
-    .control:focus { outline:none; box-shadow:0 0 0 3px rgba(99,102,241,.15); border-color:#818cf8; background:#fff; }
+    .control:focus { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.15); border-color:#60a5fa; background:#fff; }
     .btn-primary {
-      background:#4f46e5; color:#fff; padding:9px 22px; border-radius:10px; font-size:0.875rem;
-      font-weight:600; transition:.15s; box-shadow:0 1px 2px rgba(79,70,229,.35); white-space:nowrap;
+      background:#2563eb; color:#fff; padding:9px 22px; border-radius:10px; font-size:0.875rem;
+      font-weight:600; transition:.15s; box-shadow:0 1px 2px rgba(37,99,235,.35); white-space:nowrap;
     }
-    .btn-primary:hover { background:#4338ca; }
+    .btn-primary:hover { background:#1d4ed8; }
     .icon-chip { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   </style>
 </head>
@@ -52,7 +52,7 @@
 <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
   <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
+      <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
@@ -73,7 +73,7 @@
 <main class="max-w-7xl mx-auto px-6 py-8">
 
   <div id="loading" class="flex flex-col items-center justify-center py-32 gap-3">
-    <div class="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+    <div class="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
     <span class="text-slate-400 text-sm">Cargando datos…</span>
   </div>
 
@@ -153,14 +153,14 @@
         </div>
         <div id="panel-no-respondidos" class="hidden mt-4"></div>
       </div>
-      <div class="card border-l-4 !border-l-indigo-400">
+      <div class="card border-l-4 !border-l-blue-400">
         <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
           <div class="flex items-start gap-3.5">
-            <div class="icon-chip bg-indigo-50">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <div class="icon-chip bg-blue-50">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             </div>
             <div>
-              <div class="kpi-num text-indigo-600" id="kpi-trabajados-hoy">—</div>
+              <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
               <div class="kpi-label">Leads trabajados hoy</div>
               <div class="mt-1 text-sm text-slate-500">Al menos un mensaje del asesor hoy en horario</div>
             </div>
@@ -174,7 +174,7 @@
     <!-- KPIs -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="card">
-        <div class="kpi-num text-indigo-600" id="kpi-promedio">—</div>
+        <div class="kpi-num text-blue-600" id="kpi-promedio">—</div>
         <div class="kpi-label" id="label-promedio">Tiempo efectivo promedio</div>
         <div class="mt-2 flex items-center gap-2">
           <span id="kpi-badge-prom" class="tag hidden"></span>
@@ -182,7 +182,7 @@
         </div>
       </div>
       <div class="card">
-        <div class="kpi-num text-emerald-600" id="kpi-pct-ideal">—</div>
+        <div class="kpi-num text-green-600" id="kpi-pct-ideal">—</div>
         <div class="kpi-label">Respondieron en &lt; 5 min</div>
         <div class="mt-2 text-sm text-slate-500" id="kpi-sub-ideal"></div>
       </div>
@@ -275,7 +275,7 @@
       </div>
       <div class="card">
         <div class="flex items-center gap-2 mb-4">
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span class="w-2 h-2 rounded-full bg-green-400"></span>
           <div class="section-title">Top 10 — Más rápidos</div>
         </div>
         <div id="tabla-rapidos"></div>
@@ -310,7 +310,7 @@ function cambiarModo(modo) {
 }
 
 function actualizarBotonesModo() {
-  const activo   = 'px-4 py-2 rounded-lg text-sm font-semibold transition bg-white text-indigo-600 shadow-sm';
+  const activo   = 'px-4 py-2 rounded-lg text-sm font-semibold transition bg-white text-blue-600 shadow-sm';
   const inactivo = 'px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-500 hover:text-slate-700';
   document.getElementById('btn-modo-laboral').className = MODO === 'laboral' ? activo : inactivo;
   document.getElementById('btn-modo-fuera').className   = MODO === 'fuera_horario' ? activo : inactivo;
@@ -477,8 +477,8 @@ function renderTrend(tendencia) {
       datasets: [{
         label: 'Promedio',
         data: tendencia.map(d => d.promedio_h),
-        backgroundColor: '#6366f122',
-        borderColor: '#6366f1',
+        backgroundColor: '#2563eb22',
+        borderColor: '#2563eb',
         borderWidth: 2,
         borderRadius: 6,
         borderSkipped: false,
@@ -509,7 +509,7 @@ function renderTabla(containerId, rows, tipo) {
     el.innerHTML = '<div class="text-slate-400 text-sm py-6 text-center">Sin datos</div>';
     return;
   }
-  const colorClass = tipo === 'lento' ? 'text-red-500' : 'text-emerald-600';
+  const colorClass = tipo === 'lento' ? 'text-red-500' : 'text-green-600';
   el.innerHTML = rows.map((r, i) => `
     <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-3">
       <span class="text-sm text-slate-400 w-5 text-right font-bold flex-shrink-0">${i+1}</span>
@@ -535,7 +535,7 @@ function renderAsesores(porAsesor) {
         <span class="text-sm font-semibold text-slate-700">${a.asesor}</span>
         <span class="text-xs text-slate-500">${a.total} respuestas</span>
       </div>
-      <span class="text-sm font-black text-indigo-600">${fmtSeg(a.promedio_seg)}</span>
+      <span class="text-sm font-black text-blue-600">${fmtSeg(a.promedio_seg)}</span>
     </div>
   `).join('');
 }
