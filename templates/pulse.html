@@ -15,7 +15,8 @@
     .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:#6366f1; text-decoration-thickness:2px; text-underline-offset:2px; font-weight:700; }
     .flatpickr-day.selected, .flatpickr-day.selected:hover { background:#6366f1; border-color:#6366f1; }
     .flatpickr-day.today { border-color:#6366f1; }
-    .card { background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+
+    .card { background:#fff; border-radius:18px; padding:24px; border:1px solid #e5e9f0; box-shadow:0 1px 3px rgba(15,23,42,.04); }
     .kpi-num  { font-size:2.4rem; font-weight:900; line-height:1; letter-spacing:-0.03em; }
     .kpi-label{ font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:#64748b; margin-top:6px; }
     .section-title { font-size:1.05rem; font-weight:700; color:#1e293b; }
@@ -25,46 +26,48 @@
     .tag-amber  { background:#fef3c7; color:#92400e; }
     .tag-orange { background:#ffedd5; color:#9a3412; }
     .tag-red    { background:#fee2e2; color:#991b1b; }
-    .row-hover:hover { background:#f8fafc; border-radius:8px; }
-    .franja-row { cursor:pointer; transition:background .15s; }
-    .franja-row:hover { background:#f1f5f9; border-radius:8px; }
+    .row-hover:hover { background:#f8fafc; border-radius:10px; }
+    .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
+    .franja-row:hover { background:#f1f5f9; }
     .chevron { transition:transform .2s; }
     .leads-panel { transition:all .2s; }
+
+    .field-label { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; display:block; }
+    .control {
+      border:1px solid #e2e8f0; border-radius:10px; padding:9px 12px; font-size:0.875rem;
+      color:#334155; background:#f8fafc; transition:.15s; line-height:1.2;
+    }
+    .control:focus { outline:none; box-shadow:0 0 0 3px rgba(99,102,241,.15); border-color:#818cf8; background:#fff; }
+    .btn-primary {
+      background:#4f46e5; color:#fff; padding:9px 22px; border-radius:10px; font-size:0.875rem;
+      font-weight:600; transition:.15s; box-shadow:0 1px 2px rgba(79,70,229,.35); white-space:nowrap;
+    }
+    .btn-primary:hover { background:#4338ca; }
+    .icon-chip { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
 
-<!-- NAVBAR -->
-<nav class="bg-white border-b border-slate-100 sticky top-0 z-20">
-  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
-    <div class="flex items-center gap-2.5 flex-shrink-0">
-      <div class="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<!-- TOP BAR: solo identidad, nada de filtros aca -->
+<header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
       </div>
-      <span class="text-base font-black text-slate-900 tracking-tight">PULSE</span>
-      <span class="text-slate-200 font-light text-xl">|</span>
-      <span id="nombre-cliente" class="text-slate-400 text-sm font-medium">—</span>
-    </div>
-    <div class="flex items-center gap-2 text-sm flex-wrap justify-end">
-      <div class="flex items-center bg-slate-100 rounded-lg p-0.5">
-        <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition">Horario laboral</button>
-        <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-md text-xs font-semibold transition">Fuera de horario</button>
+      <div class="leading-tight">
+        <div class="text-base font-black text-slate-900 tracking-tight">PULSE</div>
+        <div id="nombre-cliente" class="text-xs text-slate-500 font-medium">—</div>
       </div>
-      <label class="text-slate-400 text-xs font-medium">ASESOR</label>
-      <select id="asesor-select" class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition">
-        <option value="">Todos</option>
-      </select>
-      <label class="text-slate-400 text-xs font-medium">DESDE</label>
-      <input type="text" id="desde" readonly class="w-28 cursor-pointer border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
-      <label class="text-slate-400 text-xs font-medium">HASTA</label>
-      <input type="text" id="hasta" readonly class="w-28 cursor-pointer border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
-      <button onclick="cargarDatos()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition shadow-sm">Aplicar</button>
-      <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="text-slate-300 hover:text-slate-500 text-xs font-medium transition">Salir</a>
     </div>
+    <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 transition">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Salir
+    </a>
   </div>
-</nav>
+</header>
 
 <!-- MAIN -->
 <main class="max-w-7xl mx-auto px-6 py-8">
@@ -81,43 +84,88 @@
 
   <div id="content" class="hidden space-y-6">
 
-    <!-- Horario info -->
-    <div class="flex items-center gap-6 text-sm text-slate-500 bg-white border border-slate-100 rounded-xl px-4 py-3 flex-wrap">
-      <div class="flex items-center gap-1.5">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Horario laboral: <span id="horario-txt" class="font-semibold text-slate-700"></span></span>
+    <!-- Barra de filtros -->
+    <div class="card !p-5">
+      <div class="flex flex-col lg:flex-row lg:items-end gap-4 lg:gap-5">
+        <div>
+          <span class="field-label mb-1.5">Vista</span>
+          <div class="flex items-center bg-slate-100 rounded-xl p-1">
+            <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-4 py-2 rounded-lg text-sm font-semibold transition">Horario laboral</button>
+            <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-4 py-2 rounded-lg text-sm font-semibold transition">Fuera de horario</button>
+          </div>
+        </div>
+
+        <div class="hidden lg:block w-px h-11 bg-slate-200"></div>
+
+        <div>
+          <span class="field-label mb-1.5">Asesor</span>
+          <select id="asesor-select" class="control w-full lg:w-48">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div class="flex items-end gap-3">
+          <div>
+            <span class="field-label mb-1.5">Desde</span>
+            <input type="text" id="desde" readonly class="control w-32 cursor-pointer"/>
+          </div>
+          <div>
+            <span class="field-label mb-1.5">Hasta</span>
+            <input type="text" id="hasta" readonly class="control w-32 cursor-pointer"/>
+          </div>
+        </div>
+
+        <button onclick="cargarDatos()" class="btn-primary lg:ml-auto">Aplicar filtros</button>
       </div>
-      <div class="flex items-center gap-1.5">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        <span>Días hábiles: <span id="dias-txt" class="font-semibold text-slate-700"></span></span>
-      </div>
-      <div class="flex items-center gap-1.5 ml-auto text-sm text-slate-400">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span id="modo-nota">Tiempo efectivo: solo cuenta horas laborables</span>
+
+      <!-- Info de horario / modo -->
+      <div class="flex items-center gap-6 text-sm text-slate-500 mt-4 pt-4 border-t border-slate-100 flex-wrap">
+        <div class="flex items-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>Horario laboral: <span id="horario-txt" class="font-semibold text-slate-700"></span></span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span>Días hábiles: <span id="dias-txt" class="font-semibold text-slate-700"></span></span>
+        </div>
+        <div class="flex items-center gap-1.5 ml-auto text-slate-400">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="modo-nota">Tiempo efectivo: solo cuenta horas laborables</span>
+        </div>
       </div>
     </div>
 
     <!-- Leads accionables: no respondidos / trabajados hoy -->
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="card">
-        <div class="flex items-center justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
-          <div>
-            <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
-            <div class="kpi-label">Leads no respondidos</div>
-            <div class="mt-2 text-sm text-slate-500">Último mensaje es del cliente, sin responder</div>
+      <div class="card border-l-4 !border-l-red-400">
+        <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
+          <div class="flex items-start gap-3.5">
+            <div class="icon-chip bg-red-50">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div>
+              <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
+              <div class="kpi-label">Leads no respondidos</div>
+              <div class="mt-1 text-sm text-slate-500">Último mensaje es del cliente, sin responder</div>
+            </div>
           </div>
-          <svg id="chev-no-respondidos" class="chevron flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div id="panel-no-respondidos" class="hidden mt-4"></div>
       </div>
-      <div class="card">
-        <div class="flex items-center justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
-          <div>
-            <div class="kpi-num text-indigo-600" id="kpi-trabajados-hoy">—</div>
-            <div class="kpi-label">Leads trabajados hoy</div>
-            <div class="mt-2 text-sm text-slate-500">Al menos un mensaje del asesor hoy en horario</div>
+      <div class="card border-l-4 !border-l-indigo-400">
+        <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
+          <div class="flex items-start gap-3.5">
+            <div class="icon-chip bg-indigo-50">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <div>
+              <div class="kpi-num text-indigo-600" id="kpi-trabajados-hoy">—</div>
+              <div class="kpi-label">Leads trabajados hoy</div>
+              <div class="mt-1 text-sm text-slate-500">Al menos un mensaje del asesor hoy en horario</div>
+            </div>
           </div>
-          <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
       </div>
@@ -146,8 +194,8 @@
     </div>
 
     <!-- Benchmark -->
-    <div class="card py-3 px-5">
-      <div class="flex items-center gap-1.5 mb-2">
+    <div class="card py-3.5 px-5">
+      <div class="flex items-center gap-1.5 mb-2.5">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Referencia</span>
       </div>
@@ -156,24 +204,34 @@
 
     <!-- Por asesor -->
     <div class="card" id="card-por-asesor">
-      <div class="mb-5">
-        <div class="section-title">Tiempo de respuesta promedio por asesor</div>
-        <div class="section-sub" id="sub-por-asesor">Tiempo laboral efectivo — de más rápido a más lento</div>
+      <div class="flex items-center gap-3 mb-5">
+        <div class="icon-chip bg-slate-100">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div>
+          <div class="section-title">Tiempo de respuesta promedio por asesor</div>
+          <div class="section-sub" id="sub-por-asesor">Tiempo laboral efectivo — de más rápido a más lento</div>
+        </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
     </div>
 
     <!-- Distribución -->
     <div class="card">
-      <div class="mb-5">
-        <div class="section-title" id="titulo-distribucion">Distribución de tiempos de respuesta efectivos</div>
-        <div class="section-sub" id="sub-distribucion">Tiempo laboral que tardó el asesor — haz clic en una franja para ver los leads</div>
+      <div class="flex items-center gap-3 mb-5">
+        <div class="icon-chip bg-slate-100">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        </div>
+        <div>
+          <div class="section-title" id="titulo-distribucion">Distribución de tiempos de respuesta efectivos</div>
+          <div class="section-sub" id="sub-distribucion">Tiempo laboral que tardó el asesor — haz clic en una franja para ver los leads</div>
+        </div>
       </div>
       <div class="flex flex-col lg:flex-row gap-8 items-start">
 
         <!-- Donut -->
-        <div class="flex-shrink-0 flex flex-col items-center">
-          <div class="relative" style="width:200px;height:200px">
+        <div class="flex-shrink-0 flex flex-col items-center w-full lg:w-auto">
+          <div class="relative mx-auto" style="width:200px;height:200px">
             <canvas id="chart-dist"></canvas>
             <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <div class="text-2xl font-black text-slate-800" id="donut-total">—</div>
@@ -190,9 +248,14 @@
     <!-- Tendencia -->
     <div class="card">
       <div class="flex items-start justify-between mb-1">
-        <div>
-          <div class="section-title">Tendencia diaria</div>
-          <div class="section-sub" id="sub-tendencia">Promedio de tiempo efectivo de respuesta por día</div>
+        <div class="flex items-center gap-3">
+          <div class="icon-chip bg-slate-100">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          </div>
+          <div>
+            <div class="section-title">Tendencia diaria</div>
+            <div class="section-sub" id="sub-tendencia">Promedio de tiempo efectivo de respuesta por día</div>
+          </div>
         </div>
         <span id="trend-rango" class="text-sm text-slate-400 mt-1"></span>
       </div>
@@ -247,8 +310,8 @@ function cambiarModo(modo) {
 }
 
 function actualizarBotonesModo() {
-  const activo   = 'px-3 py-1.5 rounded-md text-xs font-semibold transition bg-white text-indigo-600 shadow-sm';
-  const inactivo = 'px-3 py-1.5 rounded-md text-xs font-semibold transition text-slate-500 hover:text-slate-700';
+  const activo   = 'px-4 py-2 rounded-lg text-sm font-semibold transition bg-white text-indigo-600 shadow-sm';
+  const inactivo = 'px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-500 hover:text-slate-700';
   document.getElementById('btn-modo-laboral').className = MODO === 'laboral' ? activo : inactivo;
   document.getElementById('btn-modo-fuera').className   = MODO === 'fuera_horario' ? activo : inactivo;
 }
