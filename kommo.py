@@ -1,6 +1,7 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 import json
 import re
+import secrets
 import threading
 from datetime import datetime, timedelta
 import calendar
@@ -15,6 +16,19 @@ app = Flask(__name__)
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL no está configurada")
+
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    app.secret_key = secrets.token_hex(32)
+    print("⚠️  SECRET_KEY no configurada: usando una temporal. "
+          "Los usuarios de PULSE se desloguean en cada deploy/restart. "
+          "Configura SECRET_KEY en Render para que las sesiones persistan.")
+
+def pulse_password(subdomain):
+    return os.environ.get(f'PULSE_PW_{subdomain.upper()}')
+
+def pulse_autorizado(subdomain):
+    return bool(session.get(f'pulse_ok_{subdomain}'))
 
 # ========================
 # BASE DE DATOS
@@ -441,6 +455,50 @@ def backfill():
     finally:
         conn.close()
 
+@app.route('/health/campos')
+def health_campos():
+    """Verifica que los nombres de campo custom configurados por cliente
+    (PULSE_CONFIG[...]['campos']) realmente aparezcan en eventos recientes.
+    Sin esto, un typo o un cliente renombrando un campo en Kommo pasa
+    desapercibido hasta que alguien nota un numero raro en el dashboard."""
+    resultados = {}
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        for subdomain in PULSE_CONFIG:
+            campos = campos_de(subdomain)
+            c.execute(
+                "SELECT raw_data FROM eventos WHERE subdomain = %s AND tipo_evento = 'lead_update' ORDER BY id DESC LIMIT 200",
+                (subdomain,)
+            )
+            rows = c.fetchall()
+            ok_cliente = False
+            ok_asesor = False
+            for row in rows:
+                if not row['raw_data']:
+                    continue
+                data = json.loads(row['raw_data'])
+                if not ok_cliente and get_custom_field(data, 'leads[update][0]', campos['cliente']) is not None:
+                    ok_cliente = True
+                if not ok_asesor and get_custom_field(data, 'leads[update][0]', campos['asesor']) is not None:
+                    ok_asesor = True
+                if ok_cliente and ok_asesor:
+                    break
+            resultados[subdomain] = {
+                'eventos_revisados': len(rows),
+                'campo_cliente': campos['cliente'],
+                'campo_cliente_encontrado': ok_cliente,
+                'campo_asesor': campos['asesor'],
+                'campo_asesor_encontrado': ok_asesor,
+                'ok': ok_cliente and ok_asesor,
+            }
+    finally:
+        conn.close()
+    return jsonify({
+        'ok': all(r['ok'] for r in resultados.values()),
+        'subdominios': resultados,
+    })
+
 # ========================
 # PULSE
 # ========================
@@ -665,16 +723,39 @@ def _lista_asesores(subdomain):
     asesores = [a for a in asesores if a['nombre']]
     return sorted(asesores, key=lambda x: x['nombre'])
 
-@app.route('/pulse')
+@app.route('/pulse', methods=['GET', 'POST'])
 def pulse():
-    subdomain = request.args.get('subdomain', '')
+    subdomain = request.args.get('subdomain', '').strip()
+    if not subdomain:
+        return "Accede con ?subdomain=nombre", 400
+
+    if request.method == 'POST':
+        pw_real = pulse_password(subdomain)
+        if pw_real and request.form.get('password', '') == pw_real:
+            session[f'pulse_ok_{subdomain}'] = True
+            return redirect(url_for('pulse', subdomain=subdomain))
+        return render_template('pulse_login.html', subdomain=subdomain, error='Contraseña incorrecta'), 401
+
+    if not pulse_autorizado(subdomain):
+        if not pulse_password(subdomain):
+            return f'PULSE no tiene contraseña configurada para "{subdomain}" (falta PULSE_PW_{subdomain.upper()})', 500
+        return render_template('pulse_login.html', subdomain=subdomain, error=None)
+
     return render_template('pulse.html', subdomain=subdomain)
+
+@app.route('/pulse/logout')
+def pulse_logout():
+    subdomain = request.args.get('subdomain', '').strip()
+    session.pop(f'pulse_ok_{subdomain}', None)
+    return redirect(url_for('pulse', subdomain=subdomain))
 
 @app.route('/pulse/data')
 def pulse_data():
     subdomain = request.args.get('subdomain', '').strip()
     if not subdomain or subdomain not in PULSE_CONFIG:
         return jsonify({'error': f'Subdomain "{subdomain}" no configurado en PULSE'}), 400
+    if not pulse_autorizado(subdomain):
+        return jsonify({'error': 'No autorizado'}), 401
 
     cfg       = PULSE_CONFIG[subdomain]
     tz_offset = cfg['tz_offset']

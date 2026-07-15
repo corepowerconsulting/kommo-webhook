@@ -52,6 +52,7 @@
       <label class="text-slate-400 text-xs font-medium">HASTA</label>
       <input type="date" id="hasta" class="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition"/>
       <button onclick="cargarDatos()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition shadow-sm">Aplicar</button>
+      <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="text-slate-300 hover:text-slate-500 text-xs font-medium transition">Salir</a>
     </div>
   </div>
 </nav>
