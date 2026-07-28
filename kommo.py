@@ -65,6 +65,25 @@ def init_db():
     ''')
     c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS responsible_user_id BIGINT')
     c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
+    # Hora del PRIMER mensaje del cliente sin responder. 'F Ult msj cliente'
+    # guarda el ULTIMO, asi que si el cliente escribe varias veces antes de que
+    # le contesten, medir desde ahi subestima la espera (medido: 2.3x en la
+    # mediana). NULL = no hay mensajes guardados de esa ventana; en ese caso se
+    # cae al valor viejo.
+    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS f_primer_msj_cliente BIGINT')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_tiempos_sub_lead
+                 ON tiempos_respuesta (subdomain, lead_id, f_ult_msj_asesor)''')
+    # Mensajes entrantes del cliente, uno por fila. Kommo solo manda webhook de
+    # los entrantes, y hasta ahora quedaban enterrados dentro del JSON de
+    # 'eventos', imposibles de consultar sin parsear todo.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS mensajes_cliente (
+            subdomain TEXT,
+            lead_id TEXT,
+            ts BIGINT,
+            PRIMARY KEY (subdomain, lead_id, ts)
+        )
+    ''')
     c.execute('''
         CREATE TABLE IF NOT EXISTS leads_estado (
             subdomain TEXT,
@@ -133,6 +152,54 @@ def prefix_de_lead(data, lead_id):
         if str(data.get(f'leads[update][{i}][id]')) == str(lead_id):
             return f'leads[update][{i}]'
     return None
+
+def msjs_entrantes(data):
+    """Extrae (lead_id, ts) de cada mensaje ENTRANTE del payload.
+
+    Solo entrantes: Kommo no manda webhook de los mensajes del asesor (0 de
+    ~5800 revisados en produccion tenian type=outgoing). Devuelve un set para
+    que un mismo POST guardado varias veces no duplique."""
+    salida = set()
+    for i in get_batch_indices(data, 'message[add]'):
+        pref = f'message[add][{i}]'
+        if data.get(f'{pref}[type]') != 'incoming':
+            continue
+        lead_id = data.get(f'{pref}[element_id]')
+        try:
+            ts = int(data.get(f'{pref}[created_at]'))
+        except (TypeError, ValueError):
+            continue
+        if lead_id and ts:
+            salida.add((str(lead_id), ts))
+    return salida
+
+def guardar_msjs_entrantes(subdomain, data, cursor=None):
+    """Guarda los mensajes entrantes del payload en 'mensajes_cliente'.
+
+    Es la fuente para saber cuando empezo a esperar el cliente. Si se pasa un
+    cursor se reutiliza (para el backfill, que hace miles de inserts en una
+    sola transaccion); si no, abre su propia conexion."""
+    filas = msjs_entrantes(data)
+    if not filas:
+        return 0
+    propia = cursor is None
+    conn = get_conn() if propia else None
+    c = conn.cursor() if propia else cursor
+    try:
+        c.executemany(
+            'INSERT INTO mensajes_cliente (subdomain, lead_id, ts) VALUES (%s, %s, %s) '
+            'ON CONFLICT DO NOTHING',
+            [(subdomain, lead_id, ts) for lead_id, ts in filas]
+        )
+        if propia:
+            conn.commit()
+        return len(filas)
+    except Exception as e:
+        print(f"❌ Error mensajes_cliente: {e}")
+        return 0
+    finally:
+        if propia:
+            conn.close()
 
 # ========================
 # GUARDAR EVENTO
@@ -233,7 +300,8 @@ def _procesar_webhook(data):
         subdomain = data.get('account[subdomain]', 'desconocido')
         algo_procesado = False
 
-        for i in get_batch_indices(data, 'message[add]'):
+        idxs_msj = get_batch_indices(data, 'message[add]')
+        for i in idxs_msj:
             algo_procesado = True
             guardar_evento(
                 subdomain=subdomain,
@@ -242,6 +310,10 @@ def _procesar_webhook(data):
                 timestamp=data.get(f'message[add][{i}][created_at]'),
                 data=data
             )
+        if idxs_msj:
+            # Ademas del evento crudo, cada mensaje entrante va a su propia
+            # fila para poder saber desde cuando espera el cliente.
+            guardar_msjs_entrantes(subdomain, data)
 
         for i in get_batch_indices(data, 'leads[update]'):
             algo_procesado = True
@@ -481,6 +553,116 @@ def backfill():
             'listo': not hay_mas
         })
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+# SQL que recalcula, para cada respuesta del asesor, cuando empezo REALMENTE a
+# esperar el cliente: el primer mensaje suyo posterior a la respuesta anterior
+# del asesor en ese lead. Es re-ejecutable (idempotente) y solo toca filas que
+# tengan mensajes guardados; el resto queda en NULL y cae al valor viejo.
+SQL_RECALCULAR_PRIMER_MSJ = '''
+    UPDATE tiempos_respuesta t
+    SET f_primer_msj_cliente = (
+        SELECT MIN(m.ts)
+        FROM mensajes_cliente m
+        WHERE m.subdomain = t.subdomain
+          AND m.lead_id   = t.lead_id
+          AND m.ts       <= t.f_ult_msj_cliente
+          AND m.ts        > t.f_ult_msj_asesor - %s
+          AND m.ts        > COALESCE((
+                SELECT MAX(t2.f_ult_msj_asesor)
+                FROM tiempos_respuesta t2
+                WHERE t2.subdomain        = t.subdomain
+                  AND t2.lead_id          = t.lead_id
+                  AND t2.f_ult_msj_asesor < t.f_ult_msj_asesor
+              ), 0)
+    )
+    WHERE t.subdomain = %s
+      AND t.f_ult_msj_cliente IS NOT NULL
+'''
+
+@app.route('/backfill-mensajes')
+def backfill_mensajes():
+    """Puebla 'mensajes_cliente' con los mensajes entrantes que ya estan
+    guardados dentro del JSON de 'eventos', y recalcula f_primer_msj_cliente.
+
+    Esto es lo que hace RETROACTIVO el arreglo de la metrica: sin esto, solo
+    los mensajes que lleguen de ahora en adelante tendrian la espera bien
+    medida. Paginado igual que /backfill.
+
+    Con ?recalcular=1 (o al terminar la ultima pagina) corre el UPDATE que
+    recalcula el inicio de la espera. Ese paso es idempotente."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+    try:
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        offset = 0
+    limit = 500
+
+    conn = get_conn()
+    try:
+        read_c  = conn.cursor(cursor_factory=RealDictCursor)
+        write_c = conn.cursor()
+        read_c.execute(
+            "SELECT raw_data FROM eventos "
+            "WHERE subdomain = %s AND tipo_evento = 'mensaje' "
+            "ORDER BY id DESC LIMIT %s OFFSET %s",
+            (subdomain, limit, offset)
+        )
+        rows = read_c.fetchall()
+
+        guardados = 0
+        errores   = 0
+        for row in rows:
+            if not row['raw_data']:
+                continue
+            try:
+                guardados += guardar_msjs_entrantes(
+                    subdomain, json.loads(row['raw_data']), cursor=write_c
+                )
+            except Exception as e:
+                errores += 1
+                print(f"⚠️ Backfill mensajes: {e}")
+
+        hay_mas = len(rows) == limit
+        recalculado = None
+        if not hay_mas or request.args.get('recalcular') == '1':
+            write_c.execute(SQL_RECALCULAR_PRIMER_MSJ, (GAP_REACTIVACION_SEG, subdomain))
+            recalculado = write_c.rowcount
+        conn.commit()
+
+        read_c.execute(
+            'SELECT COUNT(*) AS total FROM mensajes_cliente WHERE subdomain = %s',
+            (subdomain,)
+        )
+        total_msjs = read_c.fetchone()['total']
+        read_c.execute(
+            '''SELECT COUNT(*) AS total,
+                      COUNT(f_primer_msj_cliente) AS con_inicio_real
+               FROM tiempos_respuesta WHERE subdomain = %s''',
+            (subdomain,)
+        )
+        cob = read_c.fetchone()
+
+        return jsonify({
+            'offset':                  offset,
+            'eventos_procesados':      len(rows),
+            'mensajes_guardados':      guardados,
+            'errores':                 errores,
+            'total_mensajes_cliente':  total_msjs,
+            'filas_recalculadas':      recalculado,
+            'tiempos_respuesta_total': cob['total'],
+            'con_inicio_real':         cob['con_inicio_real'],
+            'pct_cobertura':           round(cob['con_inicio_real'] / cob['total'] * 100, 1) if cob['total'] else 0,
+            'siguiente': (f'/backfill-mensajes?subdomain={subdomain}&offset={offset + limit}'
+                          if hay_mas else None),
+            'listo': not hay_mas,
+        })
+    except Exception as e:
+        conn.rollback()
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
@@ -882,7 +1064,7 @@ def _calc_metricas(registros, franjas, tz_offset):
     for i, f in enumerate(franjas):
         leads = []
         for r in sorted(groups[i], key=lambda x: x['efectivo_seg'], reverse=True)[:50]:
-            local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
+            local_dt = _ts_to_local(r['inicio_espera'], tz_offset)
             leads.append({
                 'lead_id': r['lead_id'],
                 'nombre': r.get('lead_nombre'),
@@ -916,7 +1098,7 @@ def _calc_por_asesor(registros):
     return resultado
 
 def _fmt_row(r, tz_offset):
-    local_dt = _ts_to_local(r['f_ult_msj_cliente'], tz_offset)
+    local_dt = _ts_to_local(r['inicio_espera'], tz_offset)
     return {
         'lead_id': r['lead_id'],
         'nombre': r.get('lead_nombre'),
@@ -1093,9 +1275,16 @@ def pulse_data():
         # generaba una fila "respuesta" separada, inflando el conteo. Nos
         # quedamos solo con la primera respuesta (f_ult_msj_asesor mas chico)
         # por cada mensaje distinto del cliente.
+        # inicio_espera: desde cuando espera REALMENTE el cliente. Es el primer
+        # mensaje suyo sin responder; 'F Ult msj cliente' guarda el ULTIMO, y
+        # medir desde ahi subestima la espera (medido en produccion: 2.3x en la
+        # mediana, 3.1x en el p90). Cae al valor viejo cuando no hay mensajes
+        # guardados de esa ventana (registros anteriores a mayo 2026).
         query = '''
             SELECT DISTINCT ON (lead_id, f_ult_msj_cliente)
-                lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id, lead_nombre
+                lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id, lead_nombre,
+                f_primer_msj_cliente,
+                COALESCE(f_primer_msj_cliente, f_ult_msj_cliente) AS inicio_espera
             FROM tiempos_respuesta
             WHERE subdomain = %s
               AND f_ult_msj_cliente IS NOT NULL
@@ -1105,10 +1294,10 @@ def pulse_data():
         '''
         params = [subdomain, GAP_REACTIVACION_SEG]
         if desde_str:
-            query += ' AND f_ult_msj_cliente >= %s'
+            query += ' AND COALESCE(f_primer_msj_cliente, f_ult_msj_cliente) >= %s'
             params.append(_local_date_to_ts(desde_str, tz_offset))
         if hasta_str:
-            query += ' AND f_ult_msj_cliente <= %s'
+            query += ' AND COALESCE(f_primer_msj_cliente, f_ult_msj_cliente) <= %s'
             params.append(_local_date_to_ts(hasta_str, tz_offset) + 86399)
         if asesor_id:
             query += ' AND responsible_user_id = %s'
@@ -1124,8 +1313,10 @@ def pulse_data():
 
     try:
         registros = []
+        con_inicio_real = 0
         for row in rows:
-            dt_cliente = _ts_to_local(row['f_ult_msj_cliente'], tz_offset)
+            inicio = row['inicio_espera']
+            dt_cliente = _ts_to_local(inicio, tz_offset)
             en_horario = _en_horario_laboral(dt_cliente, h_ini, h_fin, dias_lab)
 
             if fuera_horario:
@@ -1134,17 +1325,20 @@ def pulse_data():
                 # laborables, al reves del calculo de "tiempo efectivo").
                 if en_horario:
                     continue
-                efectivo = row['f_ult_msj_asesor'] - row['f_ult_msj_cliente']
+                efectivo = row['f_ult_msj_asesor'] - inicio
             else:
                 efectivo = _calc_tiempo_efectivo(
-                    row['f_ult_msj_cliente'], row['f_ult_msj_asesor'],
+                    inicio, row['f_ult_msj_asesor'],
                     tz_offset, h_ini, h_fin, dias_lab
                 )
+
+            if row['f_primer_msj_cliente'] is not None:
+                con_inicio_real += 1
 
             registros.append({
                 'lead_id':          row['lead_id'],
                 'lead_nombre':      row['lead_nombre'],
-                'f_ult_msj_cliente': row['f_ult_msj_cliente'],
+                'inicio_espera':    inicio,
                 'efectivo_seg':      efectivo,
                 'responsible_user_id': row['responsible_user_id'],
             })
@@ -1155,7 +1349,7 @@ def pulse_data():
         daily = defaultdict(list)
         daily_asesor = defaultdict(lambda: defaultdict(int))
         for r in registros:
-            dia = _ts_to_local(r['f_ult_msj_cliente'], tz_offset).strftime('%Y-%m-%d')
+            dia = _ts_to_local(r['inicio_espera'], tz_offset).strftime('%Y-%m-%d')
             daily[dia].append(r['efectivo_seg'])
             if not asesor_id:
                 nombre = nombre_asesor(r.get('responsible_user_id')) or 'Sin asignar'
@@ -1197,6 +1391,15 @@ def pulse_data():
                 'asesor_actual': nombre_asesor(asesor_id) if asesor_id else None,
                 'fecha_minima': _fecha_minima(subdomain),
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
+                # Que porcion de los registros mide desde el PRIMER mensaje sin
+                # responder. El resto cae al ultimo mensaje del cliente y por lo
+                # tanto subestima la espera: sirve para saber desde que fecha
+                # los numeros son comparables.
+                'medicion': {
+                    'total':           len(registros),
+                    'con_inicio_real': con_inicio_real,
+                    'pct_inicio_real': round(con_inicio_real / len(registros) * 100, 1) if registros else 0,
+                },
             },
             'metricas':      _calc_metricas(registros, franjas, tz_offset),
             'top_lentos':    [_fmt_row(r, tz_offset) for r in top_lentos],
