@@ -215,8 +215,8 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <div>
-          <div class="section-title">Tiempo de respuesta promedio por asesor</div>
-          <div class="section-sub" id="sub-por-asesor">Tiempo laboral efectivo — de más rápido a más lento</div>
+          <div class="section-title">Tiempo de respuesta por asesor</div>
+          <div class="section-sub" id="sub-por-asesor">Mediana del tiempo laboral efectivo — de más rápido a más lento</div>
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
@@ -586,21 +586,44 @@ function renderTabla(containerId, rows, tipo) {
   `).join('');
 }
 
-function renderAsesores(porAsesor) {
+function renderAsesores(porAsesor, minMuestra) {
   const el = document.getElementById('tabla-asesores');
   if (!porAsesor || porAsesor.length === 0) {
     el.innerHTML = '<div class="text-slate-400 text-sm py-6 text-center">Sin datos</div>';
     return;
   }
-  el.innerHTML = porAsesor.map(a => `
-    <div class="row-hover flex items-center justify-between px-2 py-3">
-      <div class="flex items-center gap-2.5">
-        <span class="text-sm font-semibold text-slate-700">${a.asesor}</span>
-        <span class="text-xs text-slate-500">${a.total} respuestas</span>
+  const min = minMuestra || 10;
+  let puesto = 0;
+  el.innerHTML = porAsesor.map(a => {
+    // Solo llevan puesto los que tienen muestra suficiente: rankear a alguien
+    // con 3 respuestas contra alguien con 300 no compara nada.
+    const rank = a.muestra_suficiente
+      ? `<span class="text-xs font-bold text-slate-400 w-5 text-right">${++puesto}</span>`
+      : `<span class="text-xs text-slate-300 w-5 text-right">—</span>`;
+    const aviso = a.muestra_suficiente ? '' :
+      `<span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+         pocas respuestas
+       </span>`;
+    return `
+    <div class="row-hover flex items-center justify-between px-2 py-3 ${a.muestra_suficiente ? '' : 'opacity-60'}">
+      <div class="flex items-center gap-2.5 min-w-0">
+        ${rank}
+        <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
+        <span class="text-xs text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
+        ${aviso}
       </div>
-      <span class="text-sm font-black text-blue-600">${fmtSeg(a.promedio_seg)}</span>
-    </div>
-  `).join('');
+      <div class="text-right flex-shrink-0 pl-3">
+        <div class="text-sm font-black text-blue-600 leading-tight">${fmtSeg(a.mediana_seg)}</div>
+        <div class="text-[11px] text-slate-400 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
+      </div>
+    </div>`;
+  }).join('') + `
+    <div class="pt-3 text-[11px] text-slate-400 leading-relaxed">
+      Ordenado por <strong class="text-slate-500">mediana</strong>: la mitad de las respuestas
+      tardó menos que ese tiempo. Se usa en vez del promedio porque una sola respuesta muy
+      lenta lo distorsiona. <strong class="text-slate-500">p90</strong> = el 10% peor tardó más
+      que eso. Con menos de ${min} respuestas no se asigna puesto.
+    </div>`;
 }
 
 function renderBenchmark(franjas) {
@@ -675,8 +698,8 @@ async function cargarDatos() {
       ? 'Barras: respuestas fuera de horario por día — Línea: tiempo real promedio'
       : 'Barras: respuestas por día (por asesor) — Línea: tiempo efectivo promedio';
     document.getElementById('sub-por-asesor').textContent = esFueraHorario
-      ? 'Tiempo real fuera de horario — de más rápido a más lento'
-      : 'Tiempo laboral efectivo — de más rápido a más lento';
+      ? 'Mediana del tiempo real fuera de horario — de más rápido a más lento'
+      : 'Mediana del tiempo laboral efectivo — de más rápido a más lento';
 
     // No dejar elegir fechas anteriores al primer evento capturado para este cliente.
     // Ademas de bloquear el calendario, el dia se marca subrayado (marcarPrimerDia).
@@ -719,7 +742,7 @@ async function cargarDatos() {
     const cardPorAsesor = document.getElementById('card-por-asesor');
     if (d.por_asesor) {
       cardPorAsesor.classList.remove('hidden');
-      renderAsesores(d.por_asesor);
+      renderAsesores(d.por_asesor, d.config.min_muestra_asesor);
     } else {
       cardPorAsesor.classList.add('hidden');
     }

@@ -1076,7 +1076,19 @@ def _calc_metricas(registros, franjas, tz_offset):
         })
     return {'total': total, 'promedio_seg': promedio_seg, 'maximo_seg': maximo_seg, 'distribucion': distribucion}
 
+# Con menos respuestas que esto, el numero de un asesor es ruido: dos
+# respuestas rapidas lo ponen primero por encima de alguien con cientos.
+MIN_MUESTRA_ASESOR = 10
+
 def _calc_por_asesor(registros):
+    """Ranking de asesores por MEDIANA, no por promedio.
+
+    Los tiempos de respuesta tienen cola larga: una sola respuesta de 8 horas
+    arruina el promedio de 40 respuestas de 3 minutos, asi que el promedio
+    mide mas los casos raros que el desempeño habitual.
+
+    Los asesores con menos de MIN_MUESTRA_ASESOR respuestas van al final y sin
+    puesto: no se los puede comparar de forma justa con quien tiene cientos."""
     grupos = defaultdict(list)
     for r in registros:
         nombre = nombre_asesor(r.get('responsible_user_id')) or 'Sin asignar'
@@ -1085,11 +1097,14 @@ def _calc_por_asesor(registros):
         {
             'asesor': nombre,
             'total': len(segs),
+            'mediana_seg': _pctl(segs, 50),
+            'p90_seg': _pctl(segs, 90),
             'promedio_seg': round(sum(segs) / len(segs)),
+            'muestra_suficiente': len(segs) >= MIN_MUESTRA_ASESOR,
         }
         for nombre, segs in grupos.items()
     ]
-    resultado.sort(key=lambda x: x['promedio_seg'])
+    resultado.sort(key=lambda x: (not x['muestra_suficiente'], x['mediana_seg']))
     return resultado
 
 def _fmt_row(r, tz_offset):
@@ -1386,6 +1401,7 @@ def pulse_data():
                 'asesor_actual': nombre_asesor(asesor_id) if asesor_id else None,
                 'fecha_minima': _fecha_minima(subdomain),
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
+                'min_muestra_asesor': MIN_MUESTRA_ASESOR,
                 # Que porcion de los registros mide desde el PRIMER mensaje sin
                 # responder. El resto cae al ultimo mensaje del cliente y por lo
                 # tanto subestima la espera: sirve para saber desde que fecha
