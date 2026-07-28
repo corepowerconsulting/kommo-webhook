@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
+import bisect
 import json
 import re
 import secrets
@@ -574,46 +575,63 @@ def _pctl(valores, p):
     k = max(0, min(len(s) - 1, int(round((p / 100.0) * (len(s) - 1)))))
     return s[k]
 
-def _reconstruir_turnos(mensajes, tz_offset, h_ini, h_fin, dias_lab):
-    """Arma los turnos cliente->asesor de cada lead y calcula, para cada uno,
-    la espera REAL (desde el primer mensaje del cliente sin responder) contra
-    lo que mide Pulse hoy (desde el ULTIMO mensaje antes de la respuesta).
+def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_lab):
+    """Arma los turnos cliente->asesor y compara, para cada uno, la espera REAL
+    (desde el PRIMER mensaje del cliente sin responder) contra lo que mide Pulse
+    hoy (desde el ULTIMO mensaje antes de la respuesta).
 
-    Ambas se miden en tiempo efectivo (descontando horas no laborables) para
-    que sean comparables con lo que muestra el dashboard. Se descartan las
-    reactivaciones, igual que en /pulse/data."""
-    por_lead = defaultdict(list)
-    for m in mensajes:
+    Kommo solo manda webhook de los mensajes ENTRANTES, asi que la hora de la
+    respuesta del asesor no esta en 'eventos'. Se toma de f_ult_msj_asesor en
+    'tiempos_respuesta', que es justamente el campo que alimenta el dashboard.
+
+    Para cada respuesta del asesor, la espera empezo en el primer mensaje del
+    cliente posterior a la respuesta ANTERIOR de ese lead. Ambas medidas usan
+    tiempo efectivo (descontando horas no laborables) y se descartan las
+    reactivaciones, para que sean comparables con /pulse/data.
+
+    msjs_cliente: iterable de {'lead_id', 'ts'} (solo entrantes)
+    respuestas:   iterable de {'lead_id', 'ts'} (f_ult_msj_asesor)"""
+    msgs_por_lead = defaultdict(list)
+    for m in msjs_cliente:
         if m['lead_id'] and m['ts']:
-            por_lead[m['lead_id']].append(m)
+            msgs_por_lead[str(m['lead_id'])].append(m['ts'])
+
+    resp_por_lead = defaultdict(list)
+    for r in respuestas:
+        if r['lead_id'] and r['ts']:
+            resp_por_lead[str(r['lead_id'])].append(r['ts'])
 
     turnos = []
-    for lead_id, msgs in por_lead.items():
-        msgs.sort(key=lambda m: m['ts'])
-        primero = None   # primer mensaje del cliente aun sin responder
-        ultimo  = None   # ultimo mensaje del cliente antes de la respuesta
-        n_msjs  = 0
-        for m in msgs:
-            if m['tipo'] == 'incoming':
-                if primero is None:
-                    primero = m['ts']
-                    n_msjs = 0
-                ultimo = m['ts']
-                n_msjs += 1
-            elif m['tipo'] == 'outgoing' and primero is not None:
-                if m['ts'] - primero <= GAP_REACTIVACION_SEG:
-                    real  = _calc_tiempo_efectivo(primero, m['ts'], tz_offset, h_ini, h_fin, dias_lab)
-                    pulse = _calc_tiempo_efectivo(ultimo,  m['ts'], tz_offset, h_ini, h_fin, dias_lab)
-                    turnos.append({
-                        'lead_id':      lead_id,
-                        'msjs_cliente': n_msjs,
-                        'real_seg':     real,
-                        'pulse_seg':    pulse,
-                        'sesgo_seg':    real - pulse,
-                    })
-                primero = None
-                ultimo  = None
-    return turnos
+    sin_mensajes = 0
+    for lead_id, resp in resp_por_lead.items():
+        msgs = sorted(set(msgs_por_lead.get(lead_id, ())))
+        if not msgs:
+            sin_mensajes += len(resp)
+            continue
+        anterior = None
+        for a in sorted(set(resp)):
+            # Mensajes del cliente entre la respuesta anterior y esta.
+            lo = bisect.bisect_right(msgs, anterior) if anterior is not None else 0
+            hi = bisect.bisect_left(msgs, a)
+            anterior = a
+            if lo >= hi:
+                # No tenemos los mensajes de esa ventana (quedaron fuera del
+                # rango leido). Omitir en vez de contarlo como "sin sesgo".
+                sin_mensajes += 1
+                continue
+            primero, ultimo = msgs[lo], msgs[hi - 1]
+            if a - primero > GAP_REACTIVACION_SEG:
+                continue
+            real  = _calc_tiempo_efectivo(primero, a, tz_offset, h_ini, h_fin, dias_lab)
+            pulse = _calc_tiempo_efectivo(ultimo,  a, tz_offset, h_ini, h_fin, dias_lab)
+            turnos.append({
+                'lead_id':      lead_id,
+                'msjs_cliente': hi - lo,
+                'real_seg':     real,
+                'pulse_seg':    pulse,
+                'sesgo_seg':    real - pulse,
+            })
+    return turnos, sin_mensajes
 
 @app.route('/health/sesgo')
 def health_sesgo():
@@ -623,16 +641,15 @@ def health_sesgo():
     sin responder. Si el cliente escribe a las 10:00, 10:05 y 10:10, y el
     asesor contesta 10:12, Pulse mide 2 minutos: el cliente espero 12.
 
-    Este diagnostico reconstruye la espera real desde los eventos 'mensaje'
-    (que si tienen el created_at de cada mensaje individual) y la compara con
-    lo que Pulse reporta hoy. Es de solo lectura y de un solo uso: sirve para
-    decidir si vale la pena cambiar la metrica.
+    Kommo solo manda webhook de los mensajes ENTRANTES (verificado: 100% de
+    los eventos 'mensaje' tienen type=incoming en las 4 cuentas), asi que la
+    hora de la respuesta del asesor no esta en 'eventos'. Se combina entonces:
+      - de 'eventos': cada mensaje del cliente con su created_at exacto
+      - de 'tiempos_respuesta': f_ult_msj_asesor, la hora de la respuesta
 
-    Como no sabemos de antemano que campos manda Kommo en el webhook de
-    mensajes, primero reporta las claves encontradas; si no hay forma de saber
-    la direccion (entrante/saliente) lo dice y no inventa numeros.
-
-    No devuelve nombres de lead ni texto de mensajes, solo ids y duraciones."""
+    Es de solo lectura y de un solo uso: sirve para decidir si vale la pena
+    cambiar la metrica. No devuelve nombres de lead ni texto de mensajes,
+    solo ids y duraciones."""
     subdomain = request.args.get('subdomain', '').strip()
     if subdomain not in PULSE_CONFIG:
         return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
@@ -657,6 +674,12 @@ def health_sesgo():
             (subdomain, limite)
         )
         rows = c.fetchall()
+        c.execute(
+            "SELECT DISTINCT lead_id, f_ult_msj_asesor AS ts FROM tiempos_respuesta "
+            "WHERE subdomain = %s AND f_ult_msj_asesor IS NOT NULL",
+            (subdomain,)
+        )
+        respuestas = [dict(r) for r in c.fetchall()]
     finally:
         conn.close()
 
@@ -691,26 +714,35 @@ def health_sesgo():
             }
 
     tipos = Counter(m['tipo'] for m in mensajes.values())
+    entrantes = [m for m in mensajes.values() if m['tipo'] != 'outgoing']
     base = {
-        'subdomain':          subdomain,
-        'eventos_leidos':     len(rows),
-        'mensajes_distintos': len(mensajes),
-        'claves_del_payload': [k for k, _ in claves.most_common(40)],
-        'valores_de_type':    dict(tipos),
+        'subdomain':            subdomain,
+        'eventos_leidos':       len(rows),
+        'mensajes_distintos':   len(mensajes),
+        'mensajes_del_cliente': len(entrantes),
+        'respuestas_de_asesor': len(respuestas),
+        'claves_del_payload':   [k for k, _ in claves.most_common(40)],
+        'valores_de_type':      dict(tipos),
     }
 
-    if not ({'incoming', 'outgoing'} & set(tipos)):
+    if not entrantes:
         base['se_pudo_reconstruir'] = False
-        base['motivo'] = ("Los eventos de mensaje no traen 'type' con incoming/outgoing, "
-                          "asi que no se puede saber quien escribio. Revisa "
-                          "'claves_del_payload' para ver si hay otro campo que sirva.")
+        base['motivo'] = 'No hay mensajes entrantes en los eventos leidos.'
+        return jsonify(base)
+    if not respuestas:
+        base['se_pudo_reconstruir'] = False
+        base['motivo'] = 'No hay respuestas de asesor en tiempos_respuesta para este subdominio.'
         return jsonify(base)
 
-    turnos = _reconstruir_turnos(mensajes.values(), tz_offset, h_ini, h_fin, dias_lab)
+    turnos, sin_datos = _reconstruir_turnos(
+        entrantes, respuestas, tz_offset, h_ini, h_fin, dias_lab
+    )
+    base['respuestas_sin_mensajes_en_rango'] = sin_datos
 
     if not turnos:
         base['se_pudo_reconstruir'] = False
-        base['motivo'] = 'No se armo ningun turno cliente->asesor con los eventos leidos.'
+        base['motivo'] = ('Ninguna respuesta del asesor tiene los mensajes del cliente '
+                          'dentro del rango leido. Proba subiendo ?limite=.')
         return jsonify(base)
 
     reales   = [t['real_seg'] for t in turnos]
