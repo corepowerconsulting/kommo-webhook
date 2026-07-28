@@ -1080,6 +1080,8 @@ def _calc_metricas(registros, franjas, tz_offset):
 # respuestas rapidas lo ponen primero por encima de alguien con cientos.
 MIN_MUESTRA_ASESOR = 10
 
+SIN_ASIGNAR = 'Sin asignar'
+
 def _calc_por_asesor(registros):
     """Ranking de asesores por MEDIANA, no por promedio.
 
@@ -1087,12 +1089,23 @@ def _calc_por_asesor(registros):
     arruina el promedio de 40 respuestas de 3 minutos, asi que el promedio
     mide mas los casos raros que el desempeño habitual.
 
-    Los asesores con menos de MIN_MUESTRA_ASESOR respuestas van al final y sin
-    puesto: no se los puede comparar de forma justa con quien tiene cientos."""
+    Quedan fuera del ranking (se muestran igual, al final y sin puesto):
+      - los que tienen menos de MIN_MUESTRA_ASESOR respuestas, porque con
+        pocos casos el numero es suerte, no desempeño
+      - 'Sin asignar', que no es una persona sino los leads sin responsable:
+        ponerlo a competir haria que 'nadie' pueda salir primero"""
     grupos = defaultdict(list)
     for r in registros:
-        nombre = nombre_asesor(r.get('responsible_user_id')) or 'Sin asignar'
+        nombre = nombre_asesor(r.get('responsible_user_id')) or SIN_ASIGNAR
         grupos[nombre].append(r['efectivo_seg'])
+
+    def sin_puesto(nombre, segs):
+        if nombre == SIN_ASIGNAR:
+            return 'sin responsable'
+        if len(segs) < MIN_MUESTRA_ASESOR:
+            return 'pocas respuestas'
+        return None
+
     resultado = [
         {
             'asesor': nombre,
@@ -1100,11 +1113,11 @@ def _calc_por_asesor(registros):
             'mediana_seg': _pctl(segs, 50),
             'p90_seg': _pctl(segs, 90),
             'promedio_seg': round(sum(segs) / len(segs)),
-            'muestra_suficiente': len(segs) >= MIN_MUESTRA_ASESOR,
+            'sin_puesto': sin_puesto(nombre, segs),
         }
         for nombre, segs in grupos.items()
     ]
-    resultado.sort(key=lambda x: (not x['muestra_suficiente'], x['mediana_seg']))
+    resultado.sort(key=lambda x: (x['sin_puesto'] is not None, x['mediana_seg']))
     return resultado
 
 def _fmt_row(r, tz_offset):

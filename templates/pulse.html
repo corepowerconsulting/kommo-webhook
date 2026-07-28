@@ -595,17 +595,19 @@ function renderAsesores(porAsesor, minMuestra) {
   const min = minMuestra || 10;
   let puesto = 0;
   el.innerHTML = porAsesor.map(a => {
-    // Solo llevan puesto los que tienen muestra suficiente: rankear a alguien
-    // con 3 respuestas contra alguien con 300 no compara nada.
-    const rank = a.muestra_suficiente
-      ? `<span class="text-xs font-bold text-slate-400 w-5 text-right">${++puesto}</span>`
-      : `<span class="text-xs text-slate-300 w-5 text-right">—</span>`;
-    const aviso = a.muestra_suficiente ? '' :
-      `<span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-         pocas respuestas
-       </span>`;
+    // Solo llevan puesto los comparables: rankear a alguien con 3 respuestas
+    // contra alguien con 300 no compara nada, y 'Sin asignar' no es una
+    // persona — si compitiera, "nadie" podria salir primero.
+    const rank = a.sin_puesto
+      ? `<span class="text-xs text-slate-300 w-5 text-right">—</span>`
+      : `<span class="text-xs font-bold text-slate-400 w-5 text-right">${++puesto}</span>`;
+    const aviso = a.sin_puesto
+      ? `<span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+           ${a.sin_puesto}
+         </span>`
+      : '';
     return `
-    <div class="row-hover flex items-center justify-between px-2 py-3 ${a.muestra_suficiente ? '' : 'opacity-60'}">
+    <div class="row-hover flex items-center justify-between px-2 py-3 ${a.sin_puesto ? 'opacity-60' : ''}">
       <div class="flex items-center gap-2.5 min-w-0">
         ${rank}
         <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
@@ -622,7 +624,8 @@ function renderAsesores(porAsesor, minMuestra) {
       Ordenado por <strong class="text-slate-500">mediana</strong>: la mitad de las respuestas
       tardó menos que ese tiempo. Se usa en vez del promedio porque una sola respuesta muy
       lenta lo distorsiona. <strong class="text-slate-500">p90</strong> = el 10% peor tardó más
-      que eso. Con menos de ${min} respuestas no se asigna puesto.
+      que eso. No se asigna puesto con menos de ${min} respuestas, ni a los leads sin
+      responsable asignado.
     </div>`;
 }
 
