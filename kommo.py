@@ -10,7 +10,7 @@ import calendar
 from collections import defaultdict, Counter
 import os
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, execute_values
 from pulse_config import PULSE_CONFIG, ASESORES
 
 app = Flask(__name__)
@@ -174,33 +174,40 @@ def msjs_entrantes(data):
             salida.add((str(lead_id), ts))
     return salida
 
-def guardar_msjs_entrantes(subdomain, data, cursor=None):
-    """Guarda los mensajes entrantes del payload en 'mensajes_cliente'.
+def insertar_msjs_cliente(cursor, subdomain, filas):
+    """Inserta (lead_id, ts) en 'mensajes_cliente' en UNA sola ida a la base.
 
-    Es la fuente para saber cuando empezo a esperar el cliente. Si se pasa un
-    cursor se reutiliza (para el backfill, que hace miles de inserts en una
-    sola transaccion); si no, abre su propia conexion."""
+    execute_values manda un INSERT multi-fila; executemany manda una sentencia
+    por fila, y contra Supabase la latencia de red domina: en el backfill eso
+    era la diferencia entre ~30 y varios miles de mensajes por segundo."""
+    if not filas:
+        return 0
+    execute_values(
+        cursor,
+        'INSERT INTO mensajes_cliente (subdomain, lead_id, ts) VALUES %s '
+        'ON CONFLICT DO NOTHING',
+        [(subdomain, lead_id, ts) for lead_id, ts in filas]
+    )
+    return len(filas)
+
+def guardar_msjs_entrantes(subdomain, data):
+    """Guarda los mensajes entrantes de UN payload (camino del webhook).
+
+    Es la fuente para saber cuando empezo a esperar el cliente."""
     filas = msjs_entrantes(data)
     if not filas:
         return 0
-    propia = cursor is None
-    conn = get_conn() if propia else None
-    c = conn.cursor() if propia else cursor
+    conn = get_conn()
     try:
-        c.executemany(
-            'INSERT INTO mensajes_cliente (subdomain, lead_id, ts) VALUES (%s, %s, %s) '
-            'ON CONFLICT DO NOTHING',
-            [(subdomain, lead_id, ts) for lead_id, ts in filas]
-        )
-        if propia:
-            conn.commit()
-        return len(filas)
+        c = conn.cursor()
+        n = insertar_msjs_cliente(c, subdomain, filas)
+        conn.commit()
+        return n
     except Exception as e:
         print(f"❌ Error mensajes_cliente: {e}")
         return 0
     finally:
-        if propia:
-            conn.close()
+        conn.close()
 
 # ========================
 # GUARDAR EVENTO
@@ -628,16 +635,19 @@ def backfill_mensajes():
                 (subdomain, limit, offset)
             )
             rows = read_c.fetchall()
+            # Acumular toda la pagina y hacer UN solo insert: un round-trip por
+            # evento contra Supabase daba ~30 mensajes/seg, inviable para las
+            # decenas de miles de eventos que hay.
+            filas = set()
             for row in rows:
                 if not row['raw_data']:
                     continue
                 try:
-                    guardados += guardar_msjs_entrantes(
-                        subdomain, json.loads(row['raw_data']), cursor=write_c
-                    )
+                    filas |= msjs_entrantes(json.loads(row['raw_data']))
                 except Exception as e:
                     errores += 1
                     print(f"⚠️ Backfill mensajes: {e}")
+            guardados += insertar_msjs_cliente(write_c, subdomain, filas)
             leidos  += len(rows)
             offset  += len(rows)
             hay_mas  = len(rows) == limit
