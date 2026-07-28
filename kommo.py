@@ -5,7 +5,7 @@ import secrets
 import threading
 from datetime import datetime, timedelta
 import calendar
-from collections import defaultdict
+from collections import defaultdict, Counter
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -88,7 +88,10 @@ init_db()
 # HELPERS
 # ========================
 def get_custom_field(data, prefix, field_name):
-    for i in range(20):
+    """Recorre los indices de custom_fields que realmente vienen en el payload.
+    Un rango fijo (ej. range(20)) descarta en silencio los campos de leads con
+    muchos custom fields: el lead deja de medirse sin ningun error visible."""
+    for i in get_batch_indices(data, f'{prefix}[custom_fields]'):
         if data.get(f'{prefix}[custom_fields][{i}][name]') == field_name:
             val = data.get(f'{prefix}[custom_fields][{i}][values][0]')
             try:
@@ -106,8 +109,9 @@ def campos_de(subdomain):
     return PULSE_CONFIG.get(subdomain, {}).get('campos', CAMPOS_DEFAULT)
 
 def get_batch_indices(data, key_root):
-    """Kommo puede agrupar varios eventos del mismo tipo en un solo POST
-    (message[add][0], message[add][1], ...). Devuelve todos los índices presentes."""
+    """Kommo aplana las listas en claves indexadas (message[add][0],
+    message[add][1], ... / [custom_fields][0], [custom_fields][1], ...).
+    Devuelve todos los índices realmente presentes bajo key_root."""
     idxs = set()
     pattern = re.compile(re.escape(key_root) + r'\[(\d+)\]')
     for k in data.keys():
@@ -115,6 +119,19 @@ def get_batch_indices(data, key_root):
         if m:
             idxs.add(int(m.group(1)))
     return sorted(idxs)
+
+def prefix_de_lead(data, lead_id):
+    """Ubica el prefijo leads[update][i] que corresponde a ESTE lead_id.
+
+    Un mismo POST puede traer varios leads y en la tabla 'eventos' guardamos el
+    payload completo en la fila de cada uno. Asumir el índice [0] al releer esas
+    filas escribe las fechas del primer lead del batch bajo el lead_id de los
+    demás. Devuelve None si el lead no está en el payload (mejor saltarlo que
+    adivinar)."""
+    for i in get_batch_indices(data, 'leads[update]'):
+        if str(data.get(f'leads[update][{i}][id]')) == str(lead_id):
+            return f'leads[update][{i}]'
+    return None
 
 # ========================
 # GUARDAR EVENTO
@@ -183,13 +200,13 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
                 (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (subdomain, lead_id) DO UPDATE SET
-                responsible_user_id = EXCLUDED.responsible_user_id,
-                f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
-                f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
+                responsible_user_id = COALESCE(EXCLUDED.responsible_user_id, leads_estado.responsible_user_id),
+                f_ult_msj_cliente   = COALESCE(EXCLUDED.f_ult_msj_cliente,   leads_estado.f_ult_msj_cliente),
+                f_ult_msj_asesor    = COALESCE(EXCLUDED.f_ult_msj_asesor,    leads_estado.f_ult_msj_asesor),
                 evento_ts           = EXCLUDED.evento_ts,
                 actualizado_at      = EXCLUDED.actualizado_at,
-                lead_nombre         = EXCLUDED.lead_nombre,
-                status_id           = EXCLUDED.status_id
+                lead_nombre         = COALESCE(EXCLUDED.lead_nombre,         leads_estado.lead_nombre),
+                status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id)
             WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
         ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id))
         conn.commit()
@@ -401,7 +418,11 @@ def backfill():
                 if not row['raw_data']:
                     continue
                 data      = json.loads(row['raw_data'])
-                prefix    = 'leads[update][0]'
+                prefix    = prefix_de_lead(data, row['lead_id'])
+                if prefix is None:
+                    errores += 1
+                    print(f"⚠️ Backfill: lead {row['lead_id']} no está en su propio raw_data")
+                    continue
                 campos    = campos_de(row['subdomain'])
                 f_cliente = get_custom_field(data, prefix, campos['cliente'])
                 f_asesor  = get_custom_field(data, prefix, campos['asesor'])
@@ -416,13 +437,13 @@ def backfill():
                             (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (subdomain, lead_id) DO UPDATE SET
-                            responsible_user_id = EXCLUDED.responsible_user_id,
-                            f_ult_msj_cliente   = EXCLUDED.f_ult_msj_cliente,
-                            f_ult_msj_asesor    = EXCLUDED.f_ult_msj_asesor,
+                            responsible_user_id = COALESCE(EXCLUDED.responsible_user_id, leads_estado.responsible_user_id),
+                            f_ult_msj_cliente   = COALESCE(EXCLUDED.f_ult_msj_cliente,   leads_estado.f_ult_msj_cliente),
+                            f_ult_msj_asesor    = COALESCE(EXCLUDED.f_ult_msj_asesor,    leads_estado.f_ult_msj_asesor),
                             evento_ts           = EXCLUDED.evento_ts,
                             actualizado_at      = EXCLUDED.actualizado_at,
-                            lead_nombre         = EXCLUDED.lead_nombre,
-                            status_id           = EXCLUDED.status_id
+                            lead_nombre         = COALESCE(EXCLUDED.lead_nombre,         leads_estado.lead_nombre),
+                            status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id)
                         WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
                     ''', (
                         row['subdomain'], row['lead_id'], responsible_user_id,
@@ -508,10 +529,15 @@ def health_campos():
                 if not row['raw_data']:
                     continue
                 data = json.loads(row['raw_data'])
-                if not ok_cliente and get_custom_field(data, 'leads[update][0]', campos['cliente']) is not None:
-                    ok_cliente = True
-                if not ok_asesor and get_custom_field(data, 'leads[update][0]', campos['asesor']) is not None:
-                    ok_asesor = True
+                # Revisar todos los leads del batch, no solo el [0]: si el
+                # primero no trae los campos, mirar solo ese indice reporta
+                # "campo no encontrado" cuando en realidad si esta llegando.
+                for i in get_batch_indices(data, 'leads[update]'):
+                    prefix = f'leads[update][{i}]'
+                    if not ok_cliente and get_custom_field(data, prefix, campos['cliente']) is not None:
+                        ok_cliente = True
+                    if not ok_asesor and get_custom_field(data, prefix, campos['asesor']) is not None:
+                        ok_asesor = True
                 if ok_cliente and ok_asesor:
                     break
             c.execute(
@@ -538,6 +564,191 @@ def health_campos():
         'ok': all(r['ok'] for r in resultados.values()),
         'subdominios': resultados,
     })
+
+def _pctl(valores, p):
+    """Percentil por rango mas cercano. Suficiente para un diagnostico;
+    no interpola como el percentil 'exacto'."""
+    if not valores:
+        return 0
+    s = sorted(valores)
+    k = max(0, min(len(s) - 1, int(round((p / 100.0) * (len(s) - 1)))))
+    return s[k]
+
+def _reconstruir_turnos(mensajes, tz_offset, h_ini, h_fin, dias_lab):
+    """Arma los turnos cliente->asesor de cada lead y calcula, para cada uno,
+    la espera REAL (desde el primer mensaje del cliente sin responder) contra
+    lo que mide Pulse hoy (desde el ULTIMO mensaje antes de la respuesta).
+
+    Ambas se miden en tiempo efectivo (descontando horas no laborables) para
+    que sean comparables con lo que muestra el dashboard. Se descartan las
+    reactivaciones, igual que en /pulse/data."""
+    por_lead = defaultdict(list)
+    for m in mensajes:
+        if m['lead_id'] and m['ts']:
+            por_lead[m['lead_id']].append(m)
+
+    turnos = []
+    for lead_id, msgs in por_lead.items():
+        msgs.sort(key=lambda m: m['ts'])
+        primero = None   # primer mensaje del cliente aun sin responder
+        ultimo  = None   # ultimo mensaje del cliente antes de la respuesta
+        n_msjs  = 0
+        for m in msgs:
+            if m['tipo'] == 'incoming':
+                if primero is None:
+                    primero = m['ts']
+                    n_msjs = 0
+                ultimo = m['ts']
+                n_msjs += 1
+            elif m['tipo'] == 'outgoing' and primero is not None:
+                if m['ts'] - primero <= GAP_REACTIVACION_SEG:
+                    real  = _calc_tiempo_efectivo(primero, m['ts'], tz_offset, h_ini, h_fin, dias_lab)
+                    pulse = _calc_tiempo_efectivo(ultimo,  m['ts'], tz_offset, h_ini, h_fin, dias_lab)
+                    turnos.append({
+                        'lead_id':      lead_id,
+                        'msjs_cliente': n_msjs,
+                        'real_seg':     real,
+                        'pulse_seg':    pulse,
+                        'sesgo_seg':    real - pulse,
+                    })
+                primero = None
+                ultimo  = None
+    return turnos
+
+@app.route('/health/sesgo')
+def health_sesgo():
+    """Mide cuanto SUBESTIMA Pulse la espera real del cliente.
+
+    'F Ult msj cliente' guarda el ULTIMO mensaje del cliente, no el primero
+    sin responder. Si el cliente escribe a las 10:00, 10:05 y 10:10, y el
+    asesor contesta 10:12, Pulse mide 2 minutos: el cliente espero 12.
+
+    Este diagnostico reconstruye la espera real desde los eventos 'mensaje'
+    (que si tienen el created_at de cada mensaje individual) y la compara con
+    lo que Pulse reporta hoy. Es de solo lectura y de un solo uso: sirve para
+    decidir si vale la pena cambiar la metrica.
+
+    Como no sabemos de antemano que campos manda Kommo en el webhook de
+    mensajes, primero reporta las claves encontradas; si no hay forma de saber
+    la direccion (entrante/saliente) lo dice y no inventa numeros.
+
+    No devuelve nombres de lead ni texto de mensajes, solo ids y duraciones."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+
+    try:
+        limite = min(int(request.args.get('limite', 3000)), 20000)
+    except ValueError:
+        limite = 3000
+
+    cfg = PULSE_CONFIG[subdomain]
+    tz_offset    = cfg['tz_offset']
+    h_ini, h_fin = cfg['horario']
+    dias_lab     = cfg['dias_laborables']
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute(
+            "SELECT lead_id, raw_data FROM eventos "
+            "WHERE subdomain = %s AND tipo_evento = 'mensaje' "
+            "ORDER BY id DESC LIMIT %s",
+            (subdomain, limite)
+        )
+        rows = c.fetchall()
+    finally:
+        conn.close()
+
+    # El mismo POST se guarda una vez por cada mensaje del batch, asi que hay
+    # que deduplicar por id de mensaje antes de reconstruir las conversaciones.
+    claves = Counter()
+    mensajes = {}
+    for row in rows:
+        if not row['raw_data']:
+            continue
+        try:
+            data = json.loads(row['raw_data'])
+        except (ValueError, TypeError):
+            continue
+        for i in get_batch_indices(data, 'message[add]'):
+            pref = f'message[add][{i}]'
+            for k in data:
+                if k.startswith(pref + '['):
+                    claves[k[len(pref):]] += 1
+            ts = data.get(f'{pref}[created_at]')
+            mid = data.get(f'{pref}[id]') or f"{row['lead_id']}|{ts}|{i}"
+            try:
+                ts = int(ts)
+            except (TypeError, ValueError):
+                continue
+            mensajes[mid] = {
+                'lead_id':    data.get(f'{pref}[element_id]') or row['lead_id'],
+                'ts':         ts,
+                'tipo':       data.get(f'{pref}[type]'),
+                'autor_id':   data.get(f'{pref}[author][id]'),
+                'autor_tipo': data.get(f'{pref}[author][type]'),
+            }
+
+    tipos = Counter(m['tipo'] for m in mensajes.values())
+    base = {
+        'subdomain':          subdomain,
+        'eventos_leidos':     len(rows),
+        'mensajes_distintos': len(mensajes),
+        'claves_del_payload': [k for k, _ in claves.most_common(40)],
+        'valores_de_type':    dict(tipos),
+    }
+
+    if not ({'incoming', 'outgoing'} & set(tipos)):
+        base['se_pudo_reconstruir'] = False
+        base['motivo'] = ("Los eventos de mensaje no traen 'type' con incoming/outgoing, "
+                          "asi que no se puede saber quien escribio. Revisa "
+                          "'claves_del_payload' para ver si hay otro campo que sirva.")
+        return jsonify(base)
+
+    turnos = _reconstruir_turnos(mensajes.values(), tz_offset, h_ini, h_fin, dias_lab)
+
+    if not turnos:
+        base['se_pudo_reconstruir'] = False
+        base['motivo'] = 'No se armo ningun turno cliente->asesor con los eventos leidos.'
+        return jsonify(base)
+
+    reales   = [t['real_seg'] for t in turnos]
+    pulses   = [t['pulse_seg'] for t in turnos]
+    sesgados = [t for t in turnos if t['sesgo_seg'] > 0]
+    peores   = sorted(turnos, key=lambda t: t['sesgo_seg'], reverse=True)[:15]
+
+    base.update({
+        'se_pudo_reconstruir': True,
+        'turnos_analizados': len(turnos),
+        'turnos_con_sesgo': len(sesgados),
+        'pct_turnos_con_sesgo': round(len(sesgados) / len(turnos) * 100, 1),
+        'espera_real': {
+            'promedio': _fmt_seg(round(sum(reales) / len(reales))),
+            'mediana':  _fmt_seg(_pctl(reales, 50)),
+            'p90':      _fmt_seg(_pctl(reales, 90)),
+        },
+        'lo_que_mide_pulse_hoy': {
+            'promedio': _fmt_seg(round(sum(pulses) / len(pulses))),
+            'mediana':  _fmt_seg(_pctl(pulses, 50)),
+            'p90':      _fmt_seg(_pctl(pulses, 90)),
+        },
+        'subestimacion': {
+            'promedio': _fmt_seg(round((sum(reales) - sum(pulses)) / len(turnos))),
+            'p90':      _fmt_seg(_pctl([t['sesgo_seg'] for t in turnos], 90)),
+            'peor':     _fmt_seg(max(t['sesgo_seg'] for t in turnos)),
+        },
+        'peores_casos': [
+            {
+                'lead_id':      t['lead_id'],
+                'msjs_cliente': t['msjs_cliente'],
+                'espera_real':  _fmt_seg(t['real_seg']),
+                'pulse_dice':   _fmt_seg(t['pulse_seg']),
+            }
+            for t in peores
+        ],
+    })
+    return jsonify(base)
 
 # ========================
 # PULSE

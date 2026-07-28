@@ -41,7 +41,7 @@ PULSE_CONFIG = {
         ]
     },
     'tucoytico': {
-        'nombre': 'Tu Coy Tico',
+        'nombre': 'TuCoyTico',
         'crm_domain': 'tucoytico.kommo.com',
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
         'tz_offset': -6,

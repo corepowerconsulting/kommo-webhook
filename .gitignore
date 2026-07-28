@@ -1,0 +1,22 @@
+# Entorno virtual
+env/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Variables de entorno (DATABASE_URL, SECRET_KEY, PULSE_PW_*)
+.env
+.env.*
+
+# Configuracion local de Claude Code
+.claude/
+
+# Editores / SO
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
