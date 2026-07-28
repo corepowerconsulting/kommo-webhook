@@ -7,7 +7,7 @@ import time
 import threading
 from datetime import datetime, timedelta
 import calendar
-from collections import defaultdict, Counter
+from collections import defaultdict
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
@@ -569,6 +569,12 @@ def backfill():
 # esperar el cliente: el primer mensaje suyo posterior a la respuesta anterior
 # del asesor en ese lead. Es re-ejecutable (idempotente) y solo toca filas que
 # tengan mensajes guardados; el resto queda en NULL y cae al valor viejo.
+#
+# La ventana se acota contra f_ult_msj_asesor, NO contra f_ult_msj_cliente:
+# f_ult_msj_cliente lo escribe una automatizacion de Kommo y no coincide al
+# segundo con el created_at real del mensaje. Acotar por ahi descartaba
+# mensajes validos por unos segundos de deriva entre los dos relojes
+# (cobertura medida: 11% con esa condicion contra ~29% sin ella).
 SQL_RECALCULAR_PRIMER_MSJ = '''
     UPDATE tiempos_respuesta t
     SET f_primer_msj_cliente = (
@@ -576,7 +582,7 @@ SQL_RECALCULAR_PRIMER_MSJ = '''
         FROM mensajes_cliente m
         WHERE m.subdomain = t.subdomain
           AND m.lead_id   = t.lead_id
-          AND m.ts       <= t.f_ult_msj_cliente
+          AND m.ts        < t.f_ult_msj_asesor
           AND m.ts        > t.f_ult_msj_asesor - %s
           AND m.ts        > COALESCE((
                 SELECT MAX(t2.f_ult_msj_asesor)
@@ -853,20 +859,20 @@ def health_sesgo():
     Kommo solo manda webhook de los mensajes ENTRANTES (verificado: 100% de
     los eventos 'mensaje' tienen type=incoming en las 4 cuentas), asi que la
     hora de la respuesta del asesor no esta en 'eventos'. Se combina entonces:
-      - de 'eventos': cada mensaje del cliente con su created_at exacto
+      - de 'mensajes_cliente':  cada mensaje del cliente con su created_at
       - de 'tiempos_respuesta': f_ult_msj_asesor, la hora de la respuesta
 
-    Es de solo lectura y de un solo uso: sirve para decidir si vale la pena
-    cambiar la metrica. No devuelve nombres de lead ni texto de mensajes,
-    solo ids y duraciones."""
+    Lee de 'mensajes_cliente' a proposito, no del JSON crudo de 'eventos': es la
+    misma tabla que alimenta la metrica corregida, asi que si el diagnostico y
+    el dashboard difieren, el problema esta a la vista y no escondido en dos
+    caminos distintos que leen lo mismo de dos formas. Requiere haber corrido
+    /backfill-mensajes.
+
+    Es de solo lectura. No devuelve nombres de lead ni texto de mensajes, solo
+    ids y duraciones."""
     subdomain = request.args.get('subdomain', '').strip()
     if subdomain not in PULSE_CONFIG:
         return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
-
-    try:
-        limite = min(int(request.args.get('limite', 3000)), 20000)
-    except ValueError:
-        limite = 3000
 
     cfg = PULSE_CONFIG[subdomain]
     tz_offset    = cfg['tz_offset']
@@ -877,12 +883,10 @@ def health_sesgo():
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         c.execute(
-            "SELECT lead_id, raw_data FROM eventos "
-            "WHERE subdomain = %s AND tipo_evento = 'mensaje' "
-            "ORDER BY id DESC LIMIT %s",
-            (subdomain, limite)
+            'SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s',
+            (subdomain,)
         )
-        rows = c.fetchall()
+        entrantes = [dict(r) for r in c.fetchall()]
         c.execute(
             "SELECT DISTINCT lead_id, f_ult_msj_asesor AS ts FROM tiempos_respuesta "
             "WHERE subdomain = %s AND f_ult_msj_asesor IS NOT NULL",
@@ -892,51 +896,16 @@ def health_sesgo():
     finally:
         conn.close()
 
-    # El mismo POST se guarda una vez por cada mensaje del batch, asi que hay
-    # que deduplicar por id de mensaje antes de reconstruir las conversaciones.
-    claves = Counter()
-    mensajes = {}
-    for row in rows:
-        if not row['raw_data']:
-            continue
-        try:
-            data = json.loads(row['raw_data'])
-        except (ValueError, TypeError):
-            continue
-        for i in get_batch_indices(data, 'message[add]'):
-            pref = f'message[add][{i}]'
-            for k in data:
-                if k.startswith(pref + '['):
-                    claves[k[len(pref):]] += 1
-            ts = data.get(f'{pref}[created_at]')
-            mid = data.get(f'{pref}[id]') or f"{row['lead_id']}|{ts}|{i}"
-            try:
-                ts = int(ts)
-            except (TypeError, ValueError):
-                continue
-            mensajes[mid] = {
-                'lead_id':    data.get(f'{pref}[element_id]') or row['lead_id'],
-                'ts':         ts,
-                'tipo':       data.get(f'{pref}[type]'),
-                'autor_id':   data.get(f'{pref}[author][id]'),
-                'autor_tipo': data.get(f'{pref}[author][type]'),
-            }
-
-    tipos = Counter(m['tipo'] for m in mensajes.values())
-    entrantes = [m for m in mensajes.values() if m['tipo'] != 'outgoing']
     base = {
         'subdomain':            subdomain,
-        'eventos_leidos':       len(rows),
-        'mensajes_distintos':   len(mensajes),
         'mensajes_del_cliente': len(entrantes),
         'respuestas_de_asesor': len(respuestas),
-        'claves_del_payload':   [k for k, _ in claves.most_common(40)],
-        'valores_de_type':      dict(tipos),
     }
 
     if not entrantes:
         base['se_pudo_reconstruir'] = False
-        base['motivo'] = 'No hay mensajes entrantes en los eventos leidos.'
+        base['motivo'] = ('No hay filas en mensajes_cliente para este subdominio. '
+                          'Corre /backfill-mensajes?subdomain=' + subdomain + ' primero.')
         return jsonify(base)
     if not respuestas:
         base['se_pudo_reconstruir'] = False
@@ -950,8 +919,7 @@ def health_sesgo():
 
     if not turnos:
         base['se_pudo_reconstruir'] = False
-        base['motivo'] = ('Ninguna respuesta del asesor tiene los mensajes del cliente '
-                          'dentro del rango leido. Proba subiendo ?limite=.')
+        base['motivo'] = 'Ninguna respuesta del asesor tiene mensajes del cliente en su ventana.'
         return jsonify(base)
 
     reales   = [t['real_seg'] for t in turnos]
