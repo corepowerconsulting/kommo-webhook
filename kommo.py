@@ -3,6 +3,7 @@ import bisect
 import json
 import re
 import secrets
+import time
 import threading
 from datetime import datetime, timedelta
 import calendar
@@ -591,6 +592,10 @@ def backfill_mensajes():
     los mensajes que lleguen de ahora en adelante tendrian la espera bien
     medida. Paginado igual que /backfill.
 
+    Cada llamada procesa lo que alcance en PRESUPUESTO_SEG y devuelve en
+    'siguiente' donde continuar. Sin ese limite haria falta una llamada por
+    cada 500 eventos, y hay decenas de miles.
+
     Con ?recalcular=1 (o al terminar la ultima pagina) corre el UPDATE que
     recalcula el inicio de la espera. Ese paso es idempotente."""
     subdomain = request.args.get('subdomain', '').strip()
@@ -601,33 +606,42 @@ def backfill_mensajes():
     except ValueError:
         offset = 0
     limit = 500
+    # Por debajo del timeout tipico de un cliente HTTP (60s), para que la
+    # respuesta llegue en vez de cortarse a mitad.
+    PRESUPUESTO_SEG = 45
 
     conn = get_conn()
     try:
         read_c  = conn.cursor(cursor_factory=RealDictCursor)
         write_c = conn.cursor()
-        read_c.execute(
-            "SELECT raw_data FROM eventos "
-            "WHERE subdomain = %s AND tipo_evento = 'mensaje' "
-            "ORDER BY id DESC LIMIT %s OFFSET %s",
-            (subdomain, limit, offset)
-        )
-        rows = read_c.fetchall()
 
+        arranque  = time.monotonic()
         guardados = 0
         errores   = 0
-        for row in rows:
-            if not row['raw_data']:
-                continue
-            try:
-                guardados += guardar_msjs_entrantes(
-                    subdomain, json.loads(row['raw_data']), cursor=write_c
-                )
-            except Exception as e:
-                errores += 1
-                print(f"⚠️ Backfill mensajes: {e}")
+        leidos    = 0
+        hay_mas   = True
+        while hay_mas and time.monotonic() - arranque < PRESUPUESTO_SEG:
+            read_c.execute(
+                "SELECT raw_data FROM eventos "
+                "WHERE subdomain = %s AND tipo_evento = 'mensaje' "
+                "ORDER BY id DESC LIMIT %s OFFSET %s",
+                (subdomain, limit, offset)
+            )
+            rows = read_c.fetchall()
+            for row in rows:
+                if not row['raw_data']:
+                    continue
+                try:
+                    guardados += guardar_msjs_entrantes(
+                        subdomain, json.loads(row['raw_data']), cursor=write_c
+                    )
+                except Exception as e:
+                    errores += 1
+                    print(f"⚠️ Backfill mensajes: {e}")
+            leidos  += len(rows)
+            offset  += len(rows)
+            hay_mas  = len(rows) == limit
 
-        hay_mas = len(rows) == limit
         recalculado = None
         if not hay_mas or request.args.get('recalcular') == '1':
             write_c.execute(SQL_RECALCULAR_PRIMER_MSJ, (GAP_REACTIVACION_SEG, subdomain))
@@ -649,15 +663,18 @@ def backfill_mensajes():
 
         return jsonify({
             'offset':                  offset,
-            'eventos_procesados':      len(rows),
-            'mensajes_guardados':      guardados,
+            'eventos_procesados':      leidos,
+            'segundos':                round(time.monotonic() - arranque, 1),
+            'mensajes_encontrados':    guardados,
             'errores':                 errores,
             'total_mensajes_cliente':  total_msjs,
             'filas_recalculadas':      recalculado,
             'tiempos_respuesta_total': cob['total'],
             'con_inicio_real':         cob['con_inicio_real'],
             'pct_cobertura':           round(cob['con_inicio_real'] / cob['total'] * 100, 1) if cob['total'] else 0,
-            'siguiente': (f'/backfill-mensajes?subdomain={subdomain}&offset={offset + limit}'
+            # offset ya viene avanzado por el loop; sumarle limit saltearia
+            # una pagina entera de eventos sin procesar.
+            'siguiente': (f'/backfill-mensajes?subdomain={subdomain}&offset={offset}'
                           if hay_mas else None),
             'listo': not hay_mas,
         })
