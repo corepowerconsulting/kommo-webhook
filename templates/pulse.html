@@ -153,6 +153,7 @@
               <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
               <div class="kpi-label">Leads no respondidos</div>
               <div class="mt-1 text-sm text-slate-500">Último mensaje es del cliente, sin responder</div>
+              <div class="mt-1 text-xs text-slate-400" id="nota-no-respondidos"></div>
             </div>
           </div>
           <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -744,6 +745,12 @@ async function cargarDatos() {
 
     // Leads accionables
     document.getElementById('kpi-no-respondidos').textContent = d.no_respondidos.length.toLocaleString('es');
+    // Antes de conectar el webhook no recibimos los mensajes, asi que no se
+    // puede saber si esas conversaciones fueron respondidas. Se aclara para
+    // que no parezca que faltan leads.
+    document.getElementById('nota-no-respondidos').textContent = d.config.fecha_minima
+      ? `Desde el ${d.config.fecha_minima.split('-').reverse().join('/')}, cuando empezamos a recibir los mensajes`
+      : '';
     document.getElementById('kpi-trabajados-hoy').textContent = d.trabajados_hoy.length.toLocaleString('es');
     renderExtraLeads('panel-no-respondidos', d.no_respondidos);
     renderExtraLeads('panel-trabajados-hoy', d.trabajados_hoy);

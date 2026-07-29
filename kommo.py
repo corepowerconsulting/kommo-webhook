@@ -1077,7 +1077,7 @@ def _calc_metricas(registros, franjas, tz_offset):
                 'lead_id': r['lead_id'],
                 'nombre': r.get('lead_nombre'),
                 'fmt': _fmt_seg(r['efectivo_seg']),
-                'fecha': local_dt.strftime('%d/%m %H:%M'),
+                'fecha': _fmt_fecha_corta(local_dt),
                 'asesor': nombre_asesor(r.get('responsible_user_id')),
             })
         distribucion.append({
@@ -1147,7 +1147,7 @@ def _fmt_row(r, tz_offset):
         'nombre': r.get('lead_nombre'),
         'seg': r['efectivo_seg'],
         'fmt': _fmt_seg(r['efectivo_seg']),
-        'fecha': local_dt.strftime('%d/%m %H:%M'),
+        'fecha': _fmt_fecha_corta(local_dt),
         'asesor': nombre_asesor(r.get('responsible_user_id')),
     }
 
@@ -1156,13 +1156,22 @@ def _hoy_rango_ts(tz_offset):
     inicio = _local_date_to_ts(hoy_local.strftime('%Y-%m-%d'), tz_offset)
     return inicio, inicio + 86400
 
+def _fmt_fecha_corta(local_dt):
+    """'29/07 11:24', o '20/09/25 16:24' si no es de este anio.
+
+    Sin el anio, un lead de septiembre del anio pasado se ve identico a uno
+    de este mes y no hay forma de distinguir lo urgente de lo muerto."""
+    if local_dt.year == datetime.utcnow().year:
+        return local_dt.strftime('%d/%m %H:%M')
+    return local_dt.strftime('%d/%m/%y %H:%M')
+
 def _fmt_lead_estado(row, tz_offset, campo_fecha):
     local_dt = _ts_to_local(row[campo_fecha], tz_offset)
     return {
         'lead_id': row['lead_id'],
         'nombre':  row.get('lead_nombre'),
         'asesor':  nombre_asesor(row.get('responsible_user_id')),
-        'fecha':   local_dt.strftime('%d/%m %H:%M'),
+        'fecha':   _fmt_fecha_corta(local_dt),
     }
 
 # Constantes reservadas de Kommo, iguales en cualquier cuenta/pipeline:
@@ -1171,10 +1180,18 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
 STATUS_CERRADOS = (142, 143)
 FILTRO_SOLO_ABIERTAS = 'AND (status_id IS NULL OR status_id NOT IN (142, 143))'
 
-def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None, solo_abiertas=False):
+def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None,
+                          solo_abiertas=False, desde_ts=None):
     """Leads cuyo último mensaje en la conversación es del cliente y el
-    asesor no ha respondido después. No depende de rango de fechas: es
-    el estado pendiente ahora mismo."""
+    asesor no ha respondido después. No depende del rango de fechas del
+    filtro: es el estado pendiente ahora mismo.
+
+    desde_ts acota a partir de cuándo se conectó el webhook para este
+    cliente. De los mensajes anteriores no recibimos nada, asi que no
+    podemos saber si fueron respondidos: solo tenemos el valor que tenia
+    el campo custom al conectarnos. Sin ese piso el contador arrastraba
+    conversaciones muertas de hace un anio (medido en corepowerconsulting:
+    173 de 291 tenian mas de 3 meses) y el numero dejaba de ser accionable."""
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
@@ -1186,6 +1203,9 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None, solo_a
               AND (f_ult_msj_asesor IS NULL OR f_ult_msj_cliente > f_ult_msj_asesor)
         '''
         params = [subdomain]
+        if desde_ts is not None:
+            query += ' AND f_ult_msj_cliente >= %s'
+            params.append(desde_ts)
         if responsible_user_id:
             query += ' AND responsible_user_id = %s'
             params.append(responsible_user_id)
@@ -1420,7 +1440,11 @@ def pulse_data():
                 for i, nombre in enumerate(nombres)
             ]
 
-        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_id, solo_abiertas)
+        # Una sola vez: _fecha_minima hace un MIN sobre toda la tabla eventos.
+        fecha_min = _fecha_minima(subdomain)
+        piso_captura = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
+
+        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_id, solo_abiertas, piso_captura)
         trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_id, solo_abiertas)
 
         return jsonify({
@@ -1432,7 +1456,7 @@ def pulse_data():
                 'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
                 'asesores':    _lista_asesores(subdomain),
                 'asesor_actual': nombre_asesor(asesor_id) if asesor_id else None,
-                'fecha_minima': _fecha_minima(subdomain),
+                'fecha_minima': fecha_min,
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
                 # Que porcion de los registros mide desde el PRIMER mensaje sin
