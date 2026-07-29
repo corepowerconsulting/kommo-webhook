@@ -798,6 +798,94 @@ def health_actividad():
         'subdominios': resultado,
     })
 
+@app.route('/health/alta')
+def health_alta():
+    """Herramienta para dar de alta una cuenta nueva.
+
+    Sin ?subdomain: lista TODOS los subdominios que estan mandando eventos,
+    incluidos los que todavia no estan en PULSE_CONFIG. Sirve para confirmar
+    que el webhook de una cuenta nueva ya esta conectado.
+
+    Con ?subdomain=X: lista los nombres de campos custom que realmente llegan,
+    con un valor de ejemplo. Cada cuenta de Kommo nombra distinto sus campos de
+    fecha de ultimo mensaje ('F Ult msj cliente', 'F ult msj cliente seg',
+    'F utl msj cliente'...), asi que hay que leerlos en vez de adivinarlos: un
+    nombre mal configurado no da error, simplemente no mide nada.
+
+    Los campos cuyo valor parece un epoch de 10 digitos son los candidatos."""
+    subdomain = request.args.get('subdomain', '').strip()
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+
+        if not subdomain:
+            c.execute('''SELECT subdomain,
+                                COUNT(*)              AS eventos,
+                                MAX(capturado_at)     AS ultimo
+                         FROM eventos GROUP BY 1 ORDER BY 2 DESC''')
+            filas = [dict(r) for r in c.fetchall()]
+            for f in filas:
+                f['configurado_en_pulse'] = f['subdomain'] in PULSE_CONFIG
+            return jsonify({
+                'subdominios': filas,
+                'como_seguir': 'Volve a llamar con ?subdomain=<nombre> para ver sus campos custom.',
+            })
+
+        c.execute(
+            "SELECT raw_data FROM eventos "
+            "WHERE subdomain = %s AND tipo_evento = 'lead_update' "
+            "ORDER BY id DESC LIMIT 300",
+            (subdomain,)
+        )
+        rows = c.fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return jsonify({
+            'subdomain': subdomain,
+            'error': 'No hay eventos lead_update de este subdominio. '
+                     'Revisa que el webhook este conectado en Kommo.',
+        }), 404
+
+    vistos = {}
+    for row in rows:
+        if not row['raw_data']:
+            continue
+        try:
+            data = json.loads(row['raw_data'])
+        except (ValueError, TypeError):
+            continue
+        for i in get_batch_indices(data, 'leads[update]'):
+            pref = f'leads[update][{i}]'
+            for j in get_batch_indices(data, f'{pref}[custom_fields]'):
+                nombre = data.get(f'{pref}[custom_fields][{j}][name]')
+                valor  = data.get(f'{pref}[custom_fields][{j}][values][0]')
+                if not nombre:
+                    continue
+                v = vistos.setdefault(nombre, {'campo': nombre, 'veces': 0, 'ejemplo': None,
+                                               'parece_fecha': False})
+                v['veces'] += 1
+                if valor and v['ejemplo'] is None:
+                    v['ejemplo'] = str(valor)[:40]
+                    # Un epoch de 10 digitos es lo que guardan los campos de fecha.
+                    if str(valor).isdigit() and len(str(valor)) == 10:
+                        v['parece_fecha'] = True
+                        try:
+                            v['ejemplo_legible'] = datetime.utcfromtimestamp(int(valor)).strftime('%Y-%m-%d %H:%M UTC')
+                        except (ValueError, OSError):
+                            pass
+
+    campos = sorted(vistos.values(), key=lambda x: (not x['parece_fecha'], -x['veces']))
+    return jsonify({
+        'subdomain':           subdomain,
+        'configurado_en_pulse': subdomain in PULSE_CONFIG,
+        'eventos_revisados':   len(rows),
+        'campos_encontrados':  len(campos),
+        'candidatos_a_fecha':  [c for c in campos if c['parece_fecha']],
+        'todos_los_campos':    campos,
+    })
+
 @app.route('/health/primer-evento')
 def health_primer_evento():
     """Muestra el evento con el timestamp mas antiguo por subdominio,

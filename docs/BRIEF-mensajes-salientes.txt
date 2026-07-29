@@ -1,0 +1,269 @@
+================================================================================
+BRIEF TECNICO — CAPTURAR MENSAJES SALIENTES DEL ASESOR
+Proyecto: kommo-webhook / PULSE
+Fecha: 29 de julio de 2026
+================================================================================
+
+QUE NECESITAMOS 
+--------------------------------------
+Poder registrar CUANDO y QUIEN respondio cada mensaje de un cliente, con
+precision de segundos. Hoy no lo sabemos: Kommo no nos manda los mensajes
+salientes y dependemos de un campo que un bot actualiza.
+
+
+================================================================================
+1. QUE ES ESTE SISTEMA
+================================================================================
+
+Core Power Consulting administra el CRM Kommo de varios
+clientes. Este sistema mide CUANTO TARDA CADA ASESOR EN RESPONDERLE A UN
+CLIENTE, y lo muestra en un dashboard llamado PULSE, uno por cuenta.
+
+Kommo manda webhooks a nuestro servidor cada vez que pasa algo (llega un
+mensaje, cambia un lead). Nosotros guardamos eso en PostgreSQL y calculamos
+los tiempos de respuesta.
+
+4 cuentas de Kommo en produccion:
+  - corepowerconsulting
+  - autonica
+  - tucoytico
+  - ventasdirectas
+  - lizondro homes
+  - camara china
+
+
+================================================================================
+2. DONDE ESTA TODO
+================================================================================
+
+Codigo:      https://github.com/corepowerconsulting/kommo-webhook
+Produccion:  https://kommo-webhook-mp4u.onrender.com
+Hosting:     Render (plan Starter, USD 7/mes)
+Base:        PostgreSQL en Supabase
+
+Stack: Python 3 + Flask + psycopg2 + gunicorn. Sin framework de ORM, SQL a mano.
+
+Archivos:
+
+  kommo.py              TODA la aplicacion: webhook, endpoints,
+                        calculos, dashboard. Un solo archivo.
+  pulse_config.py       Configuracion por cuenta: horario laboral,
+                        dias habiles, zona horaria, nombres de los campos
+                        custom de Kommo, y el diccionario de asesores.
+  templates/pulse.html  Dashboard (HTML + JS + Chart.js).
+  Procfile                        — Comando de arranque.
+  
+
+Variables de entorno en Render:
+  DATABASE_URL          conexion a Supabase
+  SECRET_KEY            firma de sesiones Flask
+  PULSE_PW_<SUBDOMAIN>  password del dashboard de cada cuenta
+
+Arranque (Start Command en el panel de Render — OJO: tiene prioridad sobre el
+Procfile del repo, hay que cambiarlo ahi):
+  gunicorn --timeout 120 --workers 1 --threads 8 kommo:app
+
+
+================================================================================
+3. TABLAS
+================================================================================
+
+eventos              Todo webhook que llega, crudo.
+                     (id, subdomain, tipo_evento, lead_id, timestamp,
+                      raw_data TEXT con el POST completo en JSON, capturado_at)
+                     tipo_evento: 'mensaje' | 'lead_update' | 'lead_status' |
+                                  'lead_responsible'
+                     IMPORTANTE: capturado_at es CUANDO LO RECIBIMOS NOSOTROS.
+                     El campo 'timestamp' viene de Kommo y puede ser viejo.
+
+mensajes_cliente     Un mensaje ENTRANTE del cliente por fila.
+                     (subdomain, lead_id, ts)  PK compuesta.
+                     Esta es la tabla que hay que espejar para los salientes.
+
+tiempos_respuesta    Una medicion de respuesta por fila.
+                     (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor,
+                      tiempo_respuesta_seg, capturado_at, responsible_user_id,
+                      lead_nombre, f_primer_msj_cliente)
+                     UNIQUE (subdomain, lead_id, f_ult_msj_asesor)
+
+leads_estado         Estado vigente de cada lead (para "sin responder").
+                     PK (subdomain, lead_id)
+
+Todos los timestamps son epoch UNIX en segundos (BIGINT), en UTC.
+La conversion a hora local se hace en Python con el tz_offset de cada cuenta.
+
+
+================================================================================
+4. EL PROBLEMA A RESOLVER  
+================================================================================
+
+VERIFICADO: Kommo NO nos manda los mensajes salientes.
+
+De ~53.000 eventos de tipo 'mensaje' recibidos en las 4 cuentas, el 100% tiene
+type='incoming'. Cero salientes.
+
+Consecuencia: no sabemos cuando respondio el asesor. Para saberlo dependemos de
+un campo custom de Kommo (ej. "F ult msj asesor") que un SalesBot actualiza en
+cada mensaje del asesor. Ese campo tiene CUATRO problemas:
+
+  a) PRECISION DE MINUTO. El campo siempre cae en segundo :00 — trunca los
+     segundos. Verificado: un mensaje real de 16:06:17 quedo como 16:06:00.
+
+  b) SOLO GUARDA EL ULTIMO. Se sobrescribe en cada mensaje. 
+
+  c) DEPENDE DE LA CONFIGURACION DE CADA CLIENTE.
+
+  d) NO DICE QUIEN RESPONDIO. Hoy atribuimos la respuesta a
+     responsible_user_id, que es el DUEÑO del lead, no quien contesto.
+
+LO QUE GANAMOS SI SE RESUELVE:
+  1. Tiempo de respuesta sin depender de ningun bot.
+  2. Atribucion correcta: quien contesto de verdad.
+  3. Independencia de como cada cliente configure su Kommo.
+
+
+================================================================================
+5. COMO ES EL PAYLOAD QUE YA RECIBIMOS (para referencia)
+================================================================================
+
+Kommo manda POST con form-data APLANADO en claves con indices, no JSON:
+
+  account[subdomain]                      = corepowerconsulting
+  message[add][0][id]                     = <id del mensaje>
+  message[add][0][element_id]             = <lead_id>
+  message[add][0][created_at]             = <epoch en segundos>
+  message[add][0][type]                   = incoming        <-- siempre incoming
+  message[add][0][author][id]             = <id del autor>
+  message[add][0][author][type]           = ...
+  message[add][0][author][name]           = ...
+  message[add][0][text]                   = ...
+  message[add][0][chat_id] / [talk_id] / [contact_id] / [entity_id]
+  message[add][0][element_type] / [entity_type] / [message_type] / [origin]
+  message[add][0][attachment][type] / [link] / [file_name]
+
+Un mismo POST puede traer VARIOS mensajes: message[add][0], message[add][1], ...
+Hay un helper para eso: get_batch_indices() en kommo.py:137.
+
+Ojo con esto porque ya nos causo un bug: guardabamos el POST completo en la
+fila de cada mensaje del batch, y al releerlo asumiamos el indice [0], mezclando
+datos entre leads.
+
+
+================================================================================
+7. DONDE ENCHUFAR EL CODIGO NUEVO
+================================================================================
+
+El camino de los mensajes entrantes ya esta hecho y conviene copiarlo:
+
+  kommo.py:162   msjs_entrantes(data)
+                 Extrae (lead_id, ts) de cada mensaje con type='incoming' del
+                 payload. Devuelve un set para no duplicar.
+
+  kommo.py:182   insertar_msjs_cliente(cursor, subdomain, filas)
+                 INSERT multi-fila con execute_values + ON CONFLICT DO NOTHING.
+                 IMPORTANTE: usar execute_values y no executemany. Con
+                 executemany (un round-trip por fila) el backfill procesaba 30
+                 mensajes por segundo; con execute_values, 800.
+
+  kommo.py:198   guardar_msjs_entrantes(subdomain, data)
+                 Camino del webhook en vivo (un payload, pocas filas).
+
+  kommo.py:303   webhook()  — el endpoint que recibe todo
+  kommo.py:311   _procesar_webhook(data)  — el procesamiento en background
+
+
+Las tablas se crean solas en init_db() (kommo.py:41), que corre al arrancar la
+app. No hay sistema de migraciones: se agrega el CREATE TABLE IF NOT EXISTS o
+el ALTER TABLE ... ADD COLUMN IF NOT EXISTS ahi y listo.
+
+
+================================================================================
+8. RESTRICCIONES  
+================================================================================
+
+*** EL WEBHOOK DEBE RESPONDER 200 DE INMEDIATO. ***
+
+Si Kommo recibe respuestas lentas o con error, DESACTIVA el webhook y dejamos
+de recibir datos sin que nada avise. Ya nos paso: tres de las cuatro cuentas
+estuvieron caidas desde fines de mayo hasta el 13 de julio y no hubo aviso 
+previo. Casi dos meses de datos perdidos, irrecuperables (Kommo no reenvia).
+
+Por eso webhook() responde 200 al toque y procesa en background.
+
+Causa raiz de esa caida, ya corregida hoy: gunicorn corria con --workers 1 y
+SIN threads, o sea un request por vez. Cualquier consulta lenta (habia un
+MIN(capturado_at) sobre 222.000 filas sin indice en cada carga del dashboard)
+bloqueaba el unico worker, y el webhook que estaba entrando esperaba hasta que
+Kommo lo daba por fallido. Se paso a --threads 8 y se agrego el indice.
+
+Otras cosas a tener en cuenta:
+
+  - NO hay pool de conexiones. Cada funcion hace get_conn() / conn.close().
+    Una sola carga de /pulse/data abre unas 5 conexiones secuenciales.
+
+  - El webhook crea UN THREAD NUEVO POR REQUEST, sin limite
+    (threading.Thread(...) en kommo.py:~307). Bajo rafaga se crean cientos de
+    threads compitiendo por conexiones a Supabase. Es un riesgo conocido que
+    decidimos no tocar todavia para no desestabilizar el webhook justo despues
+    de recuperarlo. Si tu solucion agrega carga a ese camino, conviene
+    resolverlo antes: una cola con 2-4 workers fijos.
+
+  - Si un INSERT falla, el evento se PIERDE. Ya devolvimos 200 a Kommo y el
+    codigo solo hace print del error. No hay reintentos.
+
+  - Supabase tiene limite de conexiones simultaneas.
+
+
+================================================================================
+9. COMO VERIFICAR QUE FUNCIONA
+================================================================================
+
+Endpoints de diagnostico ya existentes (sin autenticacion, se abren en el
+navegador):
+
+  /health/actividad?dias=20
+      Dias LABORABLES sin un solo evento, por cuenta. Es como detectamos que el
+      webhook se cayo. 
+
+  /health/campos
+      Verifica que los nombres de campos custom configurados existan en los
+      eventos reales de cada cuenta.
+
+  /health/sesgo?subdomain=X
+      Compara la espera REAL del cliente contra lo que reporta el dashboard.
+      Es el diagnostico que uso la logica de mensajes_cliente. 
+
+  /ping
+      Responde sin tocar la base.
+
+
+================================================================================
+10. COSAS QUE YA SABEMOS Y CONVIENE NO REDESCUBRIR
+================================================================================
+
+- get_custom_field() busca los campos custom por NOMBRE en el payload aplanado,
+  no por id, porque cada cuenta los nombro distinto (con mayusculas y typos
+  diferentes: "F Ult msj cliente", "F ult msj cliente seg", "F utl msj Asesor").
+  Los nombres estan en pulse_config.py, por cuenta.
+
+- Los user_id de Kommo son UNICOS ENTRE CUENTAS, no por cuenta. Lo verificamos:
+  de 13 ids observados en las 4 cuentas, el unico repetido es 6767570, y lo esta
+  porque es realmente la misma persona (el soporte de la consultora, que tiene
+  usuario en el CRM de cada cliente).
+
+- Los eventos duplicados por rafaga son normales: el mismo POST se guarda una
+  vez por cada mensaje del batch, asi que raw_data se repite. Hay que
+  deduplicar al leer.
+
+- El dashboard mide desde el PRIMER mensaje del cliente sin responder, no desde
+  el ultimo. Medir desde el ultimo subestimaba 2.3x en la mediana y 3.1x en el
+  p90. Ese fue el arreglo grande de esta semana.
+
+- Los tiempos se calculan en "tiempo efectivo": se descuentan las horas fuera
+  del horario laboral de cada cuenta. La funcion es _calc_tiempo_efectivo() en
+  kommo.py:1122.
+
+- El dashboard usa MEDIANA, no promedio. La distribucion tiene cola larga y el
+  promedio termina describiendo los casos raros.
+
+
