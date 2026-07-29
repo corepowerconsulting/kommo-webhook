@@ -700,6 +700,100 @@ def backfill_mensajes():
     finally:
         conn.close()
 
+@app.route('/ping')
+def ping():
+    """Responde sin tocar la base. Existe para que un servicio externo
+    (UptimeRobot, cron-job.org) mantenga el servidor despierto.
+
+    En los planes chicos de Render el servicio se duerme tras unos minutos sin
+    trafico y el siguiente request tarda decenas de segundos en responder. Si a
+    Kommo le toca ese request lento lo cuenta como fallo, y tras varios fallos
+    desactiva el webhook: dejamos de recibir mensajes sin que nada avise."""
+    return jsonify({'ok': True, 'ts': datetime.utcnow().isoformat()})
+
+@app.route('/health/actividad')
+def health_actividad():
+    """Detecta huecos en la captura: dias sin un solo evento recibido.
+
+    Si el webhook de Kommo se desactiva dejamos de recibir mensajes en
+    silencio. Nada falla, no hay error en los logs: simplemente no llega nada,
+    y el dashboard sigue mostrando numeros como si todo estuviera bien. Peor:
+    los leads de esos dias quedan sin sus mensajes, asi que la espera real no
+    se puede reconstruir y el contador de 'sin responder' los ignora.
+
+    Un dia laborable con cero eventos es la senal de que el webhook se cayo."""
+    try:
+        dias = min(int(request.args.get('dias', 45)), 180)
+    except ValueError:
+        dias = 45
+    desde = (datetime.utcnow() - timedelta(days=dias)).strftime('%Y-%m-%d')
+    hoy = datetime.utcnow().date()
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute(
+            '''SELECT subdomain,
+                      LEFT(capturado_at, 10) AS dia,
+                      COUNT(*)               AS eventos
+               FROM eventos
+               WHERE capturado_at >= %s
+               GROUP BY 1, 2''',
+            (desde,)
+        )
+        filas = c.fetchall()
+        c.execute('SELECT subdomain, MAX(capturado_at) AS ultimo FROM eventos GROUP BY 1')
+        ultimos = {r['subdomain']: r['ultimo'] for r in c.fetchall()}
+    finally:
+        conn.close()
+
+    por_sub = defaultdict(dict)
+    for f in filas:
+        por_sub[f['subdomain']][f['dia']] = f['eventos']
+
+    resultado = {}
+    for subdomain in PULSE_CONFIG:
+        conteo = por_sub.get(subdomain, {})
+        if not conteo:
+            resultado[subdomain] = {'sin_datos': True}
+            continue
+        primero = datetime.strptime(min(conteo), '%Y-%m-%d').date()
+        huecos, dias_lab = [], PULSE_CONFIG[subdomain]['dias_laborables']
+        d = primero
+        while d < hoy:
+            # Solo alarman los dias laborables: un domingo sin eventos es normal.
+            if d.weekday() in dias_lab and conteo.get(d.strftime('%Y-%m-%d'), 0) == 0:
+                huecos.append(d.strftime('%Y-%m-%d'))
+            d += timedelta(days=1)
+
+        ultimo = ultimos.get(subdomain)
+        horas_sin_recibir = None
+        if ultimo:
+            try:
+                horas_sin_recibir = round(
+                    (datetime.utcnow() - datetime.fromisoformat(ultimo)).total_seconds() / 3600, 1)
+            except ValueError:
+                pass
+
+        resultado[subdomain] = {
+            'ultimo_evento':      ultimo,
+            'horas_sin_recibir':  horas_sin_recibir,
+            'dias_laborables_sin_un_solo_evento': huecos,
+            'huecos':             len(huecos),
+            'dias_con_datos':     len(conteo),
+            'eventos_ultimos_7d': sum(
+                n for dia, n in conteo.items()
+                if dia >= (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
+            ),
+            'ok': not huecos,
+        }
+
+    return jsonify({
+        'ok': all(r.get('ok') for r in resultado.values()),
+        'ventana_dias': dias,
+        'subdominios': resultado,
+    })
+
 @app.route('/health/primer-evento')
 def health_primer_evento():
     """Muestra el evento con el timestamp mas antiguo por subdominio,
