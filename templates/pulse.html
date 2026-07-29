@@ -131,11 +131,39 @@
       </div>
     </div>
 
+    <!-- KPIs de tiempo de respuesta: es a lo que viene el dashboard, va primero -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="card">
+        <div class="flex items-center gap-2.5">
+          <span class="kpi-num text-blue-600" id="kpi-promedio">—</span>
+          <span id="kpi-badge-prom" class="tag hidden"></span>
+        </div>
+        <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
+        <div class="mt-2 text-xs text-slate-400">
+          p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
+          <span class="text-slate-300">·</span>
+          prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
+          <span class="text-slate-300">·</span>
+          máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="kpi-num text-green-600" id="kpi-pct-ideal">—</div>
+        <div class="kpi-label">Respondieron en &lt; 5 min</div>
+        <div class="mt-2 text-sm text-slate-500" id="kpi-sub-ideal"></div>
+      </div>
+      <div class="card">
+        <div class="kpi-num text-red-500" id="kpi-pct-critico">—</div>
+        <div class="kpi-label">Esperaron más de 30 min</div>
+        <div class="mt-2 text-sm text-slate-500" id="kpi-sub-critico"></div>
+      </div>
+    </div>
+
     <!-- Leads accionables: no respondidos / trabajados hoy -->
     <div class="flex items-center justify-end gap-2 -mb-1">
       <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
         <input type="checkbox" id="chk-solo-abiertas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
-        Solo conversaciones abiertas (excluir ganadas/perdidas)
+        Solo conversaciones abiertas
       </label>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -169,34 +197,6 @@
           <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
-      </div>
-    </div>
-
-    <!-- KPIs -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div class="card">
-        <div class="flex items-center gap-2.5">
-          <span class="kpi-num text-blue-600" id="kpi-promedio">—</span>
-          <span id="kpi-badge-prom" class="tag hidden"></span>
-        </div>
-        <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
-        <div class="mt-2 text-xs text-slate-400">
-          p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
-          <span class="text-slate-300">·</span>
-          prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
-          <span class="text-slate-300">·</span>
-          máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
-        </div>
-      </div>
-      <div class="card">
-        <div class="kpi-num text-green-600" id="kpi-pct-ideal">—</div>
-        <div class="kpi-label">Respondieron en &lt; 5 min</div>
-        <div class="mt-2 text-sm text-slate-500" id="kpi-sub-ideal"></div>
-      </div>
-      <div class="card">
-        <div class="kpi-num text-red-500" id="kpi-pct-critico">—</div>
-        <div class="kpi-label">Esperaron más de 30 min</div>
-        <div class="mt-2 text-sm text-slate-500" id="kpi-sub-critico"></div>
       </div>
     </div>
 
@@ -585,15 +585,17 @@ function renderTabla(containerId, rows, tipo) {
     return;
   }
   const colorClass = tipo === 'lento' ? 'text-red-500' : 'text-green-600';
+  // Dos lineas por fila, no tres: el nombre manda y el resto es contexto.
+  // Con tres lineas cada lead medía ~86px y la tarjeta se comía un tercio
+  // de la pagina.
   el.innerHTML = rows.map((r, i) => `
-    <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-3">
-      <span class="text-sm text-slate-400 w-5 text-right font-bold flex-shrink-0">${i+1}</span>
+    <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-2.5">
+      <span class="text-xs text-slate-400 w-4 text-right font-bold flex-shrink-0">${i+1}</span>
       <div class="min-w-0 flex-1">
         <div class="text-sm font-semibold text-slate-800 truncate">${r.nombre || 'Sin nombre'}</div>
-        <div class="text-xs font-mono text-slate-500 mt-0.5">#${r.lead_id}</div>
-        <div class="text-xs text-slate-500 mt-0.5 truncate">${r.asesor || ''}${r.asesor ? ' · ' : ''}${r.fecha}</div>
+        <div class="text-xs text-slate-400 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
       </div>
-      <span class="text-base font-black ${colorClass} flex-shrink-0">${r.fmt}</span>
+      <span class="text-sm font-black ${colorClass} flex-shrink-0">${r.fmt}</span>
     </a>
   `).join('');
 }
