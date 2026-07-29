@@ -181,10 +181,17 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="card">
         <div class="kpi-num text-blue-600" id="kpi-promedio">—</div>
-        <div class="kpi-label" id="label-promedio">Tiempo efectivo promedio</div>
-        <div class="mt-2 flex items-center gap-2">
+        <div class="kpi-label" id="label-promedio">Tiempo efectivo (mediana)</div>
+        <div class="mt-2 flex items-center gap-2 flex-wrap">
           <span id="kpi-badge-prom" class="tag hidden"></span>
-          <span class="text-sm text-slate-500">Máximo: <span id="kpi-maximo" class="font-semibold text-slate-600">—</span></span>
+          <span class="text-sm text-slate-500">La mitad respondió más rápido</span>
+        </div>
+        <div class="mt-2 text-xs text-slate-400 leading-relaxed">
+          p90: <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
+          <span class="text-slate-300">·</span>
+          promedio: <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
+          <span class="text-slate-300">·</span>
+          máximo: <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
         </div>
       </div>
       <div class="card">
@@ -690,7 +697,7 @@ async function cargarDatos() {
     document.getElementById('modo-nota').textContent = esFueraHorario
       ? 'Fuera de horario: tiempo real de reloj, sin saltar horas'
       : 'Tiempo efectivo: solo cuenta horas laborables';
-    document.getElementById('label-promedio').textContent = esFueraHorario ? 'Tiempo real promedio' : 'Tiempo efectivo promedio';
+    document.getElementById('label-promedio').textContent = esFueraHorario ? 'Tiempo real (mediana)' : 'Tiempo efectivo (mediana)';
     document.getElementById('titulo-distribucion').textContent = esFueraHorario
       ? 'Distribución de tiempos de espera fuera de horario'
       : 'Distribución de tiempos de respuesta efectivos';
@@ -751,10 +758,14 @@ async function cargarDatos() {
     }
 
     // KPIs
-    document.getElementById('kpi-promedio').textContent  = fmtSeg(d.metricas.promedio_seg);
+    // La cifra grande es la mediana: el promedio se lo lleva la cola larga y
+    // termina mostrando un tiempo que no espero ningun cliente real.
+    document.getElementById('kpi-promedio').textContent  = fmtSeg(d.metricas.mediana_seg);
+    document.getElementById('kpi-p90').textContent       = fmtSeg(d.metricas.p90_seg);
+    document.getElementById('kpi-prom-sec').textContent  = fmtSeg(d.metricas.promedio_seg);
     document.getElementById('kpi-maximo').textContent    = fmtSeg(d.metricas.maximo_seg);
 
-    const badge = getBadgeTag(d.metricas.promedio_seg, d.config.franjas);
+    const badge = getBadgeTag(d.metricas.mediana_seg, d.config.franjas);
     if (badge && d.metricas.total > 0) {
       const el = document.getElementById('kpi-badge-prom');
       el.textContent = badge.tag;

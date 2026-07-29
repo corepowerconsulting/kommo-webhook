@@ -1039,9 +1039,19 @@ def _get_franja_idx(seg, franjas):
     return len(franjas) - 1
 
 def _calc_metricas(registros, franjas, tz_offset):
+    """La cifra principal es la MEDIANA, no el promedio.
+
+    Con una distribucion de cola larga el promedio no describe a nadie: en
+    corepowerconsulting el promedio da ~3h mientras la mediana da ~17min,
+    porque unos pocos casos de 38 horas arrastran a cientos de 5 minutos.
+    Ningun cliente espero 3 horas. Se devuelven las tres (mediana, p90 y
+    promedio) para poder mostrar el caso tipico y la cola sin que uno tape
+    al otro."""
     if not registros:
         return {
             'total': 0,
+            'mediana_seg': 0,
+            'p90_seg': 0,
             'promedio_seg': 0,
             'maximo_seg': 0,
             'distribucion': [
@@ -1050,8 +1060,11 @@ def _calc_metricas(registros, franjas, tz_offset):
             ]
         }
     total = len(registros)
-    promedio_seg = round(sum(r['efectivo_seg'] for r in registros) / total)
-    maximo_seg = max(r['efectivo_seg'] for r in registros)
+    segs = [r['efectivo_seg'] for r in registros]
+    mediana_seg  = _pctl(segs, 50)
+    p90_seg      = _pctl(segs, 90)
+    promedio_seg = round(sum(segs) / total)
+    maximo_seg   = max(segs)
     groups = [[] for _ in franjas]
     for r in registros:
         groups[_get_franja_idx(r['efectivo_seg'], franjas)].append(r)
@@ -1074,7 +1087,14 @@ def _calc_metricas(registros, franjas, tz_offset):
             'color': f['color'],
             'leads': leads,
         })
-    return {'total': total, 'promedio_seg': promedio_seg, 'maximo_seg': maximo_seg, 'distribucion': distribucion}
+    return {
+        'total': total,
+        'mediana_seg': mediana_seg,
+        'p90_seg': p90_seg,
+        'promedio_seg': promedio_seg,
+        'maximo_seg': maximo_seg,
+        'distribucion': distribucion,
+    }
 
 # Con menos respuestas que esto, el numero de un asesor es ruido: dos
 # respuestas rapidas lo ponen primero por encima de alguien con cientos.
