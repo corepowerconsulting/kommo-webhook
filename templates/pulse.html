@@ -128,10 +128,6 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span>Días hábiles: <span id="dias-txt" class="font-semibold text-slate-700"></span></span>
         </div>
-        <div class="flex items-center gap-1.5 ml-auto text-slate-400">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span id="modo-nota">Tiempo efectivo: solo cuenta horas laborables</span>
-        </div>
       </div>
     </div>
 
@@ -151,8 +147,7 @@
             </div>
             <div>
               <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
-              <div class="kpi-label">Leads no respondidos</div>
-              <div class="mt-1 text-sm text-slate-500">Último mensaje es del cliente, sin responder</div>
+              <div class="kpi-label">Sin responder</div>
               <div class="mt-1 text-xs text-slate-400" id="nota-no-respondidos"></div>
             </div>
           </div>
@@ -168,8 +163,7 @@
             </div>
             <div>
               <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
-              <div class="kpi-label">Leads trabajados hoy</div>
-              <div class="mt-1 text-sm text-slate-500">Al menos un mensaje del asesor hoy en horario</div>
+              <div class="kpi-label">Atendidos hoy</div>
             </div>
           </div>
           <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -181,18 +175,17 @@
     <!-- KPIs -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="card">
-        <div class="kpi-num text-blue-600" id="kpi-promedio">—</div>
-        <div class="kpi-label" id="label-promedio">Tiempo efectivo (mediana)</div>
-        <div class="mt-2 flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-2.5">
+          <span class="kpi-num text-blue-600" id="kpi-promedio">—</span>
           <span id="kpi-badge-prom" class="tag hidden"></span>
-          <span class="text-sm text-slate-500">La mitad respondió más rápido</span>
         </div>
-        <div class="mt-2 text-xs text-slate-400 leading-relaxed">
-          p90: <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
+        <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
+        <div class="mt-2 text-xs text-slate-400">
+          p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
           <span class="text-slate-300">·</span>
-          promedio: <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
+          prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
           <span class="text-slate-300">·</span>
-          máximo: <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
+          máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
         </div>
       </div>
       <div class="card">
@@ -207,15 +200,6 @@
       </div>
     </div>
 
-    <!-- Benchmark -->
-    <div class="card py-3.5 px-5">
-      <div class="flex items-center gap-1.5 mb-2.5">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Referencia</span>
-      </div>
-      <div class="flex flex-wrap gap-4" id="benchmark-list"></div>
-    </div>
-
     <!-- Por asesor -->
     <div class="card" id="card-por-asesor">
       <div class="flex items-center gap-3 mb-5">
@@ -224,7 +208,7 @@
         </div>
         <div>
           <div class="section-title">Tiempo de respuesta por asesor</div>
-          <div class="section-sub" id="sub-por-asesor">Mediana del tiempo laboral efectivo — de más rápido a más lento</div>
+          <div class="section-sub" id="sub-por-asesor">Mediana · de más rápido a más lento</div>
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
@@ -237,8 +221,8 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
         </div>
         <div>
-          <div class="section-title" id="titulo-distribucion">Distribución de tiempos de respuesta efectivos</div>
-          <div class="section-sub" id="sub-distribucion">Tiempo laboral que tardó el asesor — haz clic en una franja para ver los leads</div>
+          <div class="section-title" id="titulo-distribucion">Distribución</div>
+          <div class="section-sub" id="sub-distribucion">Clic en una franja para ver los leads</div>
         </div>
       </div>
       <div class="flex flex-col lg:flex-row gap-8 items-start">
@@ -268,7 +252,7 @@
           </div>
           <div>
             <div class="section-title">Tendencia diaria</div>
-            <div class="section-sub" id="sub-tendencia">Barras: respuestas por día (por asesor) — Línea: tiempo efectivo promedio</div>
+            <div class="section-sub" id="sub-tendencia">Barras: respuestas · Línea: tiempo promedio</div>
           </div>
         </div>
         <span id="trend-rango" class="text-sm text-slate-400 mt-1"></span>
@@ -278,22 +262,19 @@
       </div>
     </div>
 
-    <!-- Top 10 -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="card">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="w-2 h-2 rounded-full bg-red-400"></span>
-          <div class="section-title">Top 10 — Más lentos</div>
+    <!-- Casos extremos: una sola tarjeta, se alterna entre lentos y rapidos -->
+    <div class="card">
+      <div class="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <div class="flex items-center gap-2">
+          <span id="punto-extremos" class="w-2 h-2 rounded-full bg-red-400"></span>
+          <div class="section-title">Casos extremos</div>
         </div>
-        <div id="tabla-lentos"></div>
-      </div>
-      <div class="card">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="w-2 h-2 rounded-full bg-green-400"></span>
-          <div class="section-title">Top 10 — Más rápidos</div>
+        <div class="inline-flex bg-slate-100 rounded-xl p-1">
+          <button id="btn-lentos"  onclick="cambiarExtremos('lentos')"  class="px-3.5 py-1.5 rounded-lg text-sm font-semibold transition">Más lentos</button>
+          <button id="btn-rapidos" onclick="cambiarExtremos('rapidos')" class="px-3.5 py-1.5 rounded-lg text-sm font-semibold transition">Más rápidos</button>
         </div>
-        <div id="tabla-rapidos"></div>
       </div>
+      <div id="tabla-extremos"></div>
     </div>
 
   </div>
@@ -311,6 +292,29 @@ let FECHA_MINIMA = null;
 let fpDesde = null;
 let fpHasta = null;
 let MODO = 'laboral';
+let EXTREMOS = 'lentos';
+let TOP_LENTOS = [];
+let TOP_RAPIDOS = [];
+
+// Los dos Top 10 vivian en tarjetas separadas y ocupaban 1782px, el 60% de la
+// pagina, empujando hacia abajo lo que el dashboard viene a mostrar. Son el
+// mismo dato ordenado al reves: una tarjeta con toggle alcanza.
+function cambiarExtremos(cual) {
+  if (EXTREMOS === cual) return;
+  EXTREMOS = cual;
+  renderExtremos();
+}
+
+function renderExtremos() {
+  const esLento = EXTREMOS === 'lentos';
+  const activo   = 'px-3.5 py-1.5 rounded-lg text-sm font-semibold transition bg-white text-blue-600 shadow-sm';
+  const inactivo = 'px-3.5 py-1.5 rounded-lg text-sm font-semibold transition text-slate-500 hover:text-slate-700';
+  document.getElementById('btn-lentos').className  = esLento ? activo : inactivo;
+  document.getElementById('btn-rapidos').className = esLento ? inactivo : activo;
+  document.getElementById('punto-extremos').className =
+    'w-2 h-2 rounded-full ' + (esLento ? 'bg-red-400' : 'bg-green-400');
+  renderTabla('tabla-extremos', esLento ? TOP_LENTOS : TOP_RAPIDOS, esLento ? 'lento' : 'rapido');
+}
 
 function leadHref(leadId) {
   return CRM_URL ? `${CRM_URL}/leads/detail/${leadId}` : '#';
@@ -627,32 +631,9 @@ function renderAsesores(porAsesor, minMuestra) {
         <div class="text-[11px] text-slate-400 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
       </div>
     </div>`;
-  }).join('') + `
-    <div class="pt-3 text-[11px] text-slate-400 leading-relaxed">
-      Ordenado por <strong class="text-slate-500">mediana</strong>: la mitad de las respuestas
-      tardó menos que ese tiempo. Se usa en vez del promedio porque una sola respuesta muy
-      lenta lo distorsiona. <strong class="text-slate-500">p90</strong> = el 10% peor tardó más
-      que eso. No se asigna puesto con menos de ${min} respuestas, ni a los leads sin
-      responsable asignado.
-    </div>`;
+  }).join('');
 }
 
-function renderBenchmark(franjas) {
-  const refs = [
-    'Lead activo, alta probabilidad de cierre',
-    'Aceptable, lead aún receptivo',
-    'Riesgo de perder el interés',
-    'Lead abandona la conversación',
-  ];
-  document.getElementById('benchmark-list').innerHTML = franjas.map((f,i) => `
-    <div class="flex items-center gap-2">
-      <span class="w-2.5 h-2.5 rounded-sm" style="background:${f.color}"></span>
-      <span class="text-sm font-semibold text-slate-600">${f.label}</span>
-      <span class="text-sm text-slate-400">—</span>
-      <span class="text-sm text-slate-500">${refs[i]||''}</span>
-    </div>
-  `).join('');
-}
 
 async function cargarDatos() {
   document.getElementById('loading').classList.remove('hidden');
@@ -695,22 +676,18 @@ async function cargarDatos() {
 
     // Textos que cambian segun el modo horario laboral / fuera de horario
     const esFueraHorario = d.config.modo === 'fuera_horario';
-    document.getElementById('modo-nota').textContent = esFueraHorario
-      ? 'Fuera de horario: tiempo real de reloj, sin saltar horas'
-      : 'Tiempo efectivo: solo cuenta horas laborables';
-    document.getElementById('label-promedio').textContent = esFueraHorario ? 'Tiempo real (mediana)' : 'Tiempo efectivo (mediana)';
+    document.getElementById('label-promedio').textContent = esFueraHorario
+      ? 'Tiempo real (mediana)'
+      : 'Tiempo de respuesta (mediana)';
     document.getElementById('titulo-distribucion').textContent = esFueraHorario
-      ? 'Distribución de tiempos de espera fuera de horario'
-      : 'Distribución de tiempos de respuesta efectivos';
-    document.getElementById('sub-distribucion').textContent = esFueraHorario
-      ? 'Mensajes que llegaron fuera de horario — tiempo real hasta que se respondió'
-      : 'Tiempo laboral que tardó el asesor — haz clic en una franja para ver los leads';
+      ? 'Distribución — fuera de horario'
+      : 'Distribución';
     document.getElementById('sub-tendencia').textContent = esFueraHorario
-      ? 'Barras: respuestas fuera de horario por día — Línea: tiempo real promedio'
-      : 'Barras: respuestas por día (por asesor) — Línea: tiempo efectivo promedio';
+      ? 'Barras: respuestas · Línea: tiempo real promedio'
+      : 'Barras: respuestas · Línea: tiempo promedio';
     document.getElementById('sub-por-asesor').textContent = esFueraHorario
-      ? 'Mediana del tiempo real fuera de horario — de más rápido a más lento'
-      : 'Mediana del tiempo laboral efectivo — de más rápido a más lento';
+      ? 'Mediana del tiempo real · de más rápido a más lento'
+      : 'Mediana · de más rápido a más lento';
 
     // No dejar elegir fechas anteriores al primer evento capturado para este cliente.
     // Ademas de bloquear el calendario, el dia se marca subrayado (marcarPrimerDia).
@@ -741,15 +718,13 @@ async function cargarDatos() {
       asesoresListados = true;
     }
 
-    renderBenchmark(d.config.franjas);
-
     // Leads accionables
     document.getElementById('kpi-no-respondidos').textContent = d.no_respondidos.length.toLocaleString('es');
     // Antes de conectar el webhook no recibimos los mensajes, asi que no se
     // puede saber si esas conversaciones fueron respondidas. Se aclara para
     // que no parezca que faltan leads.
     document.getElementById('nota-no-respondidos').textContent = d.config.fecha_minima
-      ? `Desde el ${d.config.fecha_minima.split('-').reverse().join('/')}, cuando empezamos a recibir los mensajes`
+      ? `desde ${d.config.fecha_minima.split('-').reverse().join('/')}`
       : '';
     document.getElementById('kpi-trabajados-hoy').textContent = d.trabajados_hoy.length.toLocaleString('es');
     renderExtraLeads('panel-no-respondidos', d.no_respondidos);
@@ -801,9 +776,10 @@ async function cargarDatos() {
         `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
     }
 
-    // Top 10
-    renderTabla('tabla-lentos',  d.top_lentos,  'lento');
-    renderTabla('tabla-rapidos', d.top_rapidos, 'rapido');
+    // Casos extremos: se guardan los dos y se muestra el seleccionado
+    TOP_LENTOS  = d.top_lentos;
+    TOP_RAPIDOS = d.top_rapidos;
+    renderExtremos();
 
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('content').classList.remove('hidden');
