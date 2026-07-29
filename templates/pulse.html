@@ -294,6 +294,8 @@ let distData = [];
 let CRM_URL = null;
 let asesoresListados = false;
 let FECHA_MINIMA = null;
+// Evita que el recorte del rango por defecto se vuelva un bucle de recargas.
+let RANGO_AJUSTADO = false;
 let fpDesde = null;
 let fpHasta = null;
 let MODO = 'laboral';
@@ -679,6 +681,21 @@ async function cargarDatos() {
       document.getElementById('error-state').classList.remove('hidden');
       document.getElementById('loading').classList.add('hidden');
       return;
+    }
+
+    // El primer pedido sale con el rango por defecto (30 dias atras), antes de
+    // saber desde cuando hay datos de este cliente. Si ese rango empieza antes
+    // del piso hay que rehacerlo: si no, el filtro muestra una fecha y los
+    // numeros son de otra, que es peor que cualquiera de las dos por separado.
+    if (d.config.fecha_minima && !RANGO_AJUSTADO) {
+      const desdeInput = document.getElementById('desde');
+      if (desdeInput.value && desdeInput.value < d.config.fecha_minima) {
+        RANGO_AJUSTADO = true;
+        FECHA_MINIMA = d.config.fecha_minima;
+        desdeInput.value = FECHA_MINIMA;
+        if (fpDesde) fpDesde.setDate(FECHA_MINIMA, false);
+        return cargarDatos();
+      }
     }
 
     // Header
