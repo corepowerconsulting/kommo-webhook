@@ -1526,13 +1526,20 @@ def pulse_data():
         # inicio_espera: desde cuando espera REALMENTE el cliente. Es el primer
         # mensaje suyo sin responder; 'F Ult msj cliente' guarda el ULTIMO, y
         # medir desde ahi subestima la espera (medido en produccion: 2.3x en la
-        # mediana, 3.1x en el p90). Cae al valor viejo cuando no hay mensajes
-        # guardados de esa ventana (registros anteriores a mayo 2026).
+        # mediana, 3.1x en el p90).
+        #
+        # Se toma el MAS TEMPRANO de las dos fuentes, no solo el nuestro. Las
+        # dos son validas y ninguna es completa: si Kommo dice que el cliente
+        # escribio 08:30 y el primer mensaje que capturamos es 09:15, el cliente
+        # empezo a esperar 08:30 — ese mensaje existio aunque no lo hayamos
+        # guardado. En 20 de 100 filas revisadas de corepowerconsulting nuestro
+        # dato llegaba tarde, subestimando 27 minutos en la mediana y hasta 45.
+        # LEAST ignora NULL, asi que cubre solo el caso de tener uno de los dos.
         query = '''
             SELECT DISTINCT ON (lead_id, f_ult_msj_cliente)
                 lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id, lead_nombre,
                 f_primer_msj_cliente,
-                COALESCE(f_primer_msj_cliente, f_ult_msj_cliente) AS inicio_espera
+                LEAST(f_primer_msj_cliente, f_ult_msj_cliente) AS inicio_espera
             FROM tiempos_respuesta
             WHERE subdomain = %s
               AND f_ult_msj_cliente IS NOT NULL
@@ -1542,10 +1549,10 @@ def pulse_data():
         '''
         params = [subdomain, GAP_REACTIVACION_SEG]
         if desde_str:
-            query += ' AND COALESCE(f_primer_msj_cliente, f_ult_msj_cliente) >= %s'
+            query += ' AND LEAST(f_primer_msj_cliente, f_ult_msj_cliente) >= %s'
             params.append(_local_date_to_ts(desde_str, tz_offset))
         if hasta_str:
-            query += ' AND COALESCE(f_primer_msj_cliente, f_ult_msj_cliente) <= %s'
+            query += ' AND LEAST(f_primer_msj_cliente, f_ult_msj_cliente) <= %s'
             params.append(_local_date_to_ts(hasta_str, tz_offset) + 86399)
         if asesor_id:
             query += ' AND responsible_user_id = %s'
