@@ -118,16 +118,12 @@
         <button onclick="cargarDatos()" class="btn-primary lg:ml-auto">Aplicar filtros</button>
       </div>
 
-      <!-- Info de horario / modo -->
-      <div class="flex items-center gap-6 text-sm text-slate-500 mt-4 pt-4 border-t border-slate-100 flex-wrap">
-        <div class="flex items-center gap-1.5">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>Horario laboral: <span id="horario-txt" class="font-semibold text-slate-700"></span></span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span>Días hábiles: <span id="dias-txt" class="font-semibold text-slate-700"></span></span>
-        </div>
+      <!-- Horario y dias: contexto, no un control. Va en una linea fina y
+           discreta en vez de una segunda fila con su propio separador. -->
+      <div class="mt-3 text-xs text-slate-400">
+        <span id="horario-txt" class="font-semibold text-slate-500"></span>
+        <span class="text-slate-300 mx-1.5">·</span>
+        <span id="dias-txt" class="font-semibold text-slate-500"></span>
       </div>
     </div>
 
@@ -305,6 +301,11 @@ function cambiarExtremos(cual) {
   renderExtremos();
 }
 
+// Se muestran 5, no 10: para ver "los extremos" con cinco alcanza, y quien
+// necesite mas puede hacer clic en cualquier franja de la Distribucion y ver
+// hasta 50 leads. Diez filas hacian de esta la tarjeta mas alta de la pagina.
+const TOP_N_EXTREMOS = 5;
+
 function renderExtremos() {
   const esLento = EXTREMOS === 'lentos';
   const activo   = 'px-3.5 py-1.5 rounded-lg text-sm font-semibold transition bg-white text-blue-600 shadow-sm';
@@ -313,7 +314,8 @@ function renderExtremos() {
   document.getElementById('btn-rapidos').className = esLento ? inactivo : activo;
   document.getElementById('punto-extremos').className =
     'w-2 h-2 rounded-full ' + (esLento ? 'bg-red-400' : 'bg-green-400');
-  renderTabla('tabla-extremos', esLento ? TOP_LENTOS : TOP_RAPIDOS, esLento ? 'lento' : 'rapido');
+  const datos = (esLento ? TOP_LENTOS : TOP_RAPIDOS).slice(0, TOP_N_EXTREMOS);
+  renderTabla('tabla-extremos', datos, esLento ? 'lento' : 'rapido');
 }
 
 function leadHref(leadId) {
