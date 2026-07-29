@@ -74,6 +74,11 @@ def init_db():
     c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS f_primer_msj_cliente BIGINT')
     c.execute('''CREATE INDEX IF NOT EXISTS idx_tiempos_sub_lead
                  ON tiempos_respuesta (subdomain, lead_id, f_ult_msj_asesor)''')
+    # _fecha_minima hace MIN(capturado_at) por subdominio en CADA carga del
+    # dashboard. Sin este indice es un scan de toda la tabla eventos, y con un
+    # solo worker de gunicorn ese scan bloquea el webhook que este entrando.
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_eventos_sub_capturado
+                 ON eventos (subdomain, capturado_at)''')
     # Mensajes entrantes del cliente, uno por fila. Kommo solo manda webhook de
     # los entrantes, y hasta ahora quedaban enterrados dentro del JSON de
     # 'eventos', imposibles de consultar sin parsear todo.
@@ -702,13 +707,12 @@ def backfill_mensajes():
 
 @app.route('/ping')
 def ping():
-    """Responde sin tocar la base. Existe para que un servicio externo
-    (UptimeRobot, cron-job.org) mantenga el servidor despierto.
+    """Responde sin tocar la base: sirve para saber si el servidor esta vivo
+    aunque la base este lenta o caida.
 
-    En los planes chicos de Render el servicio se duerme tras unos minutos sin
-    trafico y el siguiente request tarda decenas de segundos en responder. Si a
-    Kommo le toca ese request lento lo cuenta como fallo, y tras varios fallos
-    desactiva el webhook: dejamos de recibir mensajes sin que nada avise."""
+    Util para un monitor externo (UptimeRobot y similares) que avise cuando el
+    servicio deja de responder, que es cuando Kommo empieza a contar fallos y
+    termina desactivando el webhook."""
     return jsonify({'ok': True, 'ts': datetime.utcnow().isoformat()})
 
 @app.route('/health/actividad')
