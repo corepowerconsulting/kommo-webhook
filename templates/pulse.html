@@ -127,6 +127,15 @@
       </div>
     </div>
 
+    <!-- Aviso de cobertura: si el periodo elegido tiene dias sin captura, los
+         numeros salen de una muestra parcial y hay que decirlo. -->
+    <div id="aviso-cobertura" class="hidden card !py-3 !px-4 border-l-4 !border-l-amber-400 bg-amber-50/40">
+      <div class="flex items-start gap-2.5">
+        <svg class="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div class="text-sm text-amber-900" id="texto-cobertura"></div>
+      </div>
+    </div>
+
     <!-- KPIs de tiempo de respuesta: es a lo que viene el dashboard, va primero -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="card">
@@ -720,6 +729,22 @@ async function cargarDatos() {
         sel.appendChild(opt);
       });
       asesoresListados = true;
+    }
+
+    // Cobertura del periodo. Si faltan dias, los numeros salen de los leads
+    // que igual se movieron despues, no del periodo completo: sin este aviso
+    // un hueco de captura se lee como si fuera un dato.
+    const cob = d.config.cobertura;
+    const avisoCob = document.getElementById('aviso-cobertura');
+    if (cob && cob.pct < 95) {
+      const faltan = cob.dias_laborables - cob.dias_con_datos;
+      document.getElementById('texto-cobertura').innerHTML =
+        `<strong>Faltan datos de ${faltan} de los ${cob.dias_laborables} días hábiles de este período</strong>
+         (${cob.pct}% cubierto). Esos días el webhook no estuvo recibiendo mensajes, así que
+         los números salen solo de los leads que volvieron a moverse después. Tomalos con cuidado.`;
+      avisoCob.classList.remove('hidden');
+    } else {
+      avisoCob.classList.add('hidden');
     }
 
     // Leads accionables

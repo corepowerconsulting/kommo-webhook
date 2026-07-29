@@ -1362,25 +1362,112 @@ def _lista_asesores(subdomain):
     asesores = [a for a in asesores if a['nombre']]
     return sorted(asesores, key=lambda x: x['nombre'])
 
-def _fecha_minima(subdomain):
-    """Fecha en que EMPEZAMOS A CAPTURAR datos de este cliente (cuando se
-    conecto el webhook). Ojo: no usar el timestamp del evento (el
-    'updated_at' que manda Kommo) porque leads viejos y dormidos pueden
-    traer fechas de hace anios en el snapshot inicial al conectar - lo
-    que importa es capturado_at, cuando NOSOTROS lo recibimos."""
+def _cobertura(subdomain, desde_str, hasta_str, dias_lab):
+    """Que porcion de los dias LABORABLES del periodo elegido tiene datos.
+
+    Cuando el webhook se cae dejamos de recibir mensajes, pero el dashboard
+    igual muestra numeros para esos dias: 'F Ult msj cliente' arrastra fechas
+    viejas, asi que un lead que alguien toco en julio genera una fila fechada
+    en junio. El resultado es una muestra sesgada — solo los leads que
+    volvieron a moverse — con el mismo aspecto que una completa.
+
+    Devolver la cobertura permite decirlo en pantalla en vez de que el hueco
+    pase por dato."""
+    if not desde_str or not hasta_str:
+        return None
+    try:
+        desde = datetime.strptime(desde_str, '%Y-%m-%d').date()
+        hasta = datetime.strptime(hasta_str, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+    if desde > hasta:
+        return None
+
     conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(
-            'SELECT MIN(capturado_at) FROM eventos WHERE subdomain = %s',
-            (subdomain,)
+            '''SELECT DISTINCT LEFT(capturado_at, 10)
+               FROM eventos
+               WHERE subdomain = %s AND capturado_at >= %s AND capturado_at < %s''',
+            (subdomain, desde_str, (hasta + timedelta(days=1)).strftime('%Y-%m-%d'))
         )
-        min_capturado = c.fetchone()[0]
+        con_datos = {r[0] for r in c.fetchall()}
     finally:
         conn.close()
-    if not min_capturado:
+
+    laborables, cubiertos = 0, 0
+    d = desde
+    hoy = datetime.utcnow().date()
+    while d <= hasta and d <= hoy:
+        if d.weekday() in dias_lab:
+            laborables += 1
+            if d.strftime('%Y-%m-%d') in con_datos:
+                cubiertos += 1
+        d += timedelta(days=1)
+
+    if not laborables:
         return None
-    return min_capturado[:10]
+    return {
+        'dias_laborables': laborables,
+        'dias_con_datos':  cubiertos,
+        'pct':             round(cubiertos / laborables * 100),
+    }
+
+# Un dia laborable suelto sin eventos puede ser un feriado o un dia flojo.
+# Dos o mas seguidos ya no: eso es el webhook caido.
+MAX_DIAS_SIN_DATOS = 1
+
+def _fecha_minima(subdomain):
+    """Desde cuando la captura viene SIN CORTES para este cliente.
+
+    Antes devolvia MIN(capturado_at): el primer evento que recibimos alguna
+    vez. Pero si despues hubo semanas sin recibir nada, ese piso miente. El
+    dashboard ofrecia elegir junio como si tuviera datos, cuando tres de los
+    cuatro clientes estuvieron oscuros desde fines de mayo hasta el 13 de
+    julio: los numeros de junio salian solo de los leads que volvieron a
+    moverse en julio, una muestra sesgada con aspecto de completa.
+
+    Se busca entonces el arranque de la racha continua mas reciente, contando
+    solo dias laborables. Se calcula, no se fija a mano, para que la proxima
+    caida se acomode sola.
+
+    Sigue usando capturado_at y no el timestamp del evento: lo que importa es
+    cuando NOSOTROS recibimos, no la fecha que trae el lead (un lead dormido
+    puede llegar con fecha de hace anios en el snapshot inicial)."""
+    dias_lab = PULSE_CONFIG.get(subdomain, {}).get('dias_laborables', [0, 1, 2, 3, 4])
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            'SELECT DISTINCT LEFT(capturado_at, 10) FROM eventos WHERE subdomain = %s',
+            (subdomain,)
+        )
+        con_datos = {r[0] for r in c.fetchall() if r[0]}
+    finally:
+        conn.close()
+    if not con_datos:
+        return None
+
+    try:
+        d = datetime.strptime(max(con_datos), '%Y-%m-%d').date()
+        primero = datetime.strptime(min(con_datos), '%Y-%m-%d').date()
+    except ValueError:
+        return min(con_datos)
+
+    # Se camina hacia atras desde el ultimo dia con datos y se corta al primer
+    # hueco real.
+    candidato, faltantes = d, 0
+    while d >= primero:
+        if d.weekday() in dias_lab:
+            if d.strftime('%Y-%m-%d') in con_datos:
+                candidato, faltantes = d, 0
+            else:
+                faltantes += 1
+                if faltantes > MAX_DIAS_SIN_DATOS:
+                    break
+        d -= timedelta(days=1)
+    return candidato.strftime('%Y-%m-%d')
 
 @app.route('/pulse', methods=['GET', 'POST'])
 def pulse():
@@ -1557,6 +1644,7 @@ def pulse_data():
                 'fecha_minima': fecha_min,
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
+                'cobertura': _cobertura(subdomain, desde_str, hasta_str, dias_lab),
                 # Que porcion de los registros mide desde el PRIMER mensaje sin
                 # responder. El resto cae al ultimo mensaje del cliente y por lo
                 # tanto subestima la espera: sirve para saber desde que fecha
