@@ -1,14 +1,33 @@
+# Los user_id de Kommo son unicos entre cuentas, no por cuenta: de los 13 ids
+# vistos en los 4 subdominios, el unico que se repite es 6767570, y se repite
+# porque es realmente la misma persona (el soporte de la consultora, que tiene
+# usuario en el CRM de cada cliente). Por eso un solo diccionario plano alcanza
+# y no hace falta anidar por subdominio.
+#
+# Agrupados por cuenta solo para que se lea; la busqueda es por id.
+# Si un asesor no esta aca, el dashboard muestra 'Usuario <id>' al cliente.
 ASESORES = {
-    6767570: 'Soporte Core Power Consulting',
-    6453065: 'Luis Marroquín',
+    # Core Power Consulting (soporte: tiene usuario en las 4 cuentas)
+    6767570:  'Soporte Core Power Consulting',
+    6453065:  'Luis Marroquín',
     11579748: 'Giulliana Vera',
     15541872: 'Ana Mirian Moran',
+
+    # Autonica
     15080019: 'Auto Nica',
+    15081799: 'Citas 1',
+    15093487: 'Citas 2',
+    15093495: 'Citas 3',
+
+    # TuCoyTico
+    13478031: 'Ventas Tuco & Tico',
+
+    # Ventas Directas
     13127364: 'Maria Ventura',
-    9482679: 'Sebastian Millan',
-    9494503: 'Paul Adams',
     13127368: 'Mayte Jimenez',
     13902356: 'Freddy Hernandez',
+    9482679:  'Sebastian Millan',
+    9494503:  'Paul Adams',
 }
 
 PULSE_CONFIG = {
