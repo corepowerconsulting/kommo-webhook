@@ -137,7 +137,11 @@ PULSE_CONFIG = {
     'lizondrohomes': {
         'nombre': 'Lizandro Homes',
         'crm_domain': 'lizondrohomes.kommo.com',
-        'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'},
+        # Los dos CONFIRMADOS contra payloads reales. 'cliente' va con u
+        # minuscula: se habia configurado 'F Ult msj cliente' y por esa unica
+        # letra la cuenta media cero, sin ningun error. La comparacion de
+        # get_custom_field es exacta.
+        'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
