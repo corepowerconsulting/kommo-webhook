@@ -22,6 +22,15 @@ ASESORES = {
     # TuCoyTico
     13478031: 'Ventas Tuco & Tico',
 
+    # Camara de Comercio China Ecuador (gruporegalado)
+    10166363: 'Pablo Regalado',
+    10914216: 'Ventas',
+    14483404: 'Ventas 2',
+    14483200: 'Ventas 3',
+    9750963:  'Marketing',
+    15309624: 'Marketing ADS',
+    9750975:  'Administrador',
+
     # Ventas Directas
     13127364: 'Maria Ventura',
     13127368: 'Mayte Jimenez',
