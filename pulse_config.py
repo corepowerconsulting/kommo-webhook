@@ -105,7 +105,16 @@ PULSE_CONFIG = {
     'gruporegalado': {
         'nombre': 'Cámara de Comercio China Ecuador',
         'crm_domain': 'gruporegalado.kommo.com',
-        'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'},
+        # 'cliente' CONFIRMADO: aparece con valor en 19 de 19 eventos revisados.
+        # 'asesor' se llama distinto que en las otras cuentas. No lo vimos aun en
+        # ningun payload (la cuenta lleva minutos conectada), pero el log de
+        # Kommo lo muestra explicito:
+        #   SalesBot (BOTFULTMSJASESOR)
+        #   The value of the field «F ult msj enviado» is set to «28.07.2026 18:38»
+        # La comparacion es exacta y sensible a mayusculas, asi que si el nombre
+        # real difiere en una letra esto no mide nada y no avisa. Confirmar con
+        # /health/campos, que reporta ok:false mientras no lo encuentre.
+        'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj enviado'},
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
