@@ -87,4 +87,47 @@ PULSE_CONFIG = {
             {'label': '+30 min',     'max_seg': None,  'color': '#ef4444', 'tag': 'Crítico'},
         ]
     },
+
+    # ------------------------------------------------------------------
+    # Cuentas nuevas (alta 29/07/2026). Ecuador = UTC-5, sin horario de verano.
+    #
+    # PENDIENTE en las dos: los nombres de 'campos' son los que se usan por
+    # defecto, todavia NO verificados contra los payloads reales. Cada cuenta de
+    # Kommo nombra distinto esos campos y un nombre equivocado no da error: el
+    # dashboard queda en cero y nada lo indica. Confirmar con
+    # /health/alta?subdomain=<cuenta> en cuanto lleguen eventos, y con
+    # /health/campos, que reporta ok:false si no los encuentra.
+    #
+    # El horario 8-18 Lun-Vie es el mas comun entre las otras cuentas, tomado
+    # como punto de partida. Hay que confirmarlo con el cliente porque define
+    # que horas se descuentan del tiempo de respuesta.
+    # ------------------------------------------------------------------
+    'gruporegalado': {
+        'nombre': 'Cámara de Comercio China Ecuador',
+        'crm_domain': 'gruporegalado.kommo.com',
+        'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'},
+        'tz_offset': -5,
+        'horario': (8, 18),
+        'dias_laborables': [0, 1, 2, 3, 4],
+        'franjas': [
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#f59e0b', 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': '#ef4444', 'tag': 'Crítico'},
+        ]
+    },
+    'lizondrohomes': {
+        'nombre': 'Lizandro Homes',
+        'crm_domain': 'lizondrohomes.kommo.com',
+        'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'},
+        'tz_offset': -5,
+        'horario': (8, 18),
+        'dias_laborables': [0, 1, 2, 3, 4],
+        'franjas': [
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#f59e0b', 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': '#ef4444', 'tag': 'Crítico'},
+        ]
+    },
 }
