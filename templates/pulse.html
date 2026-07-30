@@ -98,7 +98,7 @@
         <div class="hidden lg:block w-px h-11 bg-slate-200"></div>
 
         <div>
-          <span class="field-label mb-1.5">Asesor</span>
+          <span class="field-label mb-1.5">Responsable</span>
           <select id="asesor-select" class="control w-full lg:w-48">
             <option value="">Todos</option>
           </select>
@@ -212,8 +212,12 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <div>
-          <div class="section-title">Tiempo de respuesta por asesor</div>
-          <div class="section-sub" id="sub-por-asesor">Mediana · de más rápido a más lento</div>
+          <!-- "responsable", no "asesor": el tiempo se atribuye al DUEÑO del
+               lead, que no siempre es quien contesto. Kommo no nos manda los
+               mensajes salientes, asi que hoy no hay forma de saber quien
+               respondio. Decirlo es mas honesto que dar a entender lo otro. -->
+          <div class="section-title">Tiempo de respuesta por responsable</div>
+          <div class="section-sub" id="sub-por-asesor">Mediana · responsable del lead, no quien contestó</div>
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
@@ -716,8 +720,8 @@ async function cargarDatos() {
       ? 'Barras: respuestas · Línea: tiempo real promedio'
       : 'Barras: respuestas · Línea: tiempo promedio';
     document.getElementById('sub-por-asesor').textContent = esFueraHorario
-      ? 'Mediana del tiempo real · de más rápido a más lento'
-      : 'Mediana · de más rápido a más lento';
+      ? 'Mediana del tiempo real · responsable del lead, no quien contestó'
+      : 'Mediana · responsable del lead, no quien contestó';
 
     // No dejar elegir fechas anteriores al primer evento capturado para este cliente.
     // Ademas de bloquear el calendario, el dia se marca subrayado (marcarPrimerDia).
