@@ -715,6 +715,10 @@ def ping():
     termina desactivando el webhook."""
     return jsonify({'ok': True, 'ts': datetime.utcnow().isoformat()})
 
+# Margen desde la apertura antes de que el dia de hoy cuente como hueco: a
+# primera hora todavia no tiene por que haber llegado nada.
+GRACIA_APERTURA_HORAS = 3
+
 @app.route('/health/actividad')
 def health_actividad():
     """Detecta huecos en la captura: dias sin un solo evento recibido.
@@ -761,13 +765,26 @@ def health_actividad():
         if not conteo:
             resultado[subdomain] = {'sin_datos': True}
             continue
-        primero = datetime.strptime(min(conteo), '%Y-%m-%d').date()
-        huecos, dias_lab = [], PULSE_CONFIG[subdomain]['dias_laborables']
+        primero  = datetime.strptime(min(conteo), '%Y-%m-%d').date()
+        cfg_sub  = PULSE_CONFIG[subdomain]
+        dias_lab = cfg_sub['dias_laborables']
+        # Hora local del cliente, para saber si el dia de hoy ya arranco.
+        hora_local = (datetime.utcnow() + timedelta(hours=cfg_sub['tz_offset'])).hour
+        apertura   = cfg_sub['horario'][0]
+
+        huecos = []
         d = primero
-        while d < hoy:
+        # <= hoy, no < hoy: antes el bucle cortaba ayer y una caida que empezaba
+        # un viernes y seguia el lunes daba CERO huecos, porque el unico dia
+        # laborable vacio era justamente hoy. Paso en gruporegalado: 78 horas sin
+        # recibir nada y el endpoint respondia ok:true.
+        while d <= hoy:
             # Solo alarman los dias laborables: un domingo sin eventos es normal.
             if d.weekday() in dias_lab and conteo.get(d.strftime('%Y-%m-%d'), 0) == 0:
-                huecos.append(d.strftime('%Y-%m-%d'))
+                # Hoy recien cuenta pasado un margen desde la apertura: a primera
+                # hora todavia no tiene por que haber llegado nada.
+                if d < hoy or hora_local >= apertura + GRACIA_APERTURA_HORAS:
+                    huecos.append(d.strftime('%Y-%m-%d'))
             d += timedelta(days=1)
 
         ultimo = ultimos.get(subdomain)
