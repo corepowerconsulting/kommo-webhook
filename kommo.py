@@ -104,6 +104,23 @@ def init_db():
     ''')
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS status_id BIGINT')
+
+    # Supabase expone una API REST publica ademas de la conexion Postgres. Esta
+    # app no la usa —se conecta por DATABASE_URL— pero la API sigue abierta, y
+    # sin RLS cualquiera con la URL del proyecto puede leer estas tablas. En
+    # 'eventos' eso son telefonos, nombres y texto de los mensajes de los
+    # clientes de los 6 clientes.
+    #
+    # Se activa RLS SIN crear politicas: la API REST queda sin acceso, y la app
+    # no se ve afectada porque se conecta como dueño de las tablas y el dueño
+    # salta RLS. Va en init_db para que un deploy futuro no lo deje sin activar.
+    for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado'):
+        try:
+            c.execute(f'ALTER TABLE {tabla} ENABLE ROW LEVEL SECURITY')
+        except Exception as e:
+            # No debe impedir el arranque: sin esto la app no procesa webhooks.
+            conn.rollback()
+            print(f"⚠️  No se pudo activar RLS en {tabla}: {e}")
     conn.commit()
     conn.close()
     print("✅ Base de datos lista")
