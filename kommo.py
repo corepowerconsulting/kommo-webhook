@@ -376,7 +376,26 @@ def _procesar_webhook(data):
             )
 
         if not algo_procesado:
-            print(f"⚠️  Ignorado | {subdomain} | {list(data.keys())[:2]}")
+            # Se GUARDA, no solo se loguea. Antes se imprimian las dos primeras
+            # claves y se descartaba el resto, asi que no habia forma de saber
+            # que traian estos POST — y llegan a cientos por rafaga.
+            #
+            # Importa porque podrian ser los mensajes SALIENTES del asesor: el
+            # dato que falta para medir bien el tiempo de respuesta y saber
+            # quien contesto. Dimos por hecho que Kommo no los manda, pero eso
+            # se concluyo mirando los eventos que si reconocemos. Si vienen bajo
+            # una clave distinta, los estabamos tirando sin verlos.
+            guardar_evento(
+                subdomain=subdomain,
+                tipo_evento='desconocido',
+                lead_id=None,
+                timestamp=None,
+                data=data
+            )
+            # Patrones de clave (indices reemplazados por [n]) en vez de las dos
+            # primeras: con dos claves no se distingue un tipo de evento de otro.
+            patrones = sorted({re.sub(r'\[\d+\]', '[n]', k) for k in data})[:15]
+            print(f"⚠️  Ignorado | {subdomain} | {patrones}")
 
     except Exception as e:
         print(f"❌ ERROR procesando webhook en background: {e}")
@@ -901,6 +920,81 @@ def health_alta():
         'campos_encontrados':  len(campos),
         'candidatos_a_fecha':  [c for c in campos if c['parece_fecha']],
         'todos_los_campos':    campos,
+    })
+
+@app.route('/health/desconocidos')
+def health_desconocidos():
+    """Que traen los POST que el webhook recibe y no reconoce.
+
+    Se guardan con tipo_evento='desconocido'. Este endpoint agrupa sus claves
+    por PATRON (los indices se reemplazan por [n]) para ver de que tipo de
+    evento se trata, con un valor de ejemplo de cada una.
+
+    La pregunta que buscamos responder: si alguno de estos es el mensaje
+    SALIENTE del asesor. Todo lo que falta para medir bien —la hora exacta de
+    la respuesta y quien contesto— depende de ese dato, y hasta ahora se dio por
+    hecho que Kommo no lo manda."""
+    subdomain = request.args.get('subdomain', '').strip()
+    try:
+        limite = min(int(request.args.get('limite', 300)), 3000)
+    except ValueError:
+        limite = 300
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        q = "SELECT subdomain, raw_data FROM eventos WHERE tipo_evento = 'desconocido'"
+        params = []
+        if subdomain:
+            q += ' AND subdomain = %s'
+            params.append(subdomain)
+        q += ' ORDER BY id DESC LIMIT %s'
+        params.append(limite)
+        c.execute(q, params)
+        rows = c.fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return jsonify({
+            'payloads': 0,
+            'nota': 'Todavia no se guardo ninguno. Empiezan a guardarse recien '
+                    'desde este deploy; antes solo se logueaban y se perdian.',
+        })
+
+    patrones = defaultdict(lambda: {'veces': 0, 'ejemplo': None})
+    por_sub  = defaultdict(int)
+    firmas   = defaultdict(int)
+    for row in rows:
+        por_sub[row['subdomain']] += 1
+        if not row['raw_data']:
+            continue
+        try:
+            data = json.loads(row['raw_data'])
+        except (ValueError, TypeError):
+            continue
+        claves = set()
+        for k, v in data.items():
+            p = re.sub(r'\[\d+\]', '[n]', k)
+            claves.add(p)
+            e = patrones[p]
+            e['veces'] += 1
+            if e['ejemplo'] is None and v not in (None, ''):
+                e['ejemplo'] = str(v)[:60]
+        # La firma (raiz de las claves) dice de que tipo de evento se trata.
+        raices = sorted({p.split('[')[0] for p in claves})
+        firmas['+'.join(raices)] += 1
+
+    orden = sorted(patrones.items(), key=lambda kv: -kv[1]['veces'])
+    return jsonify({
+        'payloads':            len(rows),
+        'por_subdominio':      dict(por_sub),
+        'tipos_de_evento':     dict(sorted(firmas.items(), key=lambda kv: -kv[1])),
+        'hay_mensajes':        any('message' in p for p in patrones),
+        'claves': [
+            {'patron': p, 'veces': d['veces'], 'ejemplo': d['ejemplo']}
+            for p, d in orden[:60]
+        ],
     })
 
 @app.route('/health/primer-evento')
