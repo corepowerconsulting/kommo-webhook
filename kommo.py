@@ -6,6 +6,7 @@ import secrets
 import time
 import threading
 from datetime import datetime, timedelta
+from functools import wraps
 import calendar
 from collections import defaultdict
 import os
@@ -31,6 +32,36 @@ def pulse_password(subdomain):
 
 def pulse_autorizado(subdomain):
     return bool(session.get(f'pulse_ok_{subdomain}'))
+
+ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN')
+if not ADMIN_TOKEN:
+    print("⚠️  ADMIN_TOKEN no configurada: /data, /respuestas y /backfill* "
+          "responden 401. Configurala en Render para poder usarlos.")
+
+def token_requerido(f):
+    """Cierra los endpoints que devuelven datos de clientes o escriben en la base.
+
+    Estaban abiertos: cualquiera con el link leia en /data los payloads crudos
+    de Kommo — telefonos, nombres y texto de los mensajes de las seis cuentas —
+    y podia disparar /backfill, que ESCRIBE y ademas es un GET, o sea que
+    alcanzaba con que un crawler lo visitara.
+
+    Es la misma exposicion que Supabase reporto como rls_disabled_in_public,
+    por HTTP en vez de por la API REST.
+
+    Sin ADMIN_TOKEN configurada se responde 401. Es preferible que estos
+    endpoints dejen de funcionar a que queden abiertos por olvidar la variable:
+    el fallo se nota enseguida, la exposicion no."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        entregado = request.args.get('token', '')
+        # compare_digest y no ==: la comparacion normal corta en la primera
+        # letra distinta, y esa diferencia de tiempo permite adivinar el token
+        # caracter por caracter.
+        if not ADMIN_TOKEN or not secrets.compare_digest(entregado, ADMIN_TOKEN):
+            return jsonify({'error': 'no autorizado'}), 401
+        return f(*args, **kwargs)
+    return wrapper
 
 # ========================
 # BASE DE DATOS
@@ -421,6 +452,7 @@ def _procesar_webhook(data):
 # ENDPOINTS
 # ========================
 @app.route('/')
+@token_requerido
 def home():
     conn = get_conn()
     try:
@@ -439,6 +471,7 @@ def home():
         conn.close()
 
 @app.route('/data')
+@token_requerido
 def ver_datos():
     subdomain = request.args.get('subdomain')
     tipo = request.args.get('tipo')
@@ -466,6 +499,7 @@ def ver_datos():
         conn.close()
 
 @app.route('/respuestas')
+@token_requerido
 def ver_respuestas():
     subdomain = request.args.get('subdomain')
     lead = request.args.get('lead_id')
@@ -508,6 +542,7 @@ def ver_respuestas():
         conn.close()
 
 @app.route('/backfill')
+@token_requerido
 def backfill():
     offset    = int(request.args.get('offset', 0))
     subdomain = request.args.get('subdomain')
@@ -638,6 +673,7 @@ SQL_RECALCULAR_PRIMER_MSJ = '''
 '''
 
 @app.route('/backfill-mensajes')
+@token_requerido
 def backfill_mensajes():
     """Puebla 'mensajes_cliente' con los mensajes entrantes que ya estan
     guardados dentro del JSON de 'eventos', y recalcula f_primer_msj_cliente.
@@ -852,6 +888,7 @@ def health_actividad():
     })
 
 @app.route('/health/alta')
+@token_requerido
 def health_alta():
     """Herramienta para dar de alta una cuenta nueva.
 
@@ -940,6 +977,7 @@ def health_alta():
     })
 
 @app.route('/health/desconocidos')
+@token_requerido
 def health_desconocidos():
     """Que traen los POST que el webhook recibe y no reconoce.
 
