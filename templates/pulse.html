@@ -197,7 +197,6 @@
             <div>
               <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
               <div class="kpi-label">Atendidos hoy</div>
-              <div class="mt-1 text-xs text-slate-400">solo hoy</div>
             </div>
           </div>
           <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -794,12 +793,9 @@ async function cargarDatos() {
     // Antes de conectar el webhook no recibimos los mensajes, asi que no se
     // puede saber si esas conversaciones fueron respondidas. Se aclara para
     // que no parezca que faltan leads.
-    // Estas dos tarjetas son estado ACTUAL: no siguen el rango de fechas del
-    // filtro, solo el asesor y 'solo abiertas'. Sin decirlo, alguien elige un
-    // mes viejo y cree que el numero corresponde a ese mes.
     document.getElementById('nota-no-respondidos').textContent = d.config.fecha_minima
-      ? `ahora mismo · desde ${d.config.fecha_minima.split('-').reverse().join('/')}`
-      : 'ahora mismo';
+      ? `desde ${d.config.fecha_minima.split('-').reverse().join('/')}`
+      : '';
     document.getElementById('kpi-trabajados-hoy').textContent = d.trabajados_hoy.length.toLocaleString('es');
     renderExtraLeads('panel-no-respondidos', d.no_respondidos);
     renderExtraLeads('panel-trabajados-hoy', d.trabajados_hoy);
