@@ -197,6 +197,7 @@
             <div>
               <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
               <div class="kpi-label">Atendidos hoy</div>
+              <div class="mt-1 text-xs text-slate-400">solo hoy</div>
             </div>
           </div>
           <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -510,6 +511,9 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   const apilado = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
   const datasets = [];
 
+  // 'order' controla que se dibuja encima: Chart.js ordena los datasets por
+  // order ascendente y los pinta en orden inverso, asi que el MENOR queda
+  // arriba. La linea va en 1 y las barras en 2 para que no la tapen.
   if (apilado) {
     tendenciaPorAsesor.forEach(serie => {
       datasets.push({
@@ -521,6 +525,7 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
         borderSkipped: false,
         stack: 'respuestas',
         yAxisID: 'y',
+        order: 2,
       });
     });
   } else {
@@ -535,22 +540,28 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
       borderSkipped: false,
       stack: 'respuestas',
       yAxisID: 'y',
+      order: 2,
     });
   }
 
-  // Linea que une el tiempo promedio de cada dia, encima de las barras
+  // Linea del tiempo promedio, POR ENCIMA de las barras. Los puntos llevan
+  // borde blanco para que se distingan aunque queden sobre una barra de color.
   datasets.push({
     type: 'line',
     label: 'Tiempo promedio',
     data: tendencia.map(d => d.promedio_h),
     borderColor: '#0f172a',
     backgroundColor: '#0f172a',
-    borderWidth: 2,
-    pointRadius: 3,
+    borderWidth: 2.5,
+    pointRadius: 4,
+    pointHoverRadius: 6,
     pointBackgroundColor: '#0f172a',
+    pointBorderColor: '#fff',
+    pointBorderWidth: 2,
     tension: 0.3,
     fill: false,
     yAxisID: 'y1',
+    order: 1,
   });
 
   new Chart(ctx, {
@@ -559,6 +570,11 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      // Con 'index' + intersect:false alcanza con pasar el mouse por la
+      // columna del dia para ver TODOS los valores, incluido el tiempo
+      // promedio. Antes habia que acertarle al punto de la linea, y si una
+      // barra alta lo tapaba no habia forma de leer ese dia.
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
           display: apilado,
@@ -612,7 +628,12 @@ function renderTabla(containerId, rows, tipo) {
         <div class="text-sm font-semibold text-slate-800 truncate">${r.nombre || 'Sin nombre'}</div>
         <div class="text-xs text-slate-400 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
       </div>
-      <span class="text-sm font-black ${colorClass} flex-shrink-0">${r.fmt}</span>
+      <div class="text-right flex-shrink-0 pl-3">
+        <div class="text-sm font-black ${colorClass} leading-tight">${r.fmt}</div>
+        <div class="text-[11px] text-slate-400 leading-tight">${
+          r.respuestas > 1 ? `prom. de ${r.respuestas} respuestas` : '1 respuesta'
+        }</div>
+      </div>
     </a>
   `).join('');
 }
@@ -773,9 +794,12 @@ async function cargarDatos() {
     // Antes de conectar el webhook no recibimos los mensajes, asi que no se
     // puede saber si esas conversaciones fueron respondidas. Se aclara para
     // que no parezca que faltan leads.
+    // Estas dos tarjetas son estado ACTUAL: no siguen el rango de fechas del
+    // filtro, solo el asesor y 'solo abiertas'. Sin decirlo, alguien elige un
+    // mes viejo y cree que el numero corresponde a ese mes.
     document.getElementById('nota-no-respondidos').textContent = d.config.fecha_minima
-      ? `desde ${d.config.fecha_minima.split('-').reverse().join('/')}`
-      : '';
+      ? `ahora mismo · desde ${d.config.fecha_minima.split('-').reverse().join('/')}`
+      : 'ahora mismo';
     document.getElementById('kpi-trabajados-hoy').textContent = d.trabajados_hoy.length.toLocaleString('es');
     renderExtraLeads('panel-no-respondidos', d.no_respondidos);
     renderExtraLeads('panel-trabajados-hoy', d.trabajados_hoy);

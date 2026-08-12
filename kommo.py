@@ -1557,6 +1557,9 @@ def _calc_por_asesor(registros):
     resultado.sort(key=lambda x: (x['sin_puesto'] is not None, x['mediana_seg']))
     return resultado
 
+# Cuantas respuestas se promedian por lead en "Casos extremos".
+TOP_ULTIMAS_RESPUESTAS = 5
+
 def _fmt_row(r, tz_offset):
     local_dt = _ts_to_local(r['inicio_espera'], tz_offset)
     return {
@@ -1566,6 +1569,9 @@ def _fmt_row(r, tz_offset):
         'fmt': _fmt_seg(r['efectivo_seg']),
         'fecha': _fmt_fecha_corta(local_dt),
         'asesor': nombre_asesor(r.get('responsible_user_id')),
+        # Sobre cuantas respuestas se promedio: sin esto, un lead con una sola
+        # respuesta y otro con cinco se leen igual.
+        'respuestas': r.get('respuestas', 1),
     }
 
 def _hoy_rango_ts(tz_offset):
@@ -1917,8 +1923,30 @@ def pulse_data():
                 'responsible_user_id': row['responsible_user_id'],
             })
 
-        top_lentos  = sorted(registros, key=lambda r: r['efectivo_seg'], reverse=True)[:10]
-        top_rapidos = sorted(registros, key=lambda r: r['efectivo_seg'])[:10]
+        # Consolidado POR LEAD, no por respuesta. Antes cada respuesta era una
+        # fila, asi que un mismo lead aparecia varias veces en la lista: en
+        # corepowerconsulting el lead 9872182 ocupaba tres de los cinco puestos.
+        # Eso no informa nada — es la misma conversacion en curso, y en una
+        # conversacion los tiempos varian segun cuando conteste el cliente.
+        #
+        # Se promedian las ULTIMAS respuestas de cada lead: describe como se
+        # viene atendiendo esa conversacion en vez de un caso suelto, que puede
+        # ser un pico aislado.
+        por_lead = defaultdict(list)
+        for r in registros:
+            por_lead[r['lead_id']].append(r)
+
+        consolidado = []
+        for rs in por_lead.values():
+            rs.sort(key=lambda x: x['inicio_espera'], reverse=True)
+            ultimas = rs[:TOP_ULTIMAS_RESPUESTAS]
+            fila = dict(ultimas[0])          # la mas reciente: nombre, fecha, asesor
+            fila['efectivo_seg'] = round(sum(x['efectivo_seg'] for x in ultimas) / len(ultimas))
+            fila['respuestas']   = len(ultimas)
+            consolidado.append(fila)
+
+        top_lentos  = sorted(consolidado, key=lambda r: r['efectivo_seg'], reverse=True)[:10]
+        top_rapidos = sorted(consolidado, key=lambda r: r['efectivo_seg'])[:10]
 
         daily = defaultdict(list)
         daily_asesor = defaultdict(lambda: defaultdict(int))
