@@ -33,6 +33,15 @@ def pulse_password(subdomain):
 def pulse_autorizado(subdomain):
     return bool(session.get(f'pulse_ok_{subdomain}'))
 
+# Contadores de carga en memoria, para /health/carga. Se reinician con cada
+# deploy; alcanza, porque lo que se busca es el pico durante una rafaga.
+_CARGA = {
+    'webhooks': 0,
+    'hilos_maximo': 0,
+    'cuando_el_maximo': None,
+    'arranque': datetime.utcnow().isoformat(),
+}
+
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN')
 if not ADMIN_TOKEN:
     print("⚠️  ADMIN_TOKEN no configurada: /data, /respuestas y /backfill* "
@@ -354,6 +363,23 @@ def webhook():
     # así la lentitud de la base de datos nunca hace que Kommo lo desactive.
     data = request.form.to_dict()
     threading.Thread(target=_procesar_webhook, args=(data,), daemon=True).start()
+
+    # Medicion de carga. Kommo desactivo el webhook cuatro veces en tres semanas
+    # (tucoytico, gruporegalado, ventasdirectas x2) y venimos suponiendo la
+    # causa sin medirla: que las rafagas crean cientos de hilos, se agotan las
+    # conexiones a Supabase y las respuestas se vuelven lentas.
+    #
+    # Como cada webhook lanza un hilo sin limite, el pico de hilos es la prueba
+    # directa. Si en una rafaga sube a cientos, la hipotesis se confirma; si se
+    # mantiene bajo, hay que buscar la causa en otro lado.
+    #
+    # No se usa lock: son contadores de diagnostico y el costo de perder alguna
+    # suma bajo carga es menor que el de agregar contencion al camino critico.
+    hilos = threading.active_count()
+    _CARGA['webhooks'] += 1
+    if hilos > _CARGA['hilos_maximo']:
+        _CARGA['hilos_maximo'] = hilos
+        _CARGA['cuando_el_maximo'] = datetime.utcnow().isoformat()
     return jsonify({'status': 'ok'}), 200
 
 def _procesar_webhook(data):
@@ -777,6 +803,30 @@ def backfill_mensajes():
     finally:
         conn.close()
 
+@app.route('/health/carga')
+def health_carga():
+    """Cuantos hilos llega a tener el servidor. Es la prueba que falta.
+
+    Cada webhook lanza un hilo nuevo sin limite. La hipotesis de por que Kommo
+    desactiva los webhooks es que en las rafagas —una operacion masiva en el CRM
+    dispara cientos de POST juntos— se crean cientos de hilos, se agotan las
+    conexiones a Supabase y las respuestas se vuelven lentas.
+
+    Como leerlo:
+      hilos_maximo cerca de 10-20  -> la hipotesis se cae, buscar en otro lado
+      hilos_maximo en cientos      -> confirmada, corresponde poner una cola
+
+    Los contadores se reinician con cada deploy o reinicio del servicio."""
+    return jsonify({
+        'hilos_ahora':                threading.active_count(),
+        'hilos_maximo':               _CARGA['hilos_maximo'],
+        'cuando_el_maximo':           _CARGA['cuando_el_maximo'],
+        'webhooks_desde_el_arranque': _CARGA['webhooks'],
+        'arranque':                   _CARGA['arranque'],
+        'como_leerlo': 'hilos_maximo en cientos confirma que las rafagas '
+                       'saturan el servidor; cerca de 10-20 lo descarta.',
+    })
+
 @app.route('/ping')
 def ping():
     """Responde sin tocar la base: sirve para saber si el servidor esta vivo
@@ -790,6 +840,10 @@ def ping():
 # Margen desde la apertura antes de que el dia de hoy cuente como hueco: a
 # primera hora todavia no tiene por que haber llegado nada.
 GRACIA_APERTURA_HORAS = 3
+
+# Sin recibir nada por mas de esto, se da la cuenta por caida. Cubre una noche
+# entera y un fin de semana corto sin dar falsas alarmas.
+HORAS_PARA_DARLO_POR_CAIDO = 20
 
 @app.route('/health/actividad')
 def health_actividad():
@@ -868,23 +922,34 @@ def health_actividad():
             except ValueError:
                 pass
 
+        # 'recibiendo' mira el AHORA; los huecos son historia. Antes se mezclaban
+        # en un solo 'ok' y una cuenta que se cayo hace cinco dias y ya se
+        # reconecto seguia figurando en false, con horas_sin_recibir en 0.0 al
+        # lado. Eso llevo a reconectar un webhook que estaba funcionando bien.
+        recibiendo = (
+            horas_sin_recibir is not None
+            and horas_sin_recibir <= HORAS_PARA_DARLO_POR_CAIDO
+        )
         resultado[subdomain] = {
+            'recibiendo':         recibiendo,
             'ultimo_evento':      ultimo,
             'horas_sin_recibir':  horas_sin_recibir,
+            'huecos_historicos':  len(huecos),
             'dias_laborables_sin_un_solo_evento': huecos,
-            'huecos':             len(huecos),
             'dias_con_datos':     len(conteo),
             'eventos_ultimos_7d': sum(
                 n for dia, n in conteo.items()
                 if dia >= (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
             ),
-            'ok': not huecos,
         }
 
+    caidas = [s for s, r in resultado.items() if not r.get('recibiendo')]
     return jsonify({
-        'ok': all(r.get('ok') for r in resultado.values()),
-        'ventana_dias': dias,
-        'subdominios': resultado,
+        # Lo unico que hay que mirar para saber si algo esta roto AHORA.
+        'todo_recibiendo': not caidas,
+        'caidas_ahora':    caidas,
+        'ventana_dias':    dias,
+        'subdominios':     resultado,
     })
 
 @app.route('/health/alta')
