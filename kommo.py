@@ -40,6 +40,12 @@ _CARGA = {
     'hilos_maximo': 0,
     'cuando_el_maximo': None,
     'arranque': datetime.utcnow().isoformat(),
+    # Las dos formas conocidas en que este endpoint puede fallarle a Kommo.
+    # Kommo dice textualmente "Webhook esta desactivado debido a una respuesta
+    # no valida", asi que cualquier cosa que no sea 200 lo desactiva. Si alguno
+    # de estos sube de 0, ahi esta la causa de las desactivaciones.
+    'hilos_rechazados': 0,
+    'errores_body': 0,
 }
 
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN')
@@ -358,11 +364,30 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
 # ========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    # Kommo desactiva el webhook si la respuesta tarda o falla. Por eso
-    # confirmamos de inmediato (200) y el guardado en BD corre en background,
-    # así la lentitud de la base de datos nunca hace que Kommo lo desactive.
-    data = request.form.to_dict()
-    threading.Thread(target=_procesar_webhook, args=(data,), daemon=True).start()
+    # Kommo desactiva el webhook si la respuesta tarda o falla, y el mensaje que
+    # muestra al hacerlo es siempre el mismo: "Webhook esta desactivado debido a
+    # una respuesta no valida". O sea que lo que lo dispara no es la lentitud
+    # sino el codigo de respuesta: cualquier cosa que no sea 200 lo apaga.
+    #
+    # Por eso este endpoint NUNCA puede propagar una excepcion. Se responde 200
+    # pase lo que pase y el guardado corre aparte; perder un evento suelto es
+    # mucho mas barato que perder la cuenta entera por horas o dias.
+    try:
+        data = request.form.to_dict()
+    except Exception as e:
+        _CARGA['errores_body'] += 1
+        print(f"❌ No se pudo leer el body del webhook: {e}")
+        return jsonify({'status': 'ok'}), 200
+
+    try:
+        threading.Thread(target=_procesar_webhook, args=(data,), daemon=True).start()
+    except RuntimeError as e:
+        # No se pudo crear el hilo: el proceso se quedo sin memoria o llego al
+        # limite de hilos. Es el candidato mas directo a las desactivaciones,
+        # porque hasta ahora salia como 500 —justo lo que Kommo no tolera— y
+        # ademas ocurre precisamente en las rafagas, que es cuando se cayo.
+        _CARGA['hilos_rechazados'] += 1
+        print(f"❌ Sin capacidad para crear el hilo, evento descartado: {e}")
 
     # Medicion de carga. Kommo desactivo el webhook cuatro veces en tres semanas
     # (tucoytico, gruporegalado, ventasdirectas x2) y venimos suponiendo la
@@ -823,8 +848,17 @@ def health_carga():
         'cuando_el_maximo':           _CARGA['cuando_el_maximo'],
         'webhooks_desde_el_arranque': _CARGA['webhooks'],
         'arranque':                   _CARGA['arranque'],
+        # Kommo desactiva el webhook con el mensaje "respuesta no valida", asi
+        # que lo que importa no es solo el pico de hilos sino si alguna vez le
+        # respondimos distinto de 200. Estos dos son las unicas formas conocidas
+        # en que este endpoint puede fallar; si siguen en 0 despues de una
+        # desactivacion, la causa esta fuera de la aplicacion.
+        'hilos_rechazados':           _CARGA['hilos_rechazados'],
+        'errores_body':               _CARGA['errores_body'],
         'como_leerlo': 'hilos_maximo en cientos confirma que las rafagas '
-                       'saturan el servidor; cerca de 10-20 lo descarta.',
+                       'saturan el servidor; cerca de 10-20 lo descarta. '
+                       'hilos_rechazados o errores_body arriba de 0 explican '
+                       'las desactivaciones de Kommo.',
     })
 
 @app.route('/ping')
