@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 import bisect
 import json
-import queue
 import re
 import secrets
 import time
@@ -40,9 +39,6 @@ _CARGA = {
     'webhooks': 0,
     'hilos_maximo': 0,
     'cuando_el_maximo': None,
-    'cola_maxima': 0,
-    'descartados': 0,
-    'workers_creados': 0,
     'arranque': datetime.utcnow().isoformat(),
 }
 
@@ -365,39 +361,25 @@ def webhook():
     # Kommo desactiva el webhook si la respuesta tarda o falla. Por eso
     # confirmamos de inmediato (200) y el guardado en BD corre en background,
     # así la lentitud de la base de datos nunca hace que Kommo lo desactive.
-    #
-    # Se ENCOLA en vez de lanzar un hilo por request. Antes cada webhook creaba
-    # su propio hilo sin limite: /health/carga midio un pico de 248 hilos
-    # simultaneos con 34.317 webhooks, y cada hilo abre su conexion con
-    # get_conn(), que no usa pool. El limite de Postgres en planes chicos ronda
-    # las 60 conexiones, asi que en las rafagas las conexiones fallan — y
-    # guardar_evento solo imprime el error, con lo que el evento se pierde en
-    # silencio despues de haberle dicho 200 a Kommo.
-    #
-    # Los workers se crean aca y no al importar el modulo: arrancarlos en el
-    # import dejaba workers_vivos en 0 en produccion y la cola crecia sin que
-    # nadie la consumiera.
-    _asegurar_workers()
     data = request.form.to_dict()
-    try:
-        _COLA.put_nowait(data)
-    except queue.Full:
-        # Descartar y contarlo, no bloquear: bloquear demoraria el 200 y eso es
-        # justo lo que hace que Kommo desactive el webhook. Si 'descartados'
-        # sube, faltan workers o la cola es chica.
-        _CARGA['descartados'] += 1
-        print(f"⚠️  Cola llena, descartado | {data.get('account[subdomain]')}")
+    threading.Thread(target=_procesar_webhook, args=(data,), daemon=True).start()
 
-    # Contadores de diagnostico, sin lock: perder alguna suma bajo carga cuesta
-    # menos que agregar contencion justo donde el problema seria la lentitud.
+    # Medicion de carga. Kommo desactivo el webhook cuatro veces en tres semanas
+    # (tucoytico, gruporegalado, ventasdirectas x2) y venimos suponiendo la
+    # causa sin medirla: que las rafagas crean cientos de hilos, se agotan las
+    # conexiones a Supabase y las respuestas se vuelven lentas.
+    #
+    # Como cada webhook lanza un hilo sin limite, el pico de hilos es la prueba
+    # directa. Si en una rafaga sube a cientos, la hipotesis se confirma; si se
+    # mantiene bajo, hay que buscar la causa en otro lado.
+    #
+    # No se usa lock: son contadores de diagnostico y el costo de perder alguna
+    # suma bajo carga es menor que el de agregar contencion al camino critico.
     hilos = threading.active_count()
-    pendientes = _COLA.qsize()
     _CARGA['webhooks'] += 1
     if hilos > _CARGA['hilos_maximo']:
         _CARGA['hilos_maximo'] = hilos
         _CARGA['cuando_el_maximo'] = datetime.utcnow().isoformat()
-    if pendientes > _CARGA['cola_maxima']:
-        _CARGA['cola_maxima'] = pendientes
     return jsonify({'status': 'ok'}), 200
 
 def _procesar_webhook(data):
@@ -491,70 +473,6 @@ def _procesar_webhook(data):
 
     except Exception as e:
         print(f"❌ ERROR procesando webhook en background: {e}")
-
-# ------------------------------------------------------------------
-# Cola de procesamiento
-#
-# 4 workers fijos en vez de un hilo por webhook. Con eso las conexiones
-# simultaneas a Supabase quedan acotadas a 4, muy por debajo del limite de
-# Postgres, en vez de seguir al tamaño de la rafaga (se midieron 248).
-#
-# El tráfico es de ~0,56 webhooks/seg de promedio y cada uno tarda 200-500 ms,
-# asi que 4 workers procesan 8-20/seg: entre 14x y 35x de margen. La cola de
-# 3000 absorbe unos 6 minutos de acumulacion a ese ritmo, y en memoria son
-# ~30 MB, holgado en los 512 MB del plan.
-# ------------------------------------------------------------------
-COLA_WORKERS = 4
-COLA_MAX     = 3000
-
-_COLA = queue.Queue(maxsize=COLA_MAX)
-
-def _worker_cola():
-    while True:
-        data = _COLA.get()
-        try:
-            _procesar_webhook(data)
-        except Exception as e:
-            # El try va DENTRO del bucle a proposito: si una excepcion escapara,
-            # el worker moriria y no habria forma de notarlo salvo que dejen de
-            # procesarse mensajes. Con cuatro workers muertos se para todo en
-            # silencio, que es el unico modo de falla que este cambio agrega.
-            print(f"❌ Worker cola: {e}")
-        finally:
-            _COLA.task_done()
-
-_LOCK_WORKERS = threading.Lock()
-_WORKERS = []
-
-def _asegurar_workers():
-    """Arranca los workers que falten. Se llama al entrar a cada webhook.
-
-    Arrancarlos al importar el modulo NO funciono en produccion: workers_vivos
-    quedaba en 0 y los webhooks se encolaban sin que nadie los consumiera —
-    122 encolados, 0 procesados. No se pudo determinar por que: el Start
-    Command de Render no tiene --preload, asi que no es el fork clasico de
-    gunicorn.
-
-    Crearlos desde aca vuelve irrelevante la causa: corre en el mismo proceso y
-    sobre la misma instancia del modulo que encola, sea cual sea el motivo por
-    el que los del import no estaban. De paso cubre el caso de un worker que
-    muere, que antes significaba perder esa capacidad para siempre."""
-    # Camino rapido sin lock: es lo que corre en practicamente todos los
-    # webhooks, asi que no puede pagar contencion.
-    if len(_WORKERS) == COLA_WORKERS and all(w.is_alive() for w in _WORKERS):
-        return
-    with _LOCK_WORKERS:
-        vivos = [w for w in _WORKERS if w.is_alive()]
-        faltan = COLA_WORKERS - len(vivos)
-        for i in range(faltan):
-            w = threading.Thread(target=_worker_cola, daemon=True,
-                                 name=f'cola-{len(vivos) + i}')
-            w.start()
-            vivos.append(w)
-        if faltan:
-            _CARGA['workers_creados'] += faltan
-            print(f"🧵 Workers de la cola creados: {faltan} (total {len(vivos)})")
-        _WORKERS[:] = vivos
 
 # ========================
 # ENDPOINTS
@@ -887,42 +805,26 @@ def backfill_mensajes():
 
 @app.route('/health/carga')
 def health_carga():
-    """Estado de la cola de webhooks y uso de hilos.
+    """Cuantos hilos llega a tener el servidor. Es la prueba que falta.
 
-    Con esto se confirmo el problema: antes cada webhook lanzaba su propio hilo
-    sin limite y se llego a un pico de 248 simultaneos con 34.317 webhooks, cada
-    uno abriendo su conexion a Supabase. Ahora hay 4 workers fijos.
+    Cada webhook lanza un hilo nuevo sin limite. La hipotesis de por que Kommo
+    desactiva los webhooks es que en las rafagas —una operacion masiva en el CRM
+    dispara cientos de POST juntos— se crean cientos de hilos, se agotan las
+    conexiones a Supabase y las respuestas se vuelven lentas.
 
-    Que mirar:
-      hilos_maximo    deberia quedar en ~15-20 (4 workers + hilos de gunicorn).
-                      Si vuelve a los cientos, la cola no esta funcionando.
-      descartados     tiene que ser 0. Si sube, la cola se lleno: faltan
-                      workers o hay que agrandarla.
-      cola_maxima     cuanto llego a acumularse. Si se acerca a COLA_MAX,
-                      los workers no dan abasto.
-      workers_vivos   siempre 4. Si baja, murio un worker y esa parte de la
-                      capacidad se perdio sin que nada mas lo indique.
+    Como leerlo:
+      hilos_maximo cerca de 10-20  -> la hipotesis se cae, buscar en otro lado
+      hilos_maximo en cientos      -> confirmada, corresponde poner una cola
 
     Los contadores se reinician con cada deploy o reinicio del servicio."""
-    vivos = sum(1 for w in _WORKERS if w.is_alive())
     return jsonify({
-        'workers_vivos':              vivos,
-        'workers_configurados':       COLA_WORKERS,
-        # Si sigue subiendo, los workers se estan muriendo y recreando.
-        'workers_creados':            _CARGA['workers_creados'],
-        'cola_ahora':                 _COLA.qsize(),
-        'cola_maxima':                _CARGA['cola_maxima'],
-        'cola_capacidad':             COLA_MAX,
-        'descartados':                _CARGA['descartados'],
         'hilos_ahora':                threading.active_count(),
         'hilos_maximo':               _CARGA['hilos_maximo'],
         'cuando_el_maximo':           _CARGA['cuando_el_maximo'],
         'webhooks_desde_el_arranque': _CARGA['webhooks'],
         'arranque':                   _CARGA['arranque'],
-        'ok': vivos == COLA_WORKERS and _CARGA['descartados'] == 0,
-        'como_leerlo': 'workers_vivos debe ser 4 y descartados 0. '
-                       'hilos_maximo deberia quedar en ~15-20; si vuelve a '
-                       'los cientos, la cola no esta conteniendo las rafagas.',
+        'como_leerlo': 'hilos_maximo en cientos confirma que las rafagas '
+                       'saturan el servidor; cerca de 10-20 lo descarta.',
     })
 
 @app.route('/ping')
