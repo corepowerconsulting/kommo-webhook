@@ -42,6 +42,7 @@ _CARGA = {
     'cuando_el_maximo': None,
     'cola_maxima': 0,
     'descartados': 0,
+    'workers_creados': 0,
     'arranque': datetime.utcnow().isoformat(),
 }
 
@@ -372,6 +373,11 @@ def webhook():
     # las 60 conexiones, asi que en las rafagas las conexiones fallan — y
     # guardar_evento solo imprime el error, con lo que el evento se pierde en
     # silencio despues de haberle dicho 200 a Kommo.
+    #
+    # Los workers se crean aca y no al importar el modulo: arrancarlos en el
+    # import dejaba workers_vivos en 0 en produccion y la cola crecia sin que
+    # nadie la consumiera.
+    _asegurar_workers()
     data = request.form.to_dict()
     try:
         _COLA.put_nowait(data)
@@ -517,12 +523,38 @@ def _worker_cola():
         finally:
             _COLA.task_done()
 
-_WORKERS = [
-    threading.Thread(target=_worker_cola, daemon=True, name=f'cola-{i}')
-    for i in range(COLA_WORKERS)
-]
-for _w in _WORKERS:
-    _w.start()
+_LOCK_WORKERS = threading.Lock()
+_WORKERS = []
+
+def _asegurar_workers():
+    """Arranca los workers que falten. Se llama al entrar a cada webhook.
+
+    Arrancarlos al importar el modulo NO funciono en produccion: workers_vivos
+    quedaba en 0 y los webhooks se encolaban sin que nadie los consumiera —
+    122 encolados, 0 procesados. No se pudo determinar por que: el Start
+    Command de Render no tiene --preload, asi que no es el fork clasico de
+    gunicorn.
+
+    Crearlos desde aca vuelve irrelevante la causa: corre en el mismo proceso y
+    sobre la misma instancia del modulo que encola, sea cual sea el motivo por
+    el que los del import no estaban. De paso cubre el caso de un worker que
+    muere, que antes significaba perder esa capacidad para siempre."""
+    # Camino rapido sin lock: es lo que corre en practicamente todos los
+    # webhooks, asi que no puede pagar contencion.
+    if len(_WORKERS) == COLA_WORKERS and all(w.is_alive() for w in _WORKERS):
+        return
+    with _LOCK_WORKERS:
+        vivos = [w for w in _WORKERS if w.is_alive()]
+        faltan = COLA_WORKERS - len(vivos)
+        for i in range(faltan):
+            w = threading.Thread(target=_worker_cola, daemon=True,
+                                 name=f'cola-{len(vivos) + i}')
+            w.start()
+            vivos.append(w)
+        if faltan:
+            _CARGA['workers_creados'] += faltan
+            print(f"🧵 Workers de la cola creados: {faltan} (total {len(vivos)})")
+        _WORKERS[:] = vivos
 
 # ========================
 # ENDPOINTS
@@ -876,6 +908,8 @@ def health_carga():
     return jsonify({
         'workers_vivos':              vivos,
         'workers_configurados':       COLA_WORKERS,
+        # Si sigue subiendo, los workers se estan muriendo y recreando.
+        'workers_creados':            _CARGA['workers_creados'],
         'cola_ahora':                 _COLA.qsize(),
         'cola_maxima':                _CARGA['cola_maxima'],
         'cola_capacidad':             COLA_MAX,
