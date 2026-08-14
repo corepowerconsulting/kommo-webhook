@@ -136,6 +136,13 @@ def init_db():
             PRIMARY KEY (subdomain, lead_id, ts)
         )
     ''')
+    # Como se llama quien escribio. En la mayoria de las cuentas el lead no
+    # tiene nombre propio —entra desde WhatsApp o Instagram y nadie lo
+    # renombra— y el dashboard mostraba "(sin nombre)": 100% de los leads en
+    # autonica y 70% en gruporegalado. Kommo manda el nombre en cada mensaje
+    # entrante (author][name], con author][type] = external, o sea el cliente),
+    # asi que se guarda aca y se usa cuando el lead no trae el suyo.
+    c.execute('ALTER TABLE mensajes_cliente ADD COLUMN IF NOT EXISTS cliente_nombre TEXT')
     c.execute('''
         CREATE TABLE IF NOT EXISTS leads_estado (
             subdomain TEXT,
@@ -223,11 +230,16 @@ def prefix_de_lead(data, lead_id):
     return None
 
 def msjs_entrantes(data):
-    """Extrae (lead_id, ts) de cada mensaje ENTRANTE del payload.
+    """Extrae (lead_id, ts, nombre) de cada mensaje ENTRANTE del payload.
 
     Solo entrantes: Kommo no manda webhook de los mensajes del asesor (0 de
     ~5800 revisados en produccion tenian type=outgoing). Devuelve un set para
-    que un mismo POST guardado varias veces no duplique."""
+    que un mismo POST guardado varias veces no duplique.
+
+    El nombre es el del autor del mensaje. Como solo entran los entrantes, el
+    autor es siempre el cliente —se verifico author][type] = external en 150 de
+    150 mensajes de tres cuentas— y es el unico nombre disponible para los
+    leads que Kommo nunca bautizo."""
     salida = set()
     for i in get_batch_indices(data, 'message[add]'):
         pref = f'message[add][{i}]'
@@ -238,25 +250,51 @@ def msjs_entrantes(data):
             ts = int(data.get(f'{pref}[created_at]'))
         except (TypeError, ValueError):
             continue
+        # El nombre puede faltar o venir vacio; el mensaje se guarda igual,
+        # porque para medir la espera alcanza con lead_id y ts.
+        nombre = (data.get(f'{pref}[author][name]') or '').strip()[:200] or None
         if lead_id and ts:
-            salida.add((str(lead_id), ts))
+            salida.add((str(lead_id), ts, nombre))
     return salida
 
 def insertar_msjs_cliente(cursor, subdomain, filas):
-    """Inserta (lead_id, ts) en 'mensajes_cliente' en UNA sola ida a la base.
+    """Inserta (lead_id, ts, nombre) en 'mensajes_cliente' en UNA sola ida.
 
     execute_values manda un INSERT multi-fila; executemany manda una sentencia
     por fila, y contra Supabase la latencia de red domina: en el backfill eso
     era la diferencia entre ~30 y varios miles de mensajes por segundo."""
     if not filas:
         return 0
+
+    # Un mismo (lead_id, ts) no puede ir dos veces en el MISMO insert: con
+    # ON CONFLICT DO UPDATE, Postgres aborta la sentencia entera con "cannot
+    # affect row a second time". Pasa desapercibido hasta que ocurre, y
+    # entonces se pierde la pagina completa del backfill.
+    #
+    # Puede darse porque 'filas' es un set de (lead_id, ts, nombre): el mismo
+    # mensaje capturado dos veces con el contacto renombrado en el medio son
+    # dos elementos distintos del set y una sola fila en la tabla. Se resuelve
+    # antes de consultar, quedandose con la version que trae nombre.
+    unicas = {}
+    for lead_id, ts, nombre in filas:
+        clave = (lead_id, ts)
+        previo = unicas.get(clave)
+        if previo is None or (previo[2] is None and nombre):
+            unicas[clave] = (lead_id, ts, nombre)
+
+    # DO UPDATE y no DO NOTHING: los mensajes viejos ya estan guardados sin
+    # nombre, y con DO NOTHING el backfill no podria completarlos nunca. El
+    # WHERE evita reescribir los que ya tienen uno, asi que reprocesar el
+    # historial es idempotente.
     execute_values(
         cursor,
-        'INSERT INTO mensajes_cliente (subdomain, lead_id, ts) VALUES %s '
-        'ON CONFLICT DO NOTHING',
-        [(subdomain, lead_id, ts) for lead_id, ts in filas]
+        'INSERT INTO mensajes_cliente (subdomain, lead_id, ts, cliente_nombre) VALUES %s '
+        'ON CONFLICT (subdomain, lead_id, ts) DO UPDATE '
+        'SET cliente_nombre = EXCLUDED.cliente_nombre '
+        'WHERE mensajes_cliente.cliente_nombre IS NULL',
+        [(subdomain, lead_id, ts, nombre) for lead_id, ts, nombre in unicas.values()]
     )
-    return len(filas)
+    return len(unicas)
 
 def guardar_msjs_entrantes(subdomain, data):
     """Guarda los mensajes entrantes de UN payload (camino del webhook).
@@ -1919,6 +1957,27 @@ def pulse_data():
         query += ' ORDER BY lead_id, f_ult_msj_cliente, f_ult_msj_asesor ASC'
         c.execute(query, params)
         rows = c.fetchall()
+
+        # Nombre de respaldo para los leads que Kommo nunca bautizo. Se piden
+        # SOLO los que hacen falta: gruporegalado tiene decenas de miles de
+        # mensajes y traerlos todos para completar unos cientos de nombres
+        # cargaria la consulta del dashboard sin necesidad.
+        #
+        # DISTINCT ON ... ORDER BY ts DESC toma el nombre mas reciente: si el
+        # contacto se renombro en Kommo, vale el ultimo.
+        nombres_cliente = {}
+        faltantes = list({r['lead_id'] for r in rows
+                          if not (r['lead_nombre'] or '').strip()})
+        if faltantes:
+            c.execute('''
+                SELECT DISTINCT ON (lead_id) lead_id, cliente_nombre
+                FROM mensajes_cliente
+                WHERE subdomain = %s
+                  AND lead_id = ANY(%s)
+                  AND cliente_nombre IS NOT NULL
+                ORDER BY lead_id, ts DESC
+            ''', (subdomain, faltantes))
+            nombres_cliente = {r['lead_id']: r['cliente_nombre'] for r in c.fetchall()}
     except Exception as e:
         print(f'❌ PULSE /data query: {e}')
         return jsonify({'error': str(e)}), 500
@@ -1951,7 +2010,11 @@ def pulse_data():
 
             registros.append({
                 'lead_id':          row['lead_id'],
-                'lead_nombre':      row['lead_nombre'],
+                # El nombre propio del lead manda: "Mariano Hernandez -
+                # Tradicion Burguer" dice mas que solo el nombre del contacto.
+                # El del mensaje entra unicamente cuando el lead no tiene.
+                'lead_nombre':      (row['lead_nombre'] or '').strip()
+                                    or nombres_cliente.get(row['lead_id']),
                 'inicio_espera':    inicio,
                 'efectivo_seg':      efectivo,
                 'responsible_user_id': row['responsible_user_id'],
