@@ -18,8 +18,15 @@ asi no queda en el historial de la consola.
 
     # 2. Recien cuando el paso 1 se ve bien
     python scripts/suscribir_salientes.py corepowerconsulting --activar
+
+    # 3. Solo si el webhook esta prendido o apagado, sin la lista de eventos.
+    #    Sirve cuando Kommo lo desactiva: 'disabled' dice que esta apagado y
+    #    'updated_at' dice CUANDO, que es el dato que hasta ahora se perdia
+    #    si nadie miraba la pantalla a tiempo.
+    python scripts/suscribir_salientes.py ventasdirectas --estado
 """
 
+import datetime
 import json
 import os
 import sys
@@ -28,6 +35,16 @@ import urllib.request
 
 NUEVO = 'add_outgoing_message'
 DESTINO = 'https://kommo-webhook-mp4u.onrender.com/webhook'
+
+
+def fecha(ts):
+    """Unix timestamp -> texto legible. La API los devuelve asi."""
+    if not ts:
+        return '-'
+    try:
+        return datetime.datetime.utcfromtimestamp(int(ts)).strftime('%d/%m/%Y %H:%M UTC')
+    except (TypeError, ValueError, OSError):
+        return str(ts)
 
 
 def pedir(subdomain, token, metodo='GET', cuerpo=None):
@@ -67,6 +84,7 @@ def main():
         sys.exit(1)
     subdomain = sys.argv[1]
     activar = '--activar' in sys.argv
+    solo_estado = '--estado' in sys.argv
 
     token = os.environ.get('KOMMO_TOKEN', '').strip()
     if not token:
@@ -87,11 +105,23 @@ def main():
 
     nuestro = None
     for w in actuales:
+        # 'disabled' es la clave para el otro problema abierto: cuando Kommo
+        # apaga el webhook por una respuesta invalida, queda en true, y
+        # updated_at dice CUANDO. Es la hora exacta de la desactivacion, que
+        # hasta ahora solo se podia sacar mirando la pantalla a tiempo.
+        apagado = bool(w.get('disabled'))
+        marca = 'APAGADO' if apagado else 'activo'
         print(f"\n  {w.get('destination')}")
-        for ev in sorted(w.get('settings') or []):
-            print(f'      - {ev}')
+        print(f"      estado: {marca}   ultimo cambio: {fecha(w.get('updated_at'))}"
+              f"   creado: {fecha(w.get('created_at'))}")
+        if not solo_estado:
+            for ev in sorted(w.get('settings') or []):
+                print(f'      - {ev}')
         if (w.get('destination') or '').rstrip('/') == DESTINO.rstrip('/'):
             nuestro = w
+
+    if solo_estado:
+        return
 
     if nuestro is None:
         print(f'\nNo se encontro un webhook apuntando a:\n  {DESTINO}')
