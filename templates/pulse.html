@@ -84,9 +84,26 @@
 
   <div id="content" class="hidden space-y-6">
 
-    <!-- Barra de filtros -->
+    <!-- Barra de filtros. El orden es el pedido en la reunion: primero el
+         periodo, despues el horario, y al final los selectores juntos. Los
+         selectores son el grupo que va a crecer (asesor, embudo), asi que
+         estan agrupados aparte en vez de intercalados con las fechas. -->
     <div class="card !p-5">
       <div class="flex flex-col lg:flex-row lg:items-end gap-4 lg:gap-5">
+
+        <div class="flex items-end gap-3">
+          <div>
+            <span class="field-label mb-1.5">Desde</span>
+            <input type="text" id="desde" readonly class="control w-32 cursor-pointer"/>
+          </div>
+          <div>
+            <span class="field-label mb-1.5">Hasta</span>
+            <input type="text" id="hasta" readonly class="control w-32 cursor-pointer"/>
+          </div>
+        </div>
+
+        <div class="hidden lg:block w-px h-11 bg-slate-200"></div>
+
         <div>
           <span class="field-label mb-1.5">Vista</span>
           <div class="flex items-center bg-slate-100 rounded-xl p-1">
@@ -97,21 +114,14 @@
 
         <div class="hidden lg:block w-px h-11 bg-slate-200"></div>
 
-        <div>
-          <span class="field-label mb-1.5">Responsable</span>
-          <select id="asesor-select" class="control w-full lg:w-48">
-            <option value="">Todos</option>
-          </select>
-        </div>
-
-        <div class="flex items-end gap-3">
-          <div>
-            <span class="field-label mb-1.5">Desde</span>
-            <input type="text" id="desde" readonly class="control w-32 cursor-pointer"/>
-          </div>
-          <div>
-            <span class="field-label mb-1.5">Hasta</span>
-            <input type="text" id="hasta" readonly class="control w-32 cursor-pointer"/>
+        <div class="flex items-end gap-3 flex-wrap">
+          <div class="multi-wrap relative">
+            <span class="field-label mb-1.5">Responsables</span>
+            <button type="button" onclick="multiToggle('asesor')" class="control w-full lg:w-52 flex items-center justify-between gap-2 text-left">
+              <span class="truncate" id="multi-asesor-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-asesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
         </div>
 
@@ -164,47 +174,6 @@
       </div>
     </div>
 
-    <!-- Leads accionables: no respondidos / trabajados hoy -->
-    <div class="flex items-center justify-end gap-2 -mb-1">
-      <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
-        <input type="checkbox" id="chk-solo-abiertas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
-        Solo conversaciones abiertas
-      </label>
-    </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="card border-l-4 !border-l-red-400">
-        <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
-          <div class="flex items-start gap-3.5">
-            <div class="icon-chip bg-red-50">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            </div>
-            <div>
-              <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
-              <div class="kpi-label">Sin responder</div>
-              <div class="mt-1 text-xs text-slate-400" id="nota-no-respondidos"></div>
-            </div>
-          </div>
-          <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div id="panel-no-respondidos" class="hidden mt-4"></div>
-      </div>
-      <div class="card border-l-4 !border-l-blue-400">
-        <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
-          <div class="flex items-start gap-3.5">
-            <div class="icon-chip bg-blue-50">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            </div>
-            <div>
-              <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
-              <div class="kpi-label">Atendidos hoy</div>
-            </div>
-          </div>
-          <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
-      </div>
-    </div>
-
     <!-- Por asesor -->
     <div class="card" id="card-por-asesor">
       <div class="flex items-center gap-3 mb-5">
@@ -221,6 +190,56 @@
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
+    </div>
+
+    <!-- Snapshot actual. Va pegado a la tabla de tiempos (pedido de Ana) pero
+         separado y con nombre propio, porque es lo unico del dashboard que NO
+         respeta el filtro de fechas: es el estado de ahora mismo. Sin el
+         titulo se leia como si fuera del periodo elegido. -->
+    <div>
+      <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
+        <div>
+          <div class="section-title">Snapshot actual</div>
+          <div class="section-sub">Estado de ahora mismo · no cambia con el filtro de fechas</div>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
+          <input type="checkbox" id="chk-solo-abiertas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
+          Solo conversaciones abiertas
+        </label>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="card border-l-4 !border-l-red-400">
+          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
+            <div class="flex items-start gap-3.5">
+              <div class="icon-chip bg-red-50">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div>
+                <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
+                <div class="kpi-label">Sin responder</div>
+                <div class="mt-1 text-xs text-slate-400" id="nota-no-respondidos"></div>
+              </div>
+            </div>
+            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div id="panel-no-respondidos" class="hidden mt-4"></div>
+        </div>
+        <div class="card border-l-4 !border-l-blue-400">
+          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
+            <div class="flex items-start gap-3.5">
+              <div class="icon-chip bg-blue-50">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+              <div>
+                <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
+                <div class="kpi-label">Atendidos hoy</div>
+              </div>
+            </div>
+            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Distribución -->
@@ -261,7 +280,20 @@
           </div>
           <div>
             <div class="section-title">Tendencia diaria</div>
-            <div class="section-sub" id="sub-tendencia">Barras: respuestas · Línea: tiempo promedio</div>
+            <!-- Leyenda de verdad y no una linea de texto gris: el grafico
+                 tiene dos series con dos ejes de escalas distintas, y en la
+                 reunion no se entendia cual era cual. -->
+            <div class="flex items-center gap-x-4 gap-y-1 mt-1 flex-wrap">
+              <span class="flex items-center gap-1.5 text-xs text-slate-500">
+                <span class="inline-block w-4 h-3 rounded-sm border flex-shrink-0" style="background:#2563eb33;border-color:#2563eb"></span>
+                <span id="leyenda-barras">Barras: cantidad de respuestas</span>
+              </span>
+              <span class="flex items-center gap-1.5 text-xs text-slate-500">
+                <svg class="flex-shrink-0" width="20" height="10" viewBox="0 0 20 10" aria-hidden="true"><line x1="1" y1="5" x2="19" y2="5" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/><circle cx="10" cy="5" r="3" fill="#0f172a" stroke="#fff" stroke-width="1.5"/></svg>
+                <span id="leyenda-linea">Línea: tiempo promedio</span>
+              </span>
+              <span class="text-xs text-slate-400">Cada eje tiene su propia escala</span>
+            </div>
           </div>
         </div>
         <span id="trend-rango" class="text-sm text-slate-400 mt-1"></span>
@@ -306,6 +338,63 @@ let MODO = 'laboral';
 let EXTREMOS = 'lentos';
 let TOP_LENTOS = [];
 let TOP_RAPIDOS = [];
+
+// ---------------------------------------------------------------------------
+// Selector multiple con checkboxes. Hoy lo usa "Responsables"; esta escrito
+// generico porque los filtros de asesor y de embudo van a necesitar lo mismo.
+//
+// El estado vive en MULTI y no solo en el DOM: el panel se dibuja una vez, pero
+// si en algun momento hubiera que redibujarlo se perderia lo tildado.
+// ---------------------------------------------------------------------------
+const MULTI = {};
+
+function multiInit(nombre, items, textoTodos) {
+  MULTI[nombre] = { items: items, sel: new Set(), todos: textoTodos };
+  document.getElementById(`multi-${nombre}-panel`).innerHTML = items.map(it => `
+    <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm text-slate-700">
+      <input type="checkbox" value="${it.value}" onchange="multiCambio('${nombre}')"
+             class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
+      <span class="truncate">${it.label}</span>
+    </label>`).join('');
+  multiCambio(nombre);
+}
+
+function multiValores(nombre) {
+  return MULTI[nombre] ? Array.from(MULTI[nombre].sel) : [];
+}
+
+function multiCambio(nombre) {
+  const panel = document.getElementById(`multi-${nombre}-panel`);
+  const marcados = Array.from(panel.querySelectorAll('input:checked')).map(i => i.value);
+  MULTI[nombre].sel = new Set(marcados);
+
+  // Con uno solo se muestra su nombre; con varios, el conteo. Enumerarlos no
+  // entra en el ancho del control y termina cortado a la mitad de un nombre.
+  const txt = document.getElementById(`multi-${nombre}-txt`);
+  if (marcados.length === 0) {
+    txt.textContent = MULTI[nombre].todos;
+    txt.classList.add('text-slate-400');
+  } else {
+    const uno = MULTI[nombre].items.find(x => String(x.value) === marcados[0]);
+    txt.textContent = marcados.length === 1 && uno ? uno.label : `${marcados.length} seleccionados`;
+    txt.classList.remove('text-slate-400');
+  }
+}
+
+function multiToggle(nombre) {
+  const panel = document.getElementById(`multi-${nombre}-panel`);
+  const abierto = !panel.classList.contains('hidden');
+  document.querySelectorAll('.multi-panel').forEach(p => p.classList.add('hidden'));
+  if (!abierto) panel.classList.remove('hidden');
+}
+
+// Cerrar al hacer clic afuera. Sin esto el panel queda abierto tapando la
+// pagina y hay que volver a apretar el mismo boton para sacarlo.
+document.addEventListener('click', e => {
+  if (!e.target.closest('.multi-wrap')) {
+    document.querySelectorAll('.multi-panel').forEach(p => p.classList.add('hidden'));
+  }
+});
 
 // Los dos Top 10 vivian en tarjetas separadas y ocupaban 1782px, el 60% de la
 // pagina, empujando hacia abajo lo que el dashboard viene a mostrar. Son el
@@ -510,6 +599,12 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   const apilado = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
   const datasets = [];
 
+  // Cuando las barras se apilan por responsable, cada color es una persona y
+  // el cuadradito azul de la leyenda dejaria de significar lo que muestra.
+  document.getElementById('leyenda-barras').textContent = apilado
+    ? 'Barras: cantidad de respuestas, un color por responsable'
+    : 'Barras: cantidad de respuestas';
+
   // 'order' controla que se dibuja encima: Chart.js ordena los datasets por
   // order ascendente y los pinta en orden inverso, asi que el MENOR queda
   // arriba. La linea va en 1 y las barras en 2 para que no la tapen.
@@ -661,6 +756,7 @@ function renderAsesores(porAsesor, minMuestra) {
     <div class="row-hover flex items-center justify-between px-2 py-3 ${a.sin_puesto ? 'opacity-60' : ''}">
       <div class="flex items-center gap-2.5 min-w-0">
         ${rank}
+        <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
         <span class="text-xs text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
         ${aviso}
@@ -688,11 +784,11 @@ async function cargarDatos() {
 
   const desde  = document.getElementById('desde').value;
   const hasta  = document.getElementById('hasta').value;
-  const asesor = document.getElementById('asesor-select').value;
   const params = new URLSearchParams({ subdomain: SUBDOMAIN });
   if (desde)  params.append('desde',  desde);
   if (hasta)  params.append('hasta',  hasta);
-  if (asesor) params.append('asesor', asesor);
+  // Un parametro por responsable elegido; sin ninguno, el backend no filtra.
+  multiValores('asesor').forEach(v => params.append('asesor', v));
   params.append('modo', MODO);
   if (document.getElementById('chk-solo-abiertas').checked) params.append('abiertas', '1');
 
@@ -736,9 +832,9 @@ async function cargarDatos() {
     document.getElementById('titulo-distribucion').textContent = esFueraHorario
       ? 'Distribución — fuera de horario'
       : 'Distribución';
-    document.getElementById('sub-tendencia').textContent = esFueraHorario
-      ? 'Barras: respuestas · Línea: tiempo real promedio'
-      : 'Barras: respuestas · Línea: tiempo promedio';
+    document.getElementById('leyenda-linea').textContent = esFueraHorario
+      ? 'Línea: tiempo real promedio'
+      : 'Línea: tiempo promedio';
     document.getElementById('sub-por-asesor').textContent = esFueraHorario
       ? 'Mediana del tiempo real · responsable del lead, no quien contestó'
       : 'Mediana · responsable del lead, no quien contestó';
@@ -760,15 +856,10 @@ async function cargarDatos() {
       }
     }
 
-    // Selector de asesor (solo se puebla una vez, para no perder la selección actual)
+    // Selector de responsables: se puebla una sola vez, si no cada recarga
+    // borraria lo que la persona acaba de tildar.
     if (!asesoresListados && d.config.asesores) {
-      const sel = document.getElementById('asesor-select');
-      d.config.asesores.forEach(a => {
-        const opt = document.createElement('option');
-        opt.value = a.id;
-        opt.textContent = a.nombre;
-        sel.appendChild(opt);
-      });
+      multiInit('asesor', d.config.asesores.map(a => ({ value: a.id, label: a.nombre })), 'Todos');
       asesoresListados = true;
     }
 
@@ -800,9 +891,11 @@ async function cargarDatos() {
     renderExtraLeads('panel-no-respondidos', d.no_respondidos);
     renderExtraLeads('panel-trabajados-hoy', d.trabajados_hoy);
 
-    // Por asesor (solo tiene sentido en la vista "Todos")
+    // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
+    // antes se escondia y desaparecian la mediana y el p90 de esa persona,
+    // que es justo lo que uno filtra para ver. Con uno solo, una fila.
     const cardPorAsesor = document.getElementById('card-por-asesor');
-    if (d.por_asesor) {
+    if (d.por_asesor && d.por_asesor.length) {
       cardPorAsesor.classList.remove('hidden');
       renderAsesores(d.por_asesor, d.config.min_muestra_asesor);
     } else {

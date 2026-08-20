@@ -1675,7 +1675,7 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
 STATUS_CERRADOS = (142, 143)
 FILTRO_SOLO_ABIERTAS = 'AND (status_id IS NULL OR status_id NOT IN (142, 143))'
 
-def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None,
+def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None):
     """Leads cuyo último mensaje en la conversación es del cliente y el
     asesor no ha respondido después. No depende del rango de fechas del
@@ -1701,9 +1701,9 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None,
         if desde_ts is not None:
             query += ' AND f_ult_msj_cliente >= %s'
             params.append(desde_ts)
-        if responsible_user_id:
-            query += ' AND responsible_user_id = %s'
-            params.append(responsible_user_id)
+        if responsible_user_ids:
+            query += ' AND responsible_user_id = ANY(%s)'
+            params.append(list(responsible_user_ids))
         if solo_abiertas:
             query += ' ' + FILTRO_SOLO_ABIERTAS
         query += ' ORDER BY f_ult_msj_cliente DESC'
@@ -1713,7 +1713,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_id=None,
         conn.close()
     return [_fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente') for r in rows]
 
-def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_id=None, solo_abiertas=False):
+def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None, solo_abiertas=False):
     """Leads a los que el asesor le escribió (respuesta o mensaje propio)
     hoy, dentro del horario laboral configurado."""
     inicio, fin = _hoy_rango_ts(tz_offset)
@@ -1727,9 +1727,9 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
               AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
         '''
         params = [subdomain, inicio, fin]
-        if responsible_user_id:
-            query += ' AND responsible_user_id = %s'
-            params.append(responsible_user_id)
+        if responsible_user_ids:
+            query += ' AND responsible_user_id = ANY(%s)'
+            params.append(list(responsible_user_ids))
         if solo_abiertas:
             query += ' ' + FILTRO_SOLO_ABIERTAS
         query += ' ORDER BY f_ult_msj_asesor DESC'
@@ -1908,7 +1908,22 @@ def pulse_data():
 
     desde_str = request.args.get('desde')
     hasta_str = request.args.get('hasta')
-    asesor_id = request.args.get('asesor', '').strip() or None
+    # Varios responsables a la vez (pedido de Ana). Se acepta repetido
+    # (?asesor=1&asesor=2) y separado por comas, porque la URL la arma el
+    # dashboard pero tambien la pega gente a mano.
+    asesor_ids = []
+    for crudo in request.args.getlist('asesor'):
+        for parte in str(crudo).split(','):
+            parte = parte.strip()
+            if not parte:
+                continue
+            try:
+                asesor_ids.append(int(parte))
+            except ValueError:
+                # Un id invalido se ignora en vez de romper el dashboard: el
+                # filtro es una comodidad, no algo por lo que valga un 500.
+                pass
+    asesor_ids = sorted(set(asesor_ids))
     fuera_horario = request.args.get('modo', 'laboral').strip() == 'fuera_horario'
     solo_abiertas = request.args.get('abiertas', '').strip() == '1'
 
@@ -1951,9 +1966,9 @@ def pulse_data():
         if hasta_str:
             query += ' AND LEAST(f_primer_msj_cliente, f_ult_msj_cliente) <= %s'
             params.append(_local_date_to_ts(hasta_str, tz_offset) + 86399)
-        if asesor_id:
-            query += ' AND responsible_user_id = %s'
-            params.append(asesor_id)
+        if asesor_ids:
+            query += ' AND responsible_user_id = ANY(%s)'
+            params.append(asesor_ids)
         query += ' ORDER BY lead_id, f_ult_msj_cliente, f_ult_msj_asesor ASC'
         c.execute(query, params)
         rows = c.fetchall()
@@ -2038,7 +2053,12 @@ def pulse_data():
             rs.sort(key=lambda x: x['inicio_espera'], reverse=True)
             ultimas = rs[:TOP_ULTIMAS_RESPUESTAS]
             fila = dict(ultimas[0])          # la mas reciente: nombre, fecha, asesor
-            fila['efectivo_seg'] = round(sum(x['efectivo_seg'] for x in ultimas) / len(ultimas))
+            # Mediana y no promedio (pedido de Ana): con 5 valores, una sola
+            # respuesta muy lenta arrastra el promedio y el lead aparece entre
+            # los peores por un caso aislado. La mediana describe como se viene
+            # atendiendo la conversacion. Es el mismo criterio que ya usa el
+            # ranking por responsable.
+            fila['efectivo_seg'] = _pctl([x['efectivo_seg'] for x in ultimas], 50)
             fila['respuestas']   = len(ultimas)
             consolidado.append(fila)
 
@@ -2050,7 +2070,10 @@ def pulse_data():
         for r in registros:
             dia = _ts_to_local(r['inicio_espera'], tz_offset).strftime('%Y-%m-%d')
             daily[dia].append(r['efectivo_seg'])
-            if not asesor_id:
+            # Apilar por responsable pierde sentido con UNO solo elegido: seria
+            # una sola serie del mismo color que el total. Con varios sigue
+            # sirviendo, que es justo para lo que se pidio la seleccion multiple.
+            if len(asesor_ids) != 1:
                 nombre = nombre_asesor(r.get('responsible_user_id')) or 'Sin asignar'
                 daily_asesor[dia][nombre] += 1
 
@@ -2061,9 +2084,9 @@ def pulse_data():
         ]
 
         tendencia_por_asesor = None
-        if not asesor_id:
-            # Barras apiladas por asesor: solo tiene sentido en la vista "Todos"
-            # (con un asesor ya filtrado la barra seria una sola serie).
+        if len(asesor_ids) != 1:
+            # Barras apiladas por asesor. Con un solo responsable elegido no
+            # aporta nada; con varios es el modo de compararlos dia a dia.
             dias = [dia for dia, _ in dias_ordenados]
             nombres = sorted({n for dia in dias for n in daily_asesor[dia]})
             PALETA_ASESORES = ['#2563eb', '#16a34a', '#f59e0b', '#0891b2', '#e11d48', '#65a30d', '#0d9488', '#0284c7']
@@ -2080,8 +2103,8 @@ def pulse_data():
         fecha_min = _fecha_minima(subdomain)
         piso_captura = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
-        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_id, solo_abiertas, piso_captura)
-        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_id, solo_abiertas)
+        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas, piso_captura)
+        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_ids, solo_abiertas)
 
         return jsonify({
             'config': {
@@ -2091,7 +2114,10 @@ def pulse_data():
                 'franjas':     franjas,
                 'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
                 'asesores':    _lista_asesores(subdomain),
-                'asesor_actual': nombre_asesor(asesor_id) if asesor_id else None,
+                # Solo se nombra cuando hay UNO: con varios elegidos el titulo
+                # tendria que enumerarlos y no cabe.
+                'asesor_actual': nombre_asesor(asesor_ids[0]) if len(asesor_ids) == 1 else None,
+                'asesores_elegidos': asesor_ids,
                 'fecha_minima': fecha_min,
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
@@ -2111,7 +2137,12 @@ def pulse_data():
             'top_rapidos':   [_fmt_row(r, tz_offset) for r in top_rapidos],
             'tendencia':     tendencia,
             'tendencia_por_asesor': tendencia_por_asesor,
-            'por_asesor':    _calc_por_asesor(registros) if not asesor_id else None,
+            # Se calcula SIEMPRE, tambien con un responsable elegido. Antes se
+            # devolvia None en ese caso y el dashboard escondia la tarjeta
+            # entera: al filtrar por una persona desaparecia su mediana y su
+            # p90, que es justo lo que uno quiere ver de esa persona. Con un
+            # solo responsable devuelve una fila.
+            'por_asesor':    _calc_por_asesor(registros),
             'no_respondidos': no_respondidos,
             'trabajados_hoy': trabajados_hoy,
         })
