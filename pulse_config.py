@@ -124,6 +124,25 @@ PULSE_CONFIG = {
         # real difiere en una letra esto no mide nada y no avisa. Confirmar con
         # /health/campos, que reporta ok:false mientras no lo encuentre.
         'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj enviado'},
+        # Quien atendio DE VERDAD. Esta cuenta comparte el usuario "Ventas"
+        # entre Marilyn, Denise y otros, asi que el responsible_user_id de
+        # Kommo no distingue a nadie: todo el trabajo de tres personas aparece
+        # bajo un solo nombre.
+        #
+        # Este campo custom si trae la persona. Medido sobre 50 lead_update:
+        # 26 lo traen con valor, con 7 nombres distintos (Ivis Anchundia,
+        # Gisela Alvarez, Karina Vivas, Damaris Ñacato, Jhonny Lopez, Daniel
+        # Benitez, Sami Cachiguango). Los que no lo traen caen al responsable,
+        # como antes.
+        #
+        # Es un campo de TEXTO: el valor esta en [values][0][value], no en
+        # [values][0] como los de fecha.
+        #
+        # Se llama 'campo_quien_atendio' y no 'campo_asesor' a proposito: justo
+        # arriba, campos['asesor'] es la FECHA del ultimo mensaje del asesor.
+        # Dos claves con la palabra "asesor" que significan cosas distintas se
+        # confunden sola.
+        'campo_quien_atendio': 'Asesor',
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],

@@ -18,12 +18,12 @@ app = Flask(__name__)
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL no está configurada")
+    raise RuntimeError("DATABASE_URL no estÃ¡ configurada")
 
 app.secret_key = os.environ.get('SECRET_KEY')
 if not app.secret_key:
     app.secret_key = secrets.token_hex(32)
-    print("⚠️  SECRET_KEY no configurada: usando una temporal. "
+    print("âš ï¸  SECRET_KEY no configurada: usando una temporal. "
           "Los usuarios de PULSE se desloguean en cada deploy/restart. "
           "Configura SECRET_KEY en Render para que las sesiones persistan.")
 
@@ -50,14 +50,14 @@ _CARGA = {
 
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN')
 if not ADMIN_TOKEN:
-    print("⚠️  ADMIN_TOKEN no configurada: /data, /respuestas y /backfill* "
+    print("âš ï¸  ADMIN_TOKEN no configurada: /data, /respuestas y /backfill* "
           "responden 401. Configurala en Render para poder usarlos.")
 
 def token_requerido(f):
     """Cierra los endpoints que devuelven datos de clientes o escriben en la base.
 
     Estaban abiertos: cualquiera con el link leia en /data los payloads crudos
-    de Kommo — telefonos, nombres y texto de los mensajes de las seis cuentas —
+    de Kommo â€” telefonos, nombres y texto de los mensajes de las seis cuentas â€”
     y podia disparar /backfill, que ESCRIBE y ademas es un GET, o sea que
     alcanzaba con que un crawler lo visitara.
 
@@ -112,6 +112,10 @@ def init_db():
     ''')
     c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS responsible_user_id BIGINT')
     c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
+    # Quien atendio segun el campo custom de la cuenta, cuando lo tiene. Es
+    # distinto de responsible_user_id: ese es el DUEÃ‘O del lead, y en las
+    # cuentas que comparten usuario no identifica a nadie.
+    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS asesor_nombre TEXT')
     # Hora del PRIMER mensaje del cliente sin responder. 'F Ult msj cliente'
     # guarda el ULTIMO, asi que si el cliente escribe varias veces antes de que
     # le contesten, medir desde ahi subestima la espera (medido: 2.3x en la
@@ -137,8 +141,8 @@ def init_db():
         )
     ''')
     # Como se llama quien escribio. En la mayoria de las cuentas el lead no
-    # tiene nombre propio —entra desde WhatsApp o Instagram y nadie lo
-    # renombra— y el dashboard mostraba "(sin nombre)": 100% de los leads en
+    # tiene nombre propio â€”entra desde WhatsApp o Instagram y nadie lo
+    # renombraâ€” y el dashboard mostraba "(sin nombre)": 100% de los leads en
     # autonica y 70% en gruporegalado. Kommo manda el nombre en cada mensaje
     # entrante (author][name], con author][type] = external, o sea el cliente),
     # asi que se guarda aca y se usa cuando el lead no trae el suyo.
@@ -157,15 +161,20 @@ def init_db():
     ''')
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS status_id BIGINT')
+    # Tambien aca y no solo en tiempos_respuesta: las tarjetas de "Sin
+    # responder" y "Atendidos hoy" leen esta tabla, y si mostraran el
+    # responsable mientras el ranking muestra al asesor, el mismo lead
+    # apareceria con dos nombres distintos en la misma pantalla.
+    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS asesor_nombre TEXT')
 
     # Supabase expone una API REST publica ademas de la conexion Postgres. Esta
-    # app no la usa —se conecta por DATABASE_URL— pero la API sigue abierta, y
+    # app no la usa â€”se conecta por DATABASE_URLâ€” pero la API sigue abierta, y
     # sin RLS cualquiera con la URL del proyecto puede leer estas tablas. En
     # 'eventos' eso son telefonos, nombres y texto de los mensajes de los
     # clientes de los 6 clientes.
     #
     # Se activa RLS SIN crear politicas: la API REST queda sin acceso, y la app
-    # no se ve afectada porque se conecta como dueño de las tablas y el dueño
+    # no se ve afectada porque se conecta como dueÃ±o de las tablas y el dueÃ±o
     # salta RLS. Va en init_db para que un deploy futuro no lo deje sin activar.
     for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado'):
         try:
@@ -173,10 +182,10 @@ def init_db():
         except Exception as e:
             # No debe impedir el arranque: sin esto la app no procesa webhooks.
             conn.rollback()
-            print(f"⚠️  No se pudo activar RLS en {tabla}: {e}")
+            print(f"âš ï¸  No se pudo activar RLS en {tabla}: {e}")
     conn.commit()
     conn.close()
-    print("✅ Base de datos lista")
+    print("âœ… Base de datos lista")
 
 init_db()
 
@@ -196,7 +205,40 @@ def get_custom_field(data, prefix, field_name):
                 return None
     return None
 
+def get_custom_field_texto(data, prefix, field_name):
+    """Igual que get_custom_field pero para campos de TEXTO o lista.
+
+    Kommo aplana los dos tipos distinto y por eso hacen falta dos funciones:
+
+        fecha:  [custom_fields][i][values][0]           -> 1786000000
+        texto:  [custom_fields][i][values][0][value]    -> 'Ivis Anchundia'
+
+    Leer un campo de texto con get_custom_field devuelve None sin ningun error
+    â€”la clave plana no existeâ€” asi que el campo parece vacio en vez de mal
+    leido. Es exactamente lo que pasaba con 'Asesor' antes de mirarlo de cerca.
+    """
+    if not field_name:
+        return None
+    for i in get_batch_indices(data, f'{prefix}[custom_fields]'):
+        if data.get(f'{prefix}[custom_fields][{i}][name]') == field_name:
+            val = data.get(f'{prefix}[custom_fields][{i}][values][0][value]')
+            val = (str(val).strip() if val is not None else '')[:120]
+            return val or None
+    return None
+
 CAMPOS_DEFAULT = {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'}
+
+def campo_quien_atendio_de(subdomain):
+    """Nombre del campo custom que dice QUIEN atendio el lead.
+
+    Ojo con no confundirlo con campos_de(subdomain)['asesor'], que es la FECHA
+    del ultimo mensaje del asesor. Son dos campos distintos de Kommo y los dos
+    tienen la palabra "asesor" en el nombre.
+
+    Solo lo tienen las cuentas que comparten usuario de Kommo entre varias
+    personas (hoy gruporegalado). Sin configurar, la cuenta mide por
+    responsable exactamente como antes."""
+    return PULSE_CONFIG.get(subdomain, {}).get('campo_quien_atendio')
 
 def campos_de(subdomain):
     """Cada cuenta de Kommo nombra distinto sus campos custom de
@@ -207,7 +249,7 @@ def campos_de(subdomain):
 def get_batch_indices(data, key_root):
     """Kommo aplana las listas en claves indexadas (message[add][0],
     message[add][1], ... / [custom_fields][0], [custom_fields][1], ...).
-    Devuelve todos los índices realmente presentes bajo key_root."""
+    Devuelve todos los Ã­ndices realmente presentes bajo key_root."""
     idxs = set()
     pattern = re.compile(re.escape(key_root) + r'\[(\d+)\]')
     for k in data.keys():
@@ -220,9 +262,9 @@ def prefix_de_lead(data, lead_id):
     """Ubica el prefijo leads[update][i] que corresponde a ESTE lead_id.
 
     Un mismo POST puede traer varios leads y en la tabla 'eventos' guardamos el
-    payload completo en la fila de cada uno. Asumir el índice [0] al releer esas
+    payload completo en la fila de cada uno. Asumir el Ã­ndice [0] al releer esas
     filas escribe las fechas del primer lead del batch bajo el lead_id de los
-    demás. Devuelve None si el lead no está en el payload (mejor saltarlo que
+    demÃ¡s. Devuelve None si el lead no estÃ¡ en el payload (mejor saltarlo que
     adivinar)."""
     for i in get_batch_indices(data, 'leads[update]'):
         if str(data.get(f'leads[update][{i}][id]')) == str(lead_id):
@@ -237,8 +279,8 @@ def msjs_entrantes(data):
     que un mismo POST guardado varias veces no duplique.
 
     El nombre es el del autor del mensaje. Como solo entran los entrantes, el
-    autor es siempre el cliente —se verifico author][type] = external en 150 de
-    150 mensajes de tres cuentas— y es el unico nombre disponible para los
+    autor es siempre el cliente â€”se verifico author][type] = external en 150 de
+    150 mensajes de tres cuentasâ€” y es el unico nombre disponible para los
     leads que Kommo nunca bautizo."""
     salida = set()
     for i in get_batch_indices(data, 'message[add]'):
@@ -310,7 +352,7 @@ def guardar_msjs_entrantes(subdomain, data):
         conn.commit()
         return n
     except Exception as e:
-        print(f"❌ Error mensajes_cliente: {e}")
+        print(f"âŒ Error mensajes_cliente: {e}")
         return 0
     finally:
         conn.close()
@@ -334,9 +376,9 @@ def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
             datetime.now().isoformat()
         ))
         conn.commit()
-        print(f"💾 {subdomain} | {tipo_evento} | lead: {lead_id}")
+        print(f"ðŸ’¾ {subdomain} | {tipo_evento} | lead: {lead_id}")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"âŒ Error: {e}")
     finally:
         conn.close()
 
@@ -345,30 +387,45 @@ def nombre_asesor(responsible_user_id):
         return None
     return ASESORES.get(int(responsible_user_id), f'Usuario {responsible_user_id}')
 
-def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id=None, lead_nombre=None):
+def asesor_de_registro(r):
+    """Quien atendio una respuesta: el campo custom si esta, el responsable si no.
+
+    La regla vive en un solo lugar porque la usan el ranking, la tendencia
+    diaria y el detalle de la distribucion; si se separan, el dashboard puede
+    mostrar un nombre en el ranking y otro distinto al abrir la franja."""
+    return r.get('asesor_nombre') or nombre_asesor(r.get('responsible_user_id'))
+
+def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id=None,
+                             lead_nombre=None, asesor_nombre=None):
     tiempo_seg = f_asesor - f_cliente
     conn = get_conn()
     c = conn.cursor()
     try:
         c.execute('''
             INSERT INTO tiempos_respuesta
-                (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id, lead_nombre)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id, lead_nombre, asesor_nombre)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor)
-            DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id, lead_nombre = EXCLUDED.lead_nombre
-        ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat(), responsible_user_id, lead_nombre))
+            DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id,
+                          lead_nombre   = EXCLUDED.lead_nombre,
+                          -- COALESCE y no pisar a secas: si el lead se toca
+                          -- despues sin el campo cargado, se perderia quien
+                          -- habia atendido.
+                          asesor_nombre = COALESCE(EXCLUDED.asesor_nombre, tiempos_respuesta.asesor_nombre)
+        ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat(), responsible_user_id, lead_nombre, asesor_nombre))
         conn.commit()
-        print(f"⏱️  {subdomain} | lead {lead_id} | asesor respondió en {tiempo_seg // 60}min {tiempo_seg % 60}s")
+        print(f"â±ï¸  {subdomain} | lead {lead_id} | asesor respondiÃ³ en {tiempo_seg // 60}min {tiempo_seg % 60}s")
     except Exception as e:
-        print(f"❌ Error tiempo respuesta: {e}")
+        print(f"âŒ Error tiempo respuesta: {e}")
     finally:
         conn.close()
 
-def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre=None, status_id=None):
-    """Guarda el estado vigente del lead (quién es responsable, cuándo escribió
-    cliente/asesor por última vez, en qué status esta). Se llama en CADA
-    leads[update], sin importar quién respondió último. evento_ts evita que
-    un evento viejo (ej. reprocesado por /backfill) pise un estado más reciente.
+def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts,
+                        lead_nombre=None, status_id=None, asesor_nombre=None):
+    """Guarda el estado vigente del lead (quiÃ©n es responsable, cuÃ¡ndo escribiÃ³
+    cliente/asesor por Ãºltima vez, en quÃ© status esta). Se llama en CADA
+    leads[update], sin importar quiÃ©n respondiÃ³ Ãºltimo. evento_ts evita que
+    un evento viejo (ej. reprocesado por /backfill) pise un estado mÃ¡s reciente.
 
     status_id 142/143 son constantes reservadas de Kommo (Ganado/Perdido),
     iguales en todas las cuentas - se usan para filtrar "solo abiertas"."""
@@ -379,8 +436,8 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
     try:
         c.execute('''
             INSERT INTO leads_estado
-                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id, asesor_nombre)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                 responsible_user_id = COALESCE(EXCLUDED.responsible_user_id, leads_estado.responsible_user_id),
                 f_ult_msj_cliente   = COALESCE(EXCLUDED.f_ult_msj_cliente,   leads_estado.f_ult_msj_cliente),
@@ -388,12 +445,13 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
                 evento_ts           = EXCLUDED.evento_ts,
                 actualizado_at      = EXCLUDED.actualizado_at,
                 lead_nombre         = COALESCE(EXCLUDED.lead_nombre,         leads_estado.lead_nombre),
-                status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id)
+                status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id),
+                asesor_nombre       = COALESCE(EXCLUDED.asesor_nombre,       leads_estado.asesor_nombre)
             WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
-        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id))
+        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre))
         conn.commit()
     except Exception as e:
-        print(f"❌ Error lead_estado: {e}")
+        print(f"âŒ Error lead_estado: {e}")
     finally:
         conn.close()
 
@@ -414,7 +472,7 @@ def webhook():
         data = request.form.to_dict()
     except Exception as e:
         _CARGA['errores_body'] += 1
-        print(f"❌ No se pudo leer el body del webhook: {e}")
+        print(f"âŒ No se pudo leer el body del webhook: {e}")
         return jsonify({'status': 'ok'}), 200
 
     try:
@@ -422,10 +480,10 @@ def webhook():
     except RuntimeError as e:
         # No se pudo crear el hilo: el proceso se quedo sin memoria o llego al
         # limite de hilos. Es el candidato mas directo a las desactivaciones,
-        # porque hasta ahora salia como 500 —justo lo que Kommo no tolera— y
+        # porque hasta ahora salia como 500 â€”justo lo que Kommo no toleraâ€” y
         # ademas ocurre precisamente en las rafagas, que es cuando se cayo.
         _CARGA['hilos_rechazados'] += 1
-        print(f"❌ Sin capacidad para crear el hilo, evento descartado: {e}")
+        print(f"âŒ Sin capacidad para crear el hilo, evento descartado: {e}")
 
     # Medicion de carga. Kommo desactivo el webhook cuatro veces en tres semanas
     # (tucoytico, gruporegalado, ventasdirectas x2) y venimos suponiendo la
@@ -484,13 +542,18 @@ def _procesar_webhook(data):
             evento_ts = data.get(f'{prefix}[updated_at]')
             lead_nombre = data.get(f'{prefix}[name]')
             status_id = data.get(f'{prefix}[status_id]')
+            # Solo en las cuentas que lo configuraron; en el resto queda None y
+            # todo sigue midiendose por responsable como hasta ahora.
+            asesor_nombre = get_custom_field_texto(data, prefix, campo_quien_atendio_de(subdomain))
 
             # Estado vigente del lead (para "no respondidos" / "trabajados hoy"),
-            # se guarda siempre, sin importar quién escribió último.
-            guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts, lead_nombre, status_id)
+            # se guarda siempre, sin importar quiÃ©n escribiÃ³ Ãºltimo.
+            guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor,
+                                evento_ts, lead_nombre, status_id, asesor_nombre)
 
             if f_cliente and f_asesor and f_asesor > f_cliente:
-                guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id, lead_nombre)
+                guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor,
+                                         responsible_user_id, lead_nombre, asesor_nombre)
 
         for i in get_batch_indices(data, 'leads[status]'):
             algo_procesado = True
@@ -515,7 +578,7 @@ def _procesar_webhook(data):
         if not algo_procesado:
             # Se GUARDA, no solo se loguea. Antes se imprimian las dos primeras
             # claves y se descartaba el resto, asi que no habia forma de saber
-            # que traian estos POST — y llegan a cientos por rafaga.
+            # que traian estos POST â€” y llegan a cientos por rafaga.
             #
             # Importa porque podrian ser los mensajes SALIENTES del asesor: el
             # dato que falta para medir bien el tiempo de respuesta y saber
@@ -532,10 +595,10 @@ def _procesar_webhook(data):
             # Patrones de clave (indices reemplazados por [n]) en vez de las dos
             # primeras: con dos claves no se distingue un tipo de evento de otro.
             patrones = sorted({re.sub(r'\[\d+\]', '[n]', k) for k in data})[:15]
-            print(f"⚠️  Ignorado | {subdomain} | {patrones}")
+            print(f"âš ï¸  Ignorado | {subdomain} | {patrones}")
 
     except Exception as e:
-        print(f"❌ ERROR procesando webhook en background: {e}")
+        print(f"âŒ ERROR procesando webhook en background: {e}")
 
 # ========================
 # ENDPOINTS
@@ -624,7 +687,7 @@ def ver_respuestas():
         c.execute(query, params)
         detalle = [dict(r) for r in c.fetchall()]
         for r in detalle:
-            r['asesor'] = nombre_asesor(r.get('responsible_user_id'))
+            r['asesor'] = asesor_de_registro(r)
 
         return jsonify({'resumen': resumen, 'detalle': detalle})
     finally:
@@ -667,7 +730,7 @@ def backfill():
                 prefix    = prefix_de_lead(data, row['lead_id'])
                 if prefix is None:
                     errores += 1
-                    print(f"⚠️ Backfill: lead {row['lead_id']} no está en su propio raw_data")
+                    print(f"âš ï¸ Backfill: lead {row['lead_id']} no estÃ¡ en su propio raw_data")
                     continue
                 campos    = campos_de(row['subdomain'])
                 f_cliente = get_custom_field(data, prefix, campos['cliente'])
@@ -676,12 +739,13 @@ def backfill():
                 evento_ts = data.get(f'{prefix}[updated_at]')
                 lead_nombre = data.get(f'{prefix}[name]')
                 status_id = data.get(f'{prefix}[status_id]')
+                asesor_nombre = get_custom_field_texto(data, prefix, campo_quien_atendio_de(row['subdomain']))
 
                 if evento_ts:
                     write_c.execute('''
                         INSERT INTO leads_estado
-                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id, asesor_nombre)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                             responsible_user_id = COALESCE(EXCLUDED.responsible_user_id, leads_estado.responsible_user_id),
                             f_ult_msj_cliente   = COALESCE(EXCLUDED.f_ult_msj_cliente,   leads_estado.f_ult_msj_cliente),
@@ -689,30 +753,33 @@ def backfill():
                             evento_ts           = EXCLUDED.evento_ts,
                             actualizado_at      = EXCLUDED.actualizado_at,
                             lead_nombre         = COALESCE(EXCLUDED.lead_nombre,         leads_estado.lead_nombre),
-                            status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id)
+                            status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id),
+                            asesor_nombre       = COALESCE(EXCLUDED.asesor_nombre,       leads_estado.asesor_nombre)
                         WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
                     ''', (
                         row['subdomain'], row['lead_id'], responsible_user_id,
-                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id
+                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre
                     ))
 
                 if f_cliente and f_asesor and f_asesor > f_cliente:
                     write_c.execute('''
                         INSERT INTO tiempos_respuesta
-                            (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id, lead_nombre)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            (subdomain, lead_id, f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, capturado_at, responsible_user_id, lead_nombre, asesor_nombre)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (subdomain, lead_id, f_ult_msj_asesor)
-                        DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id, lead_nombre = EXCLUDED.lead_nombre
+                        DO UPDATE SET responsible_user_id = EXCLUDED.responsible_user_id,
+                                      lead_nombre   = EXCLUDED.lead_nombre,
+                                      asesor_nombre = COALESCE(EXCLUDED.asesor_nombre, tiempos_respuesta.asesor_nombre)
                     ''', (
                         row['subdomain'], row['lead_id'],
                         f_cliente, f_asesor, f_asesor - f_cliente,
-                        datetime.now().isoformat(), responsible_user_id, lead_nombre
+                        datetime.now().isoformat(), responsible_user_id, lead_nombre, asesor_nombre
                     ))
                     if write_c.rowcount > 0:
                         insertados += 1
             except Exception as e:
                 errores += 1
-                print(f"⚠️ Backfill skip lead {row.get('lead_id')}: {e}")
+                print(f"âš ï¸ Backfill skip lead {row.get('lead_id')}: {e}")
                 continue
 
         conn.commit()
@@ -818,7 +885,7 @@ def backfill_mensajes():
                     filas |= msjs_entrantes(json.loads(row['raw_data']))
                 except Exception as e:
                     errores += 1
-                    print(f"⚠️ Backfill mensajes: {e}")
+                    print(f"âš ï¸ Backfill mensajes: {e}")
             guardados += insertar_msjs_cliente(write_c, subdomain, filas)
             leidos  += len(rows)
             offset  += len(rows)
@@ -871,8 +938,8 @@ def health_carga():
     """Cuantos hilos llega a tener el servidor. Es la prueba que falta.
 
     Cada webhook lanza un hilo nuevo sin limite. La hipotesis de por que Kommo
-    desactiva los webhooks es que en las rafagas —una operacion masiva en el CRM
-    dispara cientos de POST juntos— se crean cientos de hilos, se agotan las
+    desactiva los webhooks es que en las rafagas â€”una operacion masiva en el CRM
+    dispara cientos de POST juntosâ€” se crean cientos de hilos, se agotan las
     conexiones a Supabase y las respuestas se vuelven lentas.
 
     Como leerlo:
@@ -1123,8 +1190,8 @@ def health_desconocidos():
     evento se trata, con un valor de ejemplo de cada una.
 
     La pregunta que buscamos responder: si alguno de estos es el mensaje
-    SALIENTE del asesor. Todo lo que falta para medir bien —la hora exacta de
-    la respuesta y quien contesto— depende de ese dato, y hasta ahora se dio por
+    SALIENTE del asesor. Todo lo que falta para medir bien â€”la hora exacta de
+    la respuesta y quien contestoâ€” depende de ese dato, y hasta ahora se dio por
     hecho que Kommo no lo manda."""
     subdomain = request.args.get('subdomain', '').strip()
     try:
@@ -1451,7 +1518,7 @@ def health_sesgo():
 # ========================
 # PULSE
 # ========================
-DIAS_LABEL = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+DIAS_LABEL = ['Lun', 'Mar', 'MiÃ©', 'Jue', 'Vie', 'SÃ¡b', 'Dom']
 
 # Si la brecha entre el ultimo mensaje del cliente y la respuesta del asesor
 # supera esto, no es una "respuesta" real sino una reactivacion de un lead
@@ -1472,7 +1539,7 @@ def _fmt_horario(h_ini, h_fin):
         if h < 12: return f'{h}:00 AM'
         if h == 12: return '12:00 PM'
         return f'{h - 12}:00 PM'
-    return f'{fh(h_ini)} – {fh(h_fin)}'
+    return f'{fh(h_ini)} â€“ {fh(h_fin)}'
 
 def _fmt_seg(seg):
     if seg <= 0: return '< 1 min'
@@ -1567,7 +1634,7 @@ def _calc_metricas(registros, franjas, tz_offset):
                 'nombre': r.get('lead_nombre'),
                 'fmt': _fmt_seg(r['efectivo_seg']),
                 'fecha': _fmt_fecha_corta(local_dt),
-                'asesor': nombre_asesor(r.get('responsible_user_id')),
+                'asesor': asesor_de_registro(r),
             })
         distribucion.append({
             'label': f['label'], 'tag': f['tag'],
@@ -1596,17 +1663,21 @@ def _calc_por_asesor(registros):
 
     Los tiempos de respuesta tienen cola larga: una sola respuesta de 8 horas
     arruina el promedio de 40 respuestas de 3 minutos, asi que el promedio
-    mide mas los casos raros que el desempeño habitual.
+    mide mas los casos raros que el desempeÃ±o habitual.
 
     Quedan fuera del ranking (se muestran igual, al final y sin puesto):
       - los que tienen menos de MIN_MUESTRA_ASESOR respuestas, porque con
-        pocos casos el numero es suerte, no desempeño
+        pocos casos el numero es suerte, no desempeÃ±o
       - 'Sin asignar', que no es una persona sino los leads sin responsable:
         ponerlo a competir haria que 'nadie' pueda salir primero"""
+    # El campo custom "Asesor" manda sobre el responsable cuando esta cargado.
+    # En las cuentas que comparten un usuario de Kommo entre varias personas,
+    # el responsable no identifica a nadie: el trabajo de tres asesores aparece
+    # bajo un solo nombre y el ranking no dice nada. Cuando el campo no viene,
+    # se cae al responsable y la cuenta se comporta como siempre.
     grupos = defaultdict(list)
     for r in registros:
-        nombre = nombre_asesor(r.get('responsible_user_id')) or SIN_ASIGNAR
-        grupos[nombre].append(r['efectivo_seg'])
+        grupos[asesor_de_registro(r) or SIN_ASIGNAR].append(r['efectivo_seg'])
 
     def sin_puesto(nombre, segs):
         if nombre == SIN_ASIGNAR:
@@ -1640,7 +1711,7 @@ def _fmt_row(r, tz_offset):
         'seg': r['efectivo_seg'],
         'fmt': _fmt_seg(r['efectivo_seg']),
         'fecha': _fmt_fecha_corta(local_dt),
-        'asesor': nombre_asesor(r.get('responsible_user_id')),
+        'asesor': asesor_de_registro(r),
         # Sobre cuantas respuestas se promedio: sin esto, un lead con una sola
         # respuesta y otro con cinco se leen igual.
         'respuestas': r.get('respuestas', 1),
@@ -1665,7 +1736,10 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
     return {
         'lead_id': row['lead_id'],
         'nombre':  row.get('lead_nombre'),
-        'asesor':  nombre_asesor(row.get('responsible_user_id')),
+        # Mismo criterio que el ranking: si mostrara el responsable mientras el
+        # ranking muestra al asesor, el mismo lead aparece con dos nombres
+        # distintos en la misma pantalla.
+        'asesor':  asesor_de_registro(row),
         'fecha':   _fmt_fecha_corta(local_dt),
     }
 
@@ -1677,11 +1751,11 @@ FILTRO_SOLO_ABIERTAS = 'AND (status_id IS NULL OR status_id NOT IN (142, 143))'
 
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None):
-    """Leads cuyo último mensaje en la conversación es del cliente y el
-    asesor no ha respondido después. No depende del rango de fechas del
+    """Leads cuyo Ãºltimo mensaje en la conversaciÃ³n es del cliente y el
+    asesor no ha respondido despuÃ©s. No depende del rango de fechas del
     filtro: es el estado pendiente ahora mismo.
 
-    desde_ts acota a partir de cuándo se conectó el webhook para este
+    desde_ts acota a partir de cuÃ¡ndo se conectÃ³ el webhook para este
     cliente. De los mensajes anteriores no recibimos nada, asi que no
     podemos saber si fueron respondidos: solo tenemos el valor que tenia
     el campo custom al conectarnos. Sin ese piso el contador arrastraba
@@ -1691,7 +1765,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         query = '''
-            SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre
+            SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre, asesor_nombre
             FROM leads_estado
             WHERE subdomain = %s
               AND f_ult_msj_cliente IS NOT NULL
@@ -1714,14 +1788,14 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     return [_fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente') for r in rows]
 
 def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None, solo_abiertas=False):
-    """Leads a los que el asesor le escribió (respuesta o mensaje propio)
+    """Leads a los que el asesor le escribiÃ³ (respuesta o mensaje propio)
     hoy, dentro del horario laboral configurado."""
     inicio, fin = _hoy_rango_ts(tz_offset)
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         query = '''
-            SELECT lead_id, responsible_user_id, f_ult_msj_asesor, lead_nombre
+            SELECT lead_id, responsible_user_id, f_ult_msj_asesor, lead_nombre, asesor_nombre
             FROM leads_estado
             WHERE subdomain = %s
               AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
@@ -1759,14 +1833,35 @@ def _lista_asesores(subdomain):
     asesores = [a for a in asesores if a['nombre']]
     return sorted(asesores, key=lambda x: x['nombre'])
 
+def _lista_asesores_campo(subdomain):
+    """Nombres vistos en el campo custom "Asesor" de esta cuenta.
+
+    Se sacan de los datos y no de una lista fija: es texto que se carga en
+    Kommo, asi que entra gente nueva sin avisar. Si la cuenta no tiene el campo
+    configurado devuelve vacio y el dashboard no muestra el filtro."""
+    if not campo_quien_atendio_de(subdomain):
+        return []
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            'SELECT DISTINCT asesor_nombre FROM tiempos_respuesta '
+            'WHERE subdomain = %s AND asesor_nombre IS NOT NULL',
+            (subdomain,)
+        )
+        nombres = [row[0] for row in c.fetchall() if (row[0] or '').strip()]
+    finally:
+        conn.close()
+    return sorted(nombres)
+
 def _cobertura(subdomain, desde_str, hasta_str, dias_lab):
     """Que porcion de los dias LABORABLES del periodo elegido tiene datos.
 
     Cuando el webhook se cae dejamos de recibir mensajes, pero el dashboard
     igual muestra numeros para esos dias: 'F Ult msj cliente' arrastra fechas
     viejas, asi que un lead que alguien toco en julio genera una fila fechada
-    en junio. El resultado es una muestra sesgada — solo los leads que
-    volvieron a moverse — con el mismo aspecto que una completa.
+    en junio. El resultado es una muestra sesgada â€” solo los leads que
+    volvieron a moverse â€” con el mismo aspecto que una completa.
 
     Devolver la cobertura permite decirlo en pantalla en vez de que el hueco
     pase por dato."""
@@ -1877,11 +1972,11 @@ def pulse():
         if pw_real and request.form.get('password', '') == pw_real:
             session[f'pulse_ok_{subdomain}'] = True
             return redirect(url_for('pulse', subdomain=subdomain))
-        return render_template('pulse_login.html', subdomain=subdomain, error='Contraseña incorrecta'), 401
+        return render_template('pulse_login.html', subdomain=subdomain, error='ContraseÃ±a incorrecta'), 401
 
     if not pulse_autorizado(subdomain):
         if not pulse_password(subdomain):
-            return f'PULSE no tiene contraseña configurada para "{subdomain}" (falta PULSE_PW_{subdomain.upper()})', 500
+            return f'PULSE no tiene contraseÃ±a configurada para "{subdomain}" (falta PULSE_PW_{subdomain.upper()})', 500
         return render_template('pulse_login.html', subdomain=subdomain, error=None)
 
     return render_template('pulse.html', subdomain=subdomain)
@@ -1924,6 +2019,15 @@ def pulse_data():
                 # filtro es una comodidad, no algo por lo que valga un 500.
                 pass
     asesor_ids = sorted(set(asesor_ids))
+
+    # Filtro por el campo custom "Asesor": son nombres, no ids, porque es texto
+    # libre cargado en Kommo y no hay un id detras.
+    asesores_nombre = sorted({
+        p.strip()
+        for crudo in request.args.getlist('asesor_nombre')
+        for p in str(crudo).split('||')      # '||' y no coma: hay apellidos compuestos
+        if p.strip()
+    })
     fuera_horario = request.args.get('modo', 'laboral').strip() == 'fuera_horario'
     solo_abiertas = request.args.get('abiertas', '').strip() == '1'
 
@@ -1943,13 +2047,14 @@ def pulse_data():
         # Se toma el MAS TEMPRANO de las dos fuentes, no solo el nuestro. Las
         # dos son validas y ninguna es completa: si Kommo dice que el cliente
         # escribio 08:30 y el primer mensaje que capturamos es 09:15, el cliente
-        # empezo a esperar 08:30 — ese mensaje existio aunque no lo hayamos
+        # empezo a esperar 08:30 â€” ese mensaje existio aunque no lo hayamos
         # guardado. En 20 de 100 filas revisadas de corepowerconsulting nuestro
         # dato llegaba tarde, subestimando 27 minutos en la mediana y hasta 45.
         # LEAST ignora NULL, asi que cubre solo el caso de tener uno de los dos.
         query = '''
             SELECT DISTINCT ON (lead_id, f_ult_msj_cliente)
                 lead_id, f_ult_msj_cliente, f_ult_msj_asesor, responsible_user_id, lead_nombre,
+                asesor_nombre,
                 f_primer_msj_cliente,
                 LEAST(f_primer_msj_cliente, f_ult_msj_cliente) AS inicio_espera
             FROM tiempos_respuesta
@@ -1969,6 +2074,13 @@ def pulse_data():
         if asesor_ids:
             query += ' AND responsible_user_id = ANY(%s)'
             params.append(asesor_ids)
+        # Filtro por quien atendio de verdad. Es independiente del de
+        # responsable: en Camara China los dos responden preguntas distintas
+        # â€”"que hizo el usuario Ventas" contra "que hizo Ivis"â€” y se pueden
+        # combinar.
+        if asesores_nombre:
+            query += ' AND asesor_nombre = ANY(%s)'
+            params.append(asesores_nombre)
         query += ' ORDER BY lead_id, f_ult_msj_cliente, f_ult_msj_asesor ASC'
         c.execute(query, params)
         rows = c.fetchall()
@@ -1994,7 +2106,7 @@ def pulse_data():
             ''', (subdomain, faltantes))
             nombres_cliente = {r['lead_id']: r['cliente_nombre'] for r in c.fetchall()}
     except Exception as e:
-        print(f'❌ PULSE /data query: {e}')
+        print(f'âŒ PULSE /data query: {e}')
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
@@ -2033,12 +2145,13 @@ def pulse_data():
                 'inicio_espera':    inicio,
                 'efectivo_seg':      efectivo,
                 'responsible_user_id': row['responsible_user_id'],
+                'asesor_nombre':    (row['asesor_nombre'] or '').strip() or None,
             })
 
         # Consolidado POR LEAD, no por respuesta. Antes cada respuesta era una
         # fila, asi que un mismo lead aparecia varias veces en la lista: en
         # corepowerconsulting el lead 9872182 ocupaba tres de los cinco puestos.
-        # Eso no informa nada — es la misma conversacion en curso, y en una
+        # Eso no informa nada â€” es la misma conversacion en curso, y en una
         # conversacion los tiempos varian segun cuando conteste el cliente.
         #
         # Se promedian las ULTIMAS respuestas de cada lead: describe como se
@@ -2074,8 +2187,7 @@ def pulse_data():
             # una sola serie del mismo color que el total. Con varios sigue
             # sirviendo, que es justo para lo que se pidio la seleccion multiple.
             if len(asesor_ids) != 1:
-                nombre = nombre_asesor(r.get('responsible_user_id')) or 'Sin asignar'
-                daily_asesor[dia][nombre] += 1
+                daily_asesor[dia][asesor_de_registro(r) or 'Sin asignar'] += 1
 
         dias_ordenados = sorted(daily.items())[-30:]
         tendencia = [
@@ -2110,7 +2222,7 @@ def pulse_data():
             'config': {
                 'nombre':      cfg['nombre'],
                 'horario_fmt': _fmt_horario(h_ini, h_fin),
-                'dias_fmt':    ' · '.join(DIAS_LABEL[d] for d in sorted(dias_lab)),
+                'dias_fmt':    ' Â· '.join(DIAS_LABEL[d] for d in sorted(dias_lab)),
                 'franjas':     franjas,
                 'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
                 'asesores':    _lista_asesores(subdomain),
@@ -2118,6 +2230,9 @@ def pulse_data():
                 # tendria que enumerarlos y no cabe.
                 'asesor_actual': nombre_asesor(asesor_ids[0]) if len(asesor_ids) == 1 else None,
                 'asesores_elegidos': asesor_ids,
+                # Vacio en las cuentas sin campo "Asesor": el dashboard usa eso
+                # para no mostrar un filtro que no filtraria nada.
+                'asesores_campo': _lista_asesores_campo(subdomain),
                 'fecha_minima': fecha_min,
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
@@ -2147,12 +2262,12 @@ def pulse_data():
             'trabajados_hoy': trabajados_hoy,
         })
     except Exception as e:
-        print(f'❌ PULSE /data procesamiento: {e}')
+        print(f'âŒ PULSE /data procesamiento: {e}')
         return jsonify({'error': str(e)}), 500
 
 # ========================
 # MAIN
 # ========================
 if __name__ == '__main__':
-    print("🚀 Servidor corriendo en puerto 5000")
+    print("ðŸš€ Servidor corriendo en puerto 5000")
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -123,6 +123,18 @@
             </button>
             <div id="multi-asesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
+
+          <!-- Quien atendio de verdad, del campo custom de Kommo. Solo existe
+               en las cuentas que comparten un usuario entre varias personas,
+               asi que arranca oculto y se muestra si la cuenta lo tiene. -->
+          <div class="multi-wrap relative hidden" id="filtro-asesor-campo">
+            <span class="field-label mb-1.5">Asesores</span>
+            <button type="button" onclick="multiToggle('asesorcampo')" class="control w-full lg:w-52 flex items-center justify-between gap-2 text-left">
+              <span class="truncate" id="multi-asesorcampo-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-asesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
         </div>
 
         <button onclick="cargarDatos()" class="btn-primary lg:ml-auto">Aplicar filtros</button>
@@ -181,11 +193,12 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <div>
-          <!-- "responsable", no "asesor": el tiempo se atribuye al DUEÑO del
-               lead, que no siempre es quien contesto. Kommo no nos manda los
-               mensajes salientes, asi que hoy no hay forma de saber quien
-               respondio. Decirlo es mas honesto que dar a entender lo otro. -->
-          <div class="section-title">Tiempo de respuesta por responsable</div>
+          <!-- El titulo cambia segun la cuenta y por eso se arma en JS.
+               Por defecto el tiempo se atribuye al DUEÑO del lead, que no
+               siempre es quien contesto: Kommo no manda los mensajes
+               salientes. Pero las cuentas que cargan el campo custom "Asesor"
+               si tienen a la persona real, y ahi el titulo lo dice. -->
+          <div class="section-title" id="titulo-por-asesor">Tiempo de respuesta por responsable</div>
           <div class="section-sub" id="sub-por-asesor">Mediana · responsable del lead, no quien contestó</div>
         </div>
       </div>
@@ -787,8 +800,9 @@ async function cargarDatos() {
   const params = new URLSearchParams({ subdomain: SUBDOMAIN });
   if (desde)  params.append('desde',  desde);
   if (hasta)  params.append('hasta',  hasta);
-  // Un parametro por responsable elegido; sin ninguno, el backend no filtra.
+  // Un parametro por elegido; sin ninguno, el backend no filtra.
   multiValores('asesor').forEach(v => params.append('asesor', v));
+  multiValores('asesorcampo').forEach(v => params.append('asesor_nombre', v));
   params.append('modo', MODO);
   if (document.getElementById('chk-solo-abiertas').checked) params.append('abiertas', '1');
 
@@ -835,9 +849,18 @@ async function cargarDatos() {
     document.getElementById('leyenda-linea').textContent = esFueraHorario
       ? 'Línea: tiempo real promedio'
       : 'Línea: tiempo promedio';
-    document.getElementById('sub-por-asesor').textContent = esFueraHorario
-      ? 'Mediana del tiempo real · responsable del lead, no quien contestó'
-      : 'Mediana · responsable del lead, no quien contestó';
+    // Con campo "Asesor" cargado, el ranking mide a la persona que atendio y
+    // no al dueño del lead. Decirlo importa: son cosas distintas y el titulo
+    // viejo afirmaba lo contrario.
+    const hayCampoAsesor = (d.config.asesores_campo || []).length > 0;
+    document.getElementById('titulo-por-asesor').textContent = hayCampoAsesor
+      ? 'Tiempo de respuesta por asesor'
+      : 'Tiempo de respuesta por responsable';
+    document.getElementById('sub-por-asesor').textContent =
+      (esFueraHorario ? 'Mediana del tiempo real · ' : 'Mediana · ') +
+      (hayCampoAsesor
+        ? 'asesor que atendió; si el lead no lo trae, el responsable'
+        : 'responsable del lead, no quien contestó');
 
     // No dejar elegir fechas anteriores al primer evento capturado para este cliente.
     // Ademas de bloquear el calendario, el dia se marca subrayado (marcarPrimerDia).
@@ -860,6 +883,11 @@ async function cargarDatos() {
     // borraria lo que la persona acaba de tildar.
     if (!asesoresListados && d.config.asesores) {
       multiInit('asesor', d.config.asesores.map(a => ({ value: a.id, label: a.nombre })), 'Todos');
+      const campo = d.config.asesores_campo || [];
+      if (campo.length) {
+        multiInit('asesorcampo', campo.map(n => ({ value: n, label: n })), 'Todos');
+        document.getElementById('filtro-asesor-campo').classList.remove('hidden');
+      }
       asesoresListados = true;
     }
 
