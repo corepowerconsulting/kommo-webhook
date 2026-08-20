@@ -44,6 +44,27 @@
     }
     .btn-primary:hover { background:#1d4ed8; }
     .icon-chip { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    /* Subrecuadros de la barra de filtros. Agrupan visualmente lo que va
+       junto —periodo, vista, personas— para que la linea no se lea como seis
+       controles sueltos puestos en fila. */
+    .grupo {
+      display:flex; align-items:center; gap:6px;
+      background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:5px 8px;
+    }
+    .grupo-lbl { font-size:0.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; white-space:nowrap; }
+    /* Input de fecha sin caja propia: la caja es el subrecuadro que lo contiene. */
+    .fecha-in {
+      background:transparent; border:0; padding:2px 0; width:88px; cursor:pointer;
+      font-size:0.85rem; font-weight:600; color:#334155;
+    }
+    .fecha-in:focus { outline:none; }
+    /* Boton de selector multiple, compacto para que entre en la linea. */
+    .multi-btn {
+      display:flex; align-items:center; gap:6px; max-width:190px;
+      background:#fff; border:1px solid #e2e8f0; border-radius:9px;
+      padding:5px 9px; font-size:0.83rem; color:#334155; transition:.15s;
+    }
+    .multi-btn:hover { border-color:#cbd5e1; }
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
@@ -84,42 +105,80 @@
 
   <div id="content" class="hidden space-y-6">
 
-    <!-- Barra de filtros. El orden es el pedido en la reunion: primero el
-         periodo, despues el horario, y al final los selectores juntos. Los
-         selectores son el grupo que va a crecer (asesor, embudo), asi que
-         estan agrupados aparte en vez de intercalados con las fechas. -->
-    <div class="card !p-5">
-      <div class="flex flex-col lg:flex-row lg:items-end gap-4 lg:gap-5">
-
-        <div class="flex items-end gap-3">
-          <div>
-            <span class="field-label mb-1.5">Desde</span>
-            <input type="text" id="desde" readonly class="control w-32 cursor-pointer"/>
-          </div>
-          <div>
-            <span class="field-label mb-1.5">Hasta</span>
-            <input type="text" id="hasta" readonly class="control w-32 cursor-pointer"/>
-          </div>
-        </div>
-
-        <div class="hidden lg:block w-px h-11 bg-slate-200"></div>
-
+    <!-- Snapshot actual: primero de la pagina. Es lo unico que NO respeta el
+         filtro de fechas —es el estado de ahora mismo— y va arriba de todo
+         porque es lo accionable: que quedo sin responder. El resto de la
+         pagina es analisis del periodo elegido. -->
+    <div>
+      <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
         <div>
-          <span class="field-label mb-1.5">Vista</span>
-          <div class="flex items-center bg-slate-100 rounded-xl p-1">
-            <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-4 py-2 rounded-lg text-sm font-semibold transition">Horario laboral</button>
-            <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-4 py-2 rounded-lg text-sm font-semibold transition">Fuera de horario</button>
+          <div class="section-title">Snapshot actual</div>
+          <div class="section-sub">Estado de ahora mismo · no cambia con el filtro de fechas</div>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
+          <input type="checkbox" id="chk-solo-abiertas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
+          Solo conversaciones abiertas
+        </label>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="card border-l-4 !border-l-red-400">
+          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
+            <div class="flex items-start gap-3.5">
+              <div class="icon-chip bg-red-50">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div>
+                <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
+                <div class="kpi-label">Sin responder</div>
+                <div class="mt-1 text-xs text-slate-400" id="nota-no-respondidos"></div>
+              </div>
+            </div>
+            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
+          <div id="panel-no-respondidos" class="hidden mt-4"></div>
+        </div>
+        <div class="card border-l-4 !border-l-blue-400">
+          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
+            <div class="flex items-start gap-3.5">
+              <div class="icon-chip bg-blue-50">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+              <div>
+                <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
+                <div class="kpi-label">Atendidos hoy</div>
+              </div>
+            </div>
+            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de filtros en UNA linea, con cada grupo en su subrecuadro:
+         periodo / vista / personas. Las etiquetas van adentro del recuadro y
+         no encima, que es lo que hacia que la barra ocupara dos alturas. -->
+    <div class="card !p-4">
+      <div class="flex items-center gap-2.5 flex-wrap">
+
+        <div class="grupo">
+          <svg class="flex-shrink-0 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <input type="text" id="desde" readonly class="fecha-in"/>
+          <span class="text-slate-300 text-sm">→</span>
+          <input type="text" id="hasta" readonly class="fecha-in"/>
         </div>
 
-        <div class="hidden lg:block w-px h-11 bg-slate-200"></div>
+        <div class="grupo !p-1 !gap-0">
+          <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg text-sm font-semibold transition whitespace-nowrap">Horario laboral</button>
+          <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-lg text-sm font-semibold transition whitespace-nowrap">Fuera de horario</button>
+        </div>
 
-        <div class="flex items-end gap-3 flex-wrap">
+        <div class="grupo">
           <div class="multi-wrap relative">
-            <span class="field-label mb-1.5">Responsables</span>
-            <button type="button" onclick="multiToggle('asesor')" class="control w-full lg:w-52 flex items-center justify-between gap-2 text-left">
-              <span class="truncate" id="multi-asesor-txt">Todos</span>
-              <svg class="flex-shrink-0 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <button type="button" onclick="multiToggle('asesor')" class="multi-btn">
+              <span class="grupo-lbl">Responsables</span>
+              <span class="truncate font-medium" id="multi-asesor-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-400 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-asesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
@@ -128,16 +187,16 @@
                en las cuentas que comparten un usuario entre varias personas,
                asi que arranca oculto y se muestra si la cuenta lo tiene. -->
           <div class="multi-wrap relative hidden" id="filtro-asesor-campo">
-            <span class="field-label mb-1.5">Asesores</span>
-            <button type="button" onclick="multiToggle('asesorcampo')" class="control w-full lg:w-52 flex items-center justify-between gap-2 text-left">
-              <span class="truncate" id="multi-asesorcampo-txt">Todos</span>
-              <svg class="flex-shrink-0 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <button type="button" onclick="multiToggle('asesorcampo')" class="multi-btn">
+              <span class="grupo-lbl">Asesores</span>
+              <span class="truncate font-medium" id="multi-asesorcampo-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-400 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-asesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
         </div>
 
-        <button onclick="cargarDatos()" class="btn-primary lg:ml-auto">Aplicar filtros</button>
+        <button onclick="cargarDatos()" class="btn-primary ml-auto !py-2">Aplicar</button>
       </div>
 
       <!-- Horario y dias: contexto, no un control. Va en una linea fina y
@@ -203,56 +262,6 @@
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
-    </div>
-
-    <!-- Snapshot actual. Va pegado a la tabla de tiempos (pedido de Ana) pero
-         separado y con nombre propio, porque es lo unico del dashboard que NO
-         respeta el filtro de fechas: es el estado de ahora mismo. Sin el
-         titulo se leia como si fuera del periodo elegido. -->
-    <div>
-      <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
-        <div>
-          <div class="section-title">Snapshot actual</div>
-          <div class="section-sub">Estado de ahora mismo · no cambia con el filtro de fechas</div>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
-          <input type="checkbox" id="chk-solo-abiertas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
-          Solo conversaciones abiertas
-        </label>
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="card border-l-4 !border-l-red-400">
-          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
-            <div class="flex items-start gap-3.5">
-              <div class="icon-chip bg-red-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              </div>
-              <div>
-                <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
-                <div class="kpi-label">Sin responder</div>
-                <div class="mt-1 text-xs text-slate-400" id="nota-no-respondidos"></div>
-              </div>
-            </div>
-            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div id="panel-no-respondidos" class="hidden mt-4"></div>
-        </div>
-        <div class="card border-l-4 !border-l-blue-400">
-          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
-            <div class="flex items-start gap-3.5">
-              <div class="icon-chip bg-blue-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              </div>
-              <div>
-                <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
-                <div class="kpi-label">Atendidos hoy</div>
-              </div>
-            </div>
-            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
-        </div>
-      </div>
     </div>
 
     <!-- Distribución -->
