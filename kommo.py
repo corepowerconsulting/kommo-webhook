@@ -789,7 +789,15 @@ def backfill():
             'procesados': procesados,
             'insertados': insertados,
             'errores': errores,
-            'siguiente': f'/backfill?offset={offset + limit}' if hay_mas else None,
+            # El subdomain TIENE que viajar en 'siguiente'. Sin el, quien siga
+            # la paginacion arranca filtrando una cuenta y desde la segunda
+            # pagina pasa a recorrer las seis, con los offsets contra una lista
+            # distinta: no se rompe nada —el backfill es idempotente— pero
+            # nunca termina de cubrir la cuenta que se pidio y no hay forma de
+            # notarlo desde afuera. /backfill-mensajes ya lo hacia bien.
+            'siguiente': (f'/backfill?offset={offset + limit}'
+                          + (f'&subdomain={subdomain}' if subdomain else '')) if hay_mas else None,
+            'subdomain': subdomain,
             'listo': not hay_mas
         })
     except Exception as e:
