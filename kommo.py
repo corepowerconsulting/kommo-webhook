@@ -2372,11 +2372,8 @@ def pulse_data():
                 'fecha_minima': fecha_min,
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
+                # Solo para explicar una lista vacia en pantalla.
                 'min_respuestas_extremos': MIN_RESPUESTAS_EXTREMOS,
-                # Cuantos leads del periodo quedaron fuera de la lista por
-                # tener menos respuestas que el minimo. Sin este numero, una
-                # lista corta parece un error del dashboard.
-                'leads_con_pocas_respuestas': len(consolidado) - len(comparables),
                 'cobertura': _cobertura(subdomain, desde_str, hasta_str, dias_lab),
                 # Que porcion de los registros mide desde el PRIMER mensaje sin
                 # responder. El resto cae al ultimo mensaje del cliente y por lo

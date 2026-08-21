@@ -1021,14 +1021,9 @@ async function cargarDatos() {
     // Lentas y rapidas: se guardan las dos listas y se muestra la elegida
     TOP_LENTOS  = d.top_lentos;
     TOP_RAPIDOS = d.top_rapidos;
-    // Se dice en pantalla cual es el minimo y cuantos leads quedaron fuera:
-    // sin eso, una lista corta parece un error del dashboard en vez de una
-    // decision. Es lo que hay que poder explicarle a quien pregunte.
+    // El minimo se usa solo para explicar una lista vacia. En el subtitulo
+    // sobraba: sumaba ruido a una tarjeta que ya venia costando entender.
     MIN_EXTREMOS = d.config.min_respuestas_extremos || 1;
-    const fuera = d.config.leads_con_pocas_respuestas || 0;
-    document.getElementById('sub-extremos').textContent =
-      `Ya respondidas · solo las que tienen ${MIN_EXTREMOS} respuestas o más`
-      + (fuera ? ` · ${fuera} ${fuera === 1 ? 'lead quedó' : 'leads quedaron'} fuera por tener menos` : '');
     renderExtremos();
 
     document.getElementById('loading').classList.add('hidden');
