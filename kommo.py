@@ -1437,14 +1437,18 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
             # siempre desde el ULTIMO mensaje, o sea contra una version del
             # calculo que ya no existe, y el endpoint reportaba como pendiente
             # un sesgo que estaba corregido.
-            inicio_pulse = resp[a] or ultimo
-            pulse = _calc_tiempo_efectivo(inicio_pulse, a, tz_offset, h_ini, h_fin, dias_lab)
+            # None = el dashboard no muestra esta respuesta (no paso sus
+            # filtros). Se mide igual la espera real, pero no se la compara
+            # contra un numero que nadie ve.
+            inicio_pulse = resp[a]
+            pulse = (_calc_tiempo_efectivo(inicio_pulse, a, tz_offset, h_ini, h_fin, dias_lab)
+                     if inicio_pulse else None)
             turnos.append({
                 'lead_id':      lead_id,
                 'msjs_cliente': hi - lo,
                 'real_seg':     real,
                 'pulse_seg':    pulse,
-                'sesgo_seg':    real - pulse,
+                'sesgo_seg':    (real - pulse) if pulse is not None else None,
             })
     return turnos, dict(descartes)
 
@@ -1491,15 +1495,24 @@ def health_sesgo():
         # desde cuando espera el cliente. Sin traerla, la comparacion se hace
         # contra el metodo viejo y el endpoint reporta como pendiente un sesgo
         # que ya se corrigio.
+        # inicio_pulse solo se llena para las filas que el dashboard REALMENTE
+        # muestra: las mismas condiciones que /pulse/data. Sin ese recorte se
+        # colaban filas con f_ult_msj_cliente viejisimo que el dashboard
+        # descarta, y el p90 "de Pulse" daba 780 horas — un numero que nadie ve
+        # en pantalla.
         c.execute(
             "SELECT DISTINCT ON (lead_id, f_ult_msj_asesor) "
             "       lead_id, f_ult_msj_asesor AS ts, "
-            "       LEAST(f_primer_msj_cliente, f_ult_msj_cliente) AS inicio_pulse "
+            "       CASE WHEN f_ult_msj_cliente IS NOT NULL "
+            "             AND f_ult_msj_asesor > f_ult_msj_cliente "
+            "             AND f_ult_msj_asesor - f_ult_msj_cliente <= %s "
+            "            THEN LEAST(f_primer_msj_cliente, f_ult_msj_cliente) "
+            "       END AS inicio_pulse "
             "FROM tiempos_respuesta "
             "WHERE subdomain = %s AND f_ult_msj_asesor IS NOT NULL "
             "ORDER BY lead_id, f_ult_msj_asesor, "
             "         LEAST(f_primer_msj_cliente, f_ult_msj_cliente) ASC",
-            (subdomain,)
+            (GAP_REACTIVACION_SEG, subdomain)
         )
         respuestas = [dict(r) for r in c.fetchall()]
     finally:
@@ -1542,30 +1555,39 @@ def health_sesgo():
                           '"no_medibles" para saber por que.')
         return jsonify(base)
 
-    reales   = [t['real_seg'] for t in turnos]
-    pulses   = [t['pulse_seg'] for t in turnos]
-    sesgados = [t for t in turnos if t['sesgo_seg'] > 0]
-    peores   = sorted(turnos, key=lambda t: t['sesgo_seg'], reverse=True)[:15]
+    reales = [t['real_seg'] for t in turnos]
+    # La comparacion solo tiene sentido sobre los turnos que el dashboard
+    # muestra. El resto se mide igual —cuentan para la espera real— pero no
+    # tienen contra que compararse.
+    comparables = [t for t in turnos if t['pulse_seg'] is not None]
+    pulses   = [t['pulse_seg'] for t in comparables]
+    sesgados = [t for t in comparables if t['sesgo_seg'] > 0]
+    peores   = sorted(comparables, key=lambda t: t['sesgo_seg'], reverse=True)[:15]
 
     base.update({
         'se_pudo_reconstruir': True,
         'turnos_analizados': len(turnos),
+        'turnos_visibles_en_pulse': len(comparables),
         'turnos_con_sesgo': len(sesgados),
-        'pct_turnos_con_sesgo': round(len(sesgados) / len(turnos) * 100, 1),
+        'pct_turnos_con_sesgo': round(len(sesgados) / len(comparables) * 100, 1) if comparables else 0,
         'espera_real': {
             'promedio': _fmt_seg(round(sum(reales) / len(reales))),
             'mediana':  _fmt_seg(_pctl(reales, 50)),
             'p90':      _fmt_seg(_pctl(reales, 90)),
         },
+        # Ojo: 'espera_real' se calcula sobre TODOS los turnos y esto solo sobre
+        # los que el dashboard muestra, asi que las dos medianas no salen del
+        # mismo conjunto. Para comparar hay que mirar 'subestimacion', que va
+        # turno contra turno.
         'lo_que_mide_pulse_hoy': {
-            'promedio': _fmt_seg(round(sum(pulses) / len(pulses))),
-            'mediana':  _fmt_seg(_pctl(pulses, 50)),
-            'p90':      _fmt_seg(_pctl(pulses, 90)),
+            'promedio': _fmt_seg(round(sum(pulses) / len(pulses))) if pulses else None,
+            'mediana':  _fmt_seg(_pctl(pulses, 50)) if pulses else None,
+            'p90':      _fmt_seg(_pctl(pulses, 90)) if pulses else None,
         },
         'subestimacion': {
-            'promedio': _fmt_seg(round((sum(reales) - sum(pulses)) / len(turnos))),
-            'p90':      _fmt_seg(_pctl([t['sesgo_seg'] for t in turnos], 90)),
-            'peor':     _fmt_seg(max(t['sesgo_seg'] for t in turnos)),
+            'promedio': _fmt_seg(round(sum(t['sesgo_seg'] for t in comparables) / len(comparables))) if comparables else None,
+            'p90':      _fmt_seg(_pctl([t['sesgo_seg'] for t in comparables], 90)) if comparables else None,
+            'peor':     _fmt_seg(max(t['sesgo_seg'] for t in comparables)) if comparables else None,
         },
         'peores_casos': [
             {
