@@ -1786,8 +1786,19 @@ def _calc_por_asesor(registros):
     resultado.sort(key=lambda x: (x['sin_puesto'] is not None, x['mediana_seg']))
     return resultado
 
-# Cuantas respuestas se promedian por lead en "Casos extremos".
+# Cuantas respuestas se promedian por lead en la lista de mas lentas/rapidas.
 TOP_ULTIMAS_RESPUESTAS = 5
+
+# Cuantas hacen falta como MINIMO para que un lead entre en esa lista.
+#
+# Con una sola respuesta el numero es una anecdota: basta que un cliente
+# escriba un viernes a la tarde para que ese lead encabece la lista de los mas
+# lentos sin que eso diga nada del equipo. Con tres ya se ve un patron.
+#
+# El costo es que la lista se acorta, y en las cuentas con poca conversacion
+# puede quedar vacia. Es preferible una lista corta y confiable a una larga
+# donde los primeros puestos son casualidad.
+MIN_RESPUESTAS_EXTREMOS = 3
 
 def _fmt_row(r, tz_offset):
     local_dt = _ts_to_local(r['inicio_espera'], tz_offset)
@@ -2292,8 +2303,12 @@ def pulse_data():
             fila['respuestas']   = len(ultimas)
             consolidado.append(fila)
 
-        top_lentos  = sorted(consolidado, key=lambda r: r['efectivo_seg'], reverse=True)[:10]
-        top_rapidos = sorted(consolidado, key=lambda r: r['efectivo_seg'])[:10]
+        # Se filtra ANTES de ordenar y cortar: filtrar despues del top 10
+        # dejaria listas de dos o tres filas sin motivo visible.
+        comparables = [r for r in consolidado
+                       if r['respuestas'] >= MIN_RESPUESTAS_EXTREMOS]
+        top_lentos  = sorted(comparables, key=lambda r: r['efectivo_seg'], reverse=True)[:10]
+        top_rapidos = sorted(comparables, key=lambda r: r['efectivo_seg'])[:10]
 
         daily = defaultdict(list)
         daily_asesor = defaultdict(lambda: defaultdict(int))
@@ -2357,6 +2372,11 @@ def pulse_data():
                 'fecha_minima': fecha_min,
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
+                'min_respuestas_extremos': MIN_RESPUESTAS_EXTREMOS,
+                # Cuantos leads del periodo quedaron fuera de la lista por
+                # tener menos respuestas que el minimo. Sin este numero, una
+                # lista corta parece un error del dashboard.
+                'leads_con_pocas_respuestas': len(consolidado) - len(comparables),
                 'cobertura': _cobertura(subdomain, desde_str, hasta_str, dias_lab),
                 # Que porcion de los registros mide desde el PRIMER mensaje sin
                 # responder. El resto cae al ultimo mensaje del cliente y por lo
