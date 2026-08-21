@@ -1739,6 +1739,41 @@ def _fmt_fecha_corta(local_dt):
         return local_dt.strftime('%d/%m %H:%M')
     return local_dt.strftime('%d/%m/%y %H:%M')
 
+# Nombre de respaldo para los leads que Kommo nunca bautizo. Se toma el mas
+# reciente por si el contacto se renombro. Una sola definicion porque la usan
+# la lista principal y las dos tarjetas del snapshot: cuando estaba solo en la
+# principal, "Sin responder" seguia mostrando "Sin nombre" con el dato al lado.
+SQL_NOMBRES_CLIENTE = '''
+    SELECT DISTINCT ON (lead_id) lead_id, cliente_nombre
+    FROM mensajes_cliente
+    WHERE subdomain = %s
+      AND lead_id = ANY(%s)
+      AND cliente_nombre IS NOT NULL
+    ORDER BY lead_id, ts DESC
+'''
+
+def _completar_nombres(subdomain, *listas):
+    """Rellena el 'nombre' vacio de varias listas de leads, en UNA consulta.
+
+    Recibe todas las listas juntas a proposito: son dos tarjetas que se dibujan
+    en la misma pantalla y pedirlas por separado seria abrir dos conexiones
+    contra Supabase para lo mismo. Modifica las listas en el lugar."""
+    faltan = [f['lead_id'] for lst in listas for f in lst
+              if not (f.get('nombre') or '').strip()]
+    if not faltan:
+        return
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute(SQL_NOMBRES_CLIENTE, (subdomain, list(set(faltan))))
+        nombres = {r['lead_id']: r['cliente_nombre'] for r in c.fetchall()}
+    finally:
+        conn.close()
+    for lst in listas:
+        for f in lst:
+            if not (f.get('nombre') or '').strip():
+                f['nombre'] = nombres.get(f['lead_id'])
+
 def _fmt_lead_estado(row, tz_offset, campo_fecha):
     local_dt = _ts_to_local(row[campo_fecha], tz_offset)
     return {
@@ -2104,14 +2139,10 @@ def pulse_data():
         faltantes = list({r['lead_id'] for r in rows
                           if not (r['lead_nombre'] or '').strip()})
         if faltantes:
-            c.execute('''
-                SELECT DISTINCT ON (lead_id) lead_id, cliente_nombre
-                FROM mensajes_cliente
-                WHERE subdomain = %s
-                  AND lead_id = ANY(%s)
-                  AND cliente_nombre IS NOT NULL
-                ORDER BY lead_id, ts DESC
-            ''', (subdomain, faltantes))
+            # Aca se reusa el cursor ya abierto en vez de _completar_nombres,
+            # que abre su propia conexion: estamos adentro del bloque que ya
+            # tiene una.
+            c.execute(SQL_NOMBRES_CLIENTE, (subdomain, faltantes))
             nombres_cliente = {r['lead_id']: r['cliente_nombre'] for r in c.fetchall()}
     except Exception as e:
         print(f'❌ PULSE /data query: {e}')
@@ -2225,6 +2256,10 @@ def pulse_data():
 
         no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas, piso_captura)
         trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_ids, solo_abiertas)
+        # Estas dos listas salen de leads_estado, que no tiene el nombre del
+        # cliente. Sin esto las tarjetas muestran "Sin nombre" aunque el dato
+        # este guardado, que es lo que reporto Ana.
+        _completar_nombres(subdomain, no_respondidos, trabajados_hoy)
 
         return jsonify({
             'config': {
