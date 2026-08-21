@@ -1452,6 +1452,172 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
             })
     return turnos, dict(descartes)
 
+@app.route('/health/conversacion')
+@token_requerido
+def health_conversacion():
+    """Reconstruye UNA conversacion entera —cliente y asesor— para poder
+    compararla contra la pantalla de Kommo.
+
+    Existe porque el hallazgo de los mensajes salientes hay que poder
+    verificarlo a mano: se abre el lead en Kommo, se abre esto, y las horas
+    tienen que coincidir mensaje por mensaje.
+
+    Los entrantes se buscan por la columna lead_id. Los salientes no se pueden:
+    se guardan como tipo_evento='desconocido' con lead_id NULL, asi que hay que
+    buscarlos dentro del JSON, por el lead que traen adentro (element_id) o por
+    el chat_id/talk_id de la conversacion, que se saca de los entrantes.
+
+    Las horas salen en la zona de la cuenta, no en UTC."""
+    subdomain = request.args.get('subdomain', '').strip()
+    lead_id   = request.args.get('lead_id', '').strip()
+    if not subdomain or not lead_id:
+        return jsonify({'error': 'faltan subdomain y lead_id'}), 400
+    try:
+        limite = min(int(request.args.get('limite', 400)), 2000)
+    except ValueError:
+        limite = 400
+
+    cfg = PULSE_CONFIG.get(subdomain, {})
+    tz  = cfg.get('tz_offset', 0)
+
+    def local(ts):
+        try:
+            return (datetime.utcfromtimestamp(int(ts))
+                    + timedelta(hours=tz)).strftime('%d/%m/%Y %H:%M:%S')
+        except (TypeError, ValueError, OSError):
+            return None
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute(
+            "SELECT raw_data FROM eventos WHERE subdomain = %s AND lead_id = %s "
+            "AND tipo_evento = 'mensaje' ORDER BY id DESC LIMIT %s",
+            (subdomain, lead_id, limite))
+        rows_ent = c.fetchall()
+
+        entrantes, chats, talks = [], set(), set()
+        for row in rows_ent:
+            try:
+                data = json.loads(row['raw_data'] or '{}')
+            except (ValueError, TypeError):
+                continue
+            for i in get_batch_indices(data, 'message[add]'):
+                p = f'message[add][{i}]'
+                if str(data.get(f'{p}[element_id]')) != str(lead_id):
+                    continue          # el POST puede traer varios leads
+                if data.get(f'{p}[chat_id]'):
+                    chats.add(str(data[f'{p}[chat_id]']))
+                if data.get(f'{p}[talk_id]'):
+                    talks.add(str(data[f'{p}[talk_id]']))
+                entrantes.append({
+                    'ts':     data.get(f'{p}[created_at]'),
+                    'quien':  'CLIENTE',
+                    'autor':  data.get(f'{p}[author][name]'),
+                    'tipo':   data.get(f'{p}[message_type]'),
+                    'canal':  data.get(f'{p}[origin]'),
+                    'texto':  (data.get(f'{p}[text]') or '')[:160],
+                    'msg_id': data.get(f'{p}[id]'),
+                })
+
+        # Un LIKE por el lead y uno por cada chat_id conocido. El LIKE puede
+        # traer de mas (el numero puede aparecer en otro campo), asi que
+        # despues se confirma parseando el JSON.
+        patrones = [f'%{lead_id}%'] + [f'%{cid}%' for cid in list(chats)[:10]]
+        c.execute(
+            "SELECT raw_data FROM eventos WHERE subdomain = %s "
+            "AND tipo_evento = 'desconocido' AND raw_data LIKE ANY(%s) "
+            "ORDER BY id DESC LIMIT %s",
+            (subdomain, patrones, limite))
+        rows_sal = c.fetchall()
+
+        c.execute(
+            "SELECT f_ult_msj_cliente, f_ult_msj_asesor, tiempo_respuesta_seg, "
+            "responsible_user_id, asesor_nombre FROM tiempos_respuesta "
+            "WHERE subdomain = %s AND lead_id = %s ORDER BY f_ult_msj_asesor DESC",
+            (subdomain, lead_id))
+        medidos = c.fetchall()
+    finally:
+        conn.close()
+
+    salientes, vistos = [], set()
+    for row in rows_sal:
+        try:
+            data = json.loads(row['raw_data'] or '{}')
+        except (ValueError, TypeError):
+            continue
+        for i in get_batch_indices(data, 'outgoing_message[add]'):
+            p = f'outgoing_message[add][{i}]'
+            elem = str(data.get(f'{p}[element_id]') or '')
+            chat = str(data.get(f'{p}[chat_id]') or '')
+            talk = str(data.get(f'{p}[talk_id]') or '')
+            if elem == str(lead_id):
+                via = 'element_id'
+            elif chat and chat in chats:
+                via = 'chat_id'
+            elif talk and talk in talks:
+                via = 'talk_id'
+            else:
+                continue              # el LIKE lo trajo de casualidad
+            mid = data.get(f'{p}[id]')
+            if mid in vistos:
+                continue
+            vistos.add(mid)
+            uid = str(data.get(f'{p}[author][user_id]') or '0')
+            salientes.append({
+                'ts':      data.get(f'{p}[created_at]'),
+                'quien':   'BOT' if uid in ('0', '') else 'ASESOR',
+                'autor':   (nombre_asesor(uid) if uid.isdigit() and uid != '0'
+                            else data.get(f'{p}[author][name]')),
+                'user_id': uid,
+                'tipo':    data.get(f'{p}[message_type]'),
+                'canal':   data.get(f'{p}[origin]'),
+                'texto':   (data.get(f'{p}[text]') or '')[:160],
+                'msg_id':  mid,
+                'vinculado_por': via,
+            })
+
+    linea = sorted(entrantes + salientes, key=lambda m: int(m['ts'] or 0))
+    for m in linea:
+        m['hora'] = local(m['ts'])
+
+    # Tiempo de respuesta real: de cada mensaje del cliente sin contestar hasta
+    # el primer mensaje de una PERSONA. Los del bot no cuentan como respuesta.
+    turnos, esperando = [], None
+    for m in linea:
+        if m['quien'] == 'CLIENTE':
+            if esperando is None:
+                esperando = m
+        elif m['quien'] == 'ASESOR' and esperando is not None:
+            seg = int(m['ts']) - int(esperando['ts'])
+            turnos.append({
+                'cliente_escribio': esperando['hora'],
+                'asesor_respondio': m['hora'],
+                'quien_respondio':  m['autor'],
+                'espera_seg':       seg,
+                'espera_legible':   f'{seg // 3600}h {(seg % 3600) // 60}m {seg % 60}s',
+            })
+            esperando = None
+
+    return jsonify({
+        'lead': f'https://{subdomain}.kommo.com/leads/detail/{lead_id}',
+        'zona_horaria': f'UTC{tz:+d} (todas las horas de abajo)',
+        'resumen': {
+            'mensajes_del_cliente': len(entrantes),
+            'mensajes_del_asesor':  sum(1 for m in linea if m['quien'] == 'ASESOR'),
+            'mensajes_del_bot':     sum(1 for m in linea if m['quien'] == 'BOT'),
+            'chat_ids': sorted(chats), 'talk_ids': sorted(talks),
+        },
+        'respuestas_reales_del_asesor': turnos,
+        'lo_que_mide_el_dashboard_hoy': [{
+            'cliente': local(r['f_ult_msj_cliente']),
+            'asesor':  local(r['f_ult_msj_asesor']),
+            'seg':     r['tiempo_respuesta_seg'],
+            'asesor_nombre': r['asesor_nombre'] or nombre_asesor(r['responsible_user_id']),
+        } for r in medidos],
+        'conversacion': linea,
+    })
+
 @app.route('/health/salientes')
 @token_requerido
 def health_salientes():
