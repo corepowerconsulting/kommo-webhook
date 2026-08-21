@@ -8,7 +8,7 @@ import threading
 from datetime import datetime, timedelta
 from functools import wraps
 import calendar
-from collections import defaultdict
+from collections import defaultdict, Counter
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
@@ -1368,41 +1368,77 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
     tiempo efectivo (descontando horas no laborables) y se descartan las
     reactivaciones, para que sean comparables con /pulse/data.
 
+    Solo se miden las respuestas POSTERIORES al primer mensaje que capturamos
+    de ese lead. Antes de eso no estabamos escuchando, asi que no se puede
+    saber si habia alguien esperando; contarlas como "el asesor respondio al
+    vacio" inventa un problema que no existe.
+
+    Devuelve (turnos, descartes), donde descartes separa los motivos en vez de
+    sumarlos en un solo numero: son causas distintas y llevan a acciones
+    opuestas.
+
     msjs_cliente: iterable de {'lead_id', 'ts'} (solo entrantes)
-    respuestas:   iterable de {'lead_id', 'ts'} (f_ult_msj_asesor)"""
+    respuestas:   iterable de {'lead_id', 'ts', 'inicio_pulse'}, donde
+                  inicio_pulse es desde cuando mide el dashboard hoy"""
     msgs_por_lead = defaultdict(list)
     for m in msjs_cliente:
         if m['lead_id'] and m['ts']:
             msgs_por_lead[str(m['lead_id'])].append(m['ts'])
 
-    resp_por_lead = defaultdict(list)
+    # Se guarda tambien desde cuando mide el dashboard para cada respuesta, que
+    # es lo unico contra lo que tiene sentido compararse.
+    resp_por_lead = defaultdict(dict)
     for r in respuestas:
         if r['lead_id'] and r['ts']:
-            resp_por_lead[str(r['lead_id'])].append(r['ts'])
+            resp_por_lead[str(r['lead_id'])][r['ts']] = r.get('inicio_pulse')
 
     turnos = []
-    sin_mensajes = 0
+    descartes = Counter()
     for lead_id, resp in resp_por_lead.items():
         msgs = sorted(set(msgs_por_lead.get(lead_id, ())))
         if not msgs:
-            sin_mensajes += len(resp)
+            # Nunca capturamos un mensaje de este lead. No es que el asesor
+            # respondiera al vacio: es que no estabamos escuchando.
+            descartes['lead_sin_mensajes_capturados'] += len(resp)
             continue
+
+        piso = msgs[0]
         anterior = None
-        for a in sorted(set(resp)):
-            # Mensajes del cliente entre la respuesta anterior y esta.
+        for a in sorted(resp):
+            if a < piso:
+                # La regla de Juan: una espera que empezo antes de nuestro
+                # primer mensaje de ese lead no se puede medir ni juzgar.
+                # Contarla como "nadie esperaba" inventaba un problema que no
+                # existe, y era el grueso del hueco en gruporegalado.
+                descartes['antes_de_nuestro_primer_mensaje'] += 1
+                continue
+
             lo = bisect.bisect_right(msgs, anterior) if anterior is not None else 0
-            hi = bisect.bisect_left(msgs, a)
+            # bisect_right y no left: Kommo redondea estos campos a minutos, asi
+            # que un mensaje y una respuesta del mismo minuto no se pueden
+            # ordenar. Dejarlo afuera lo contaba como "nadie esperaba"; contarlo
+            # como espera de casi cero se acerca mas a lo que paso.
+            hi = bisect.bisect_right(msgs, a)
             anterior = a
             if lo >= hi:
-                # No tenemos los mensajes de esa ventana (quedaron fuera del
-                # rango leido). Omitir en vez de contarlo como "sin sesgo".
-                sin_mensajes += 1
+                # Aca si: el asesor escribio sin que hubiera nadie esperando.
+                descartes['sin_nadie_esperando'] += 1
                 continue
+
             primero, ultimo = msgs[lo], msgs[hi - 1]
             if a - primero > GAP_REACTIVACION_SEG:
+                descartes['reactivaciones'] += 1
                 continue
-            real  = _calc_tiempo_efectivo(primero, a, tz_offset, h_ini, h_fin, dias_lab)
-            pulse = _calc_tiempo_efectivo(ultimo,  a, tz_offset, h_ini, h_fin, dias_lab)
+
+            real = _calc_tiempo_efectivo(primero, a, tz_offset, h_ini, h_fin, dias_lab)
+            # Lo que muestra el dashboard HOY. Sale de LEAST(f_primer_msj_cliente,
+            # f_ult_msj_cliente): donde el backfill calculo el primer mensaje sin
+            # responder, ya mide lo mismo que 'real'. Antes esto se calculaba
+            # siempre desde el ULTIMO mensaje, o sea contra una version del
+            # calculo que ya no existe, y el endpoint reportaba como pendiente
+            # un sesgo que estaba corregido.
+            inicio_pulse = resp[a] or ultimo
+            pulse = _calc_tiempo_efectivo(inicio_pulse, a, tz_offset, h_ini, h_fin, dias_lab)
             turnos.append({
                 'lead_id':      lead_id,
                 'msjs_cliente': hi - lo,
@@ -1410,7 +1446,7 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
                 'pulse_seg':    pulse,
                 'sesgo_seg':    real - pulse,
             })
-    return turnos, sin_mensajes
+    return turnos, dict(descartes)
 
 @app.route('/health/sesgo')
 def health_sesgo():
@@ -1451,9 +1487,18 @@ def health_sesgo():
             (subdomain,)
         )
         entrantes = [dict(r) for r in c.fetchall()]
+        # inicio_pulse es la MISMA expresion que usa /pulse/data para saber
+        # desde cuando espera el cliente. Sin traerla, la comparacion se hace
+        # contra el metodo viejo y el endpoint reporta como pendiente un sesgo
+        # que ya se corrigio.
         c.execute(
-            "SELECT DISTINCT lead_id, f_ult_msj_asesor AS ts FROM tiempos_respuesta "
-            "WHERE subdomain = %s AND f_ult_msj_asesor IS NOT NULL",
+            "SELECT DISTINCT ON (lead_id, f_ult_msj_asesor) "
+            "       lead_id, f_ult_msj_asesor AS ts, "
+            "       LEAST(f_primer_msj_cliente, f_ult_msj_cliente) AS inicio_pulse "
+            "FROM tiempos_respuesta "
+            "WHERE subdomain = %s AND f_ult_msj_asesor IS NOT NULL "
+            "ORDER BY lead_id, f_ult_msj_asesor, "
+            "         LEAST(f_primer_msj_cliente, f_ult_msj_cliente) ASC",
             (subdomain,)
         )
         respuestas = [dict(r) for r in c.fetchall()]
@@ -1476,14 +1521,25 @@ def health_sesgo():
         base['motivo'] = 'No hay respuestas de asesor en tiempos_respuesta para este subdominio.'
         return jsonify(base)
 
-    turnos, sin_datos = _reconstruir_turnos(
+    turnos, descartes = _reconstruir_turnos(
         entrantes, respuestas, tz_offset, h_ini, h_fin, dias_lab
     )
-    base['respuestas_sin_mensajes_en_rango'] = sin_datos
+    base['no_medibles'] = {
+        'antes_de_nuestro_primer_mensaje': descartes.get('antes_de_nuestro_primer_mensaje', 0),
+        'lead_sin_mensajes_capturados':    descartes.get('lead_sin_mensajes_capturados', 0),
+        'sin_nadie_esperando':             descartes.get('sin_nadie_esperando', 0),
+        'reactivaciones':                  descartes.get('reactivaciones', 0),
+        'como_leerlo':
+            'Las dos primeras son huecos NUESTROS de captura y no dicen nada de la '
+            'cuenta: la espera empezo antes de que estuvieramos escuchando. Solo '
+            '"sin_nadie_esperando" es un dato real sobre el CRM — el asesor escribio '
+            'sin que hubiera nadie esperando respuesta.',
+    }
 
     if not turnos:
         base['se_pudo_reconstruir'] = False
-        base['motivo'] = 'Ninguna respuesta del asesor tiene mensajes del cliente en su ventana.'
+        base['motivo'] = ('Ninguna respuesta del asesor quedo medible. Mira '
+                          '"no_medibles" para saber por que.')
         return jsonify(base)
 
     reales   = [t['real_seg'] for t in turnos]
