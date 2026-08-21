@@ -39,12 +39,25 @@ ASESORES = {
     9494503:  'Paul Adams',
 }
 
+# tz_offset: la diferencia con UTC de la ciudad donde atiende cada cuenta. Se
+# usa para dos cosas: mostrar las horas y decidir si un mensaje entro dentro
+# del horario laboral. Si esta mal, las horas del dashboard no coinciden con
+# las que muestra Kommo y ademas se computan mal las esperas, porque un
+# mensaje de las 17:50 se toma como de las 18:50 y el reloj no arranca hasta
+# el dia siguiente.
+#
+# Ninguno de estos paises usa horario de verano, asi que el numero es fijo:
+#   El Salvador -6   ·   Panama -5   ·   Ecuador -5   ·   Rep. Dominicana -4
 PULSE_CONFIG = {
     'corepowerconsulting': {
         'nombre': 'Core Power Consulting',
         'crm_domain': 'corepowerconsulting.kommo.com',
         'campos': {'cliente': 'F Ult msj cliente', 'asesor': 'F ult msj asesor'},
-        'tz_offset': -5,
+        # San Salvador. Estaba en -5 y el dashboard mostraba todo una hora
+        # adelantado respecto de Kommo; lo detecto Juan comparando un mensaje.
+        'tz_offset': -6,
+        # Confirmado con Juan: atienden de verdad de 5 de la mañana a 6 de la
+        # tarde. No es una compensacion de la zona horaria que estaba mal.
         'horario': (5, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
@@ -58,7 +71,8 @@ PULSE_CONFIG = {
         'nombre': 'Autonica',
         'crm_domain': 'autonica.kommo.com',
         'campos': {'cliente': 'F ult msj cliente seg', 'asesor': 'F ult msj asesor'},
-        'tz_offset': -5,
+        # San Salvador, igual que Core Power. Estaba en -5.
+        'tz_offset': -6,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4, 5],
         'franjas': [
@@ -72,6 +86,8 @@ PULSE_CONFIG = {
         'nombre': 'TuCoyTico',
         'crm_domain': 'tucoytico.kommo.com',
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
+        # San Salvador. Era la unica de las tres de El Salvador que ya estaba
+        # bien; las otras dos estaban en -5.
         'tz_offset': -6,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4, 5],
@@ -86,7 +102,9 @@ PULSE_CONFIG = {
         'nombre': 'Ventas Directas',
         'crm_domain': 'ventasdirectas.kommo.com',
         'campos': {'cliente': 'F utl msj cliente', 'asesor': 'F utl msj Asesor'},
-        'tz_offset': -5,
+        # Santo Domingo. Estaba en -5, o sea una hora ATRASADO — al reves que
+        # las dos de El Salvador, que estaban adelantadas.
+        'tz_offset': -4,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
@@ -143,6 +161,7 @@ PULSE_CONFIG = {
         # Dos claves con la palabra "asesor" que significan cosas distintas se
         # confunden sola.
         'campo_quien_atendio': 'Asesor',
+        # Ecuador. Verificado, no hace falta cambiarlo.
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
@@ -161,6 +180,7 @@ PULSE_CONFIG = {
         # letra la cuenta media cero, sin ningun error. La comparacion de
         # get_custom_field es exacta.
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
+        # Panama, que tambien es -5. Verificado, no hace falta cambiarlo.
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
