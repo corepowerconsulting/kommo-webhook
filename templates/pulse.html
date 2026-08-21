@@ -22,6 +22,8 @@
     .section-title { font-size:1.05rem; font-weight:700; color:#1e293b; }
     .section-sub   { font-size:0.85rem; color:#64748b; margin-top:2px; }
     .tag { font-size:0.65rem; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:99px; }
+    /* Version grande de .tag para el veredicto del numero principal. */
+    .tag-kpi { font-size:0.9rem; font-weight:800; letter-spacing:.02em; padding:5px 14px; border-radius:99px; }
     .tag-green  { background:#dcfce7; color:#166534; }
     .tag-amber  { background:#fef3c7; color:#92400e; }
     .tag-orange { background:#ffedd5; color:#9a3412; }
@@ -220,17 +222,21 @@
     <!-- KPIs de tiempo de respuesta: es a lo que viene el dashboard, va primero -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="card">
-        <div class="flex items-center gap-2.5">
+        <div class="flex items-center gap-2.5 flex-wrap">
           <span class="kpi-num text-blue-600" id="kpi-promedio">—</span>
-          <span id="kpi-badge-prom" class="tag hidden"></span>
+          <!-- Esta etiqueta es lo unico del dashboard que dice si el numero
+               esta BIEN o MAL. Existia hace tiempo, pero a 10px al lado de un
+               numero de 38 no la veia nadie. Con .tag-kpi pasa a leerse. -->
+          <span id="kpi-badge-prom" class="tag-kpi hidden"></span>
         </div>
         <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
-        <div class="mt-2 text-xs text-slate-400">
-          p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
-          <span class="text-slate-300">·</span>
-          prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
-          <span class="text-slate-300">·</span>
-          máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
+        <!-- "p90" era jerga: nadie fuera del equipo sabe que es un percentil.
+             Promedio y maximo se sacaron de aca — cuatro estadisticas en la
+             tarjeta principal es mas de lo que un cliente puede leer, y las
+             dos que sobraban son justo las que la cola larga distorsiona. -->
+        <div class="mt-2 text-xs text-slate-500">
+          9 de cada 10 respondieron antes de
+          <span id="kpi-p90" class="font-semibold text-slate-700">—</span>
         </div>
       </div>
       <div class="card">
@@ -325,12 +331,20 @@
       </div>
     </div>
 
-    <!-- Casos extremos: una sola tarjeta, se alterna entre lentos y rapidos -->
+    <!-- Conversaciones mas lentas / mas rapidas: una sola tarjeta con un
+         interruptor, en vez de dos tarjetas que ocupaban el doble. -->
     <div class="card">
       <div class="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <!-- El titulo dice las dos cosas que la gente asumia mal: que la lista
+             es del PERIODO elegido, y que son conversaciones ya respondidas.
+             Con el titulo anterior se hacia clic esperando encontrar algo
+             pendiente. -->
         <div class="flex items-center gap-2">
           <span id="punto-extremos" class="w-2 h-2 rounded-full bg-red-400"></span>
-          <div class="section-title">Casos extremos</div>
+          <div>
+            <div class="section-title" id="titulo-extremos">Conversaciones más lentas del período</div>
+            <div class="section-sub">Ya respondidas · no son pendientes</div>
+          </div>
         </div>
         <div class="inline-flex bg-slate-100 rounded-xl p-1">
           <button id="btn-lentos"  onclick="cambiarExtremos('lentos')"  class="px-3.5 py-1.5 rounded-lg text-sm font-semibold transition">Más lentos</button>
@@ -440,6 +454,9 @@ function renderExtremos() {
   document.getElementById('btn-rapidos').className = esLento ? inactivo : activo;
   document.getElementById('punto-extremos').className =
     'w-2 h-2 rounded-full ' + (esLento ? 'bg-red-400' : 'bg-green-400');
+  document.getElementById('titulo-extremos').textContent = esLento
+    ? 'Conversaciones más lentas del período'
+    : 'Conversaciones más rápidas del período';
   const datos = (esLento ? TOP_LENTOS : TOP_RAPIDOS).slice(0, TOP_N_EXTREMOS);
   renderTabla('tabla-extremos', datos, esLento ? 'lento' : 'rapido');
 }
@@ -737,9 +754,18 @@ function renderTabla(containerId, rows, tipo) {
   // Dos lineas por fila, no tres: el nombre manda y el resto es contexto.
   // Con tres lineas cada lead medía ~86px y la tarjeta se comía un tercio
   // de la pagina.
-  el.innerHTML = rows.map((r, i) => `
-    <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-2.5">
-      <span class="text-xs text-slate-400 w-4 text-right font-bold flex-shrink-0">${i+1}</span>
+  // Solo llevan puesto los que se calcularon sobre mas de una respuesta. Con
+  // un solo dato el numero es una anecdota, no un promedio, y no corresponde
+  // que encabece la lista. Se muestran igual —no se esconde nada— pero sin
+  // puesto y atenuados. Es el mismo criterio que ya usa la tabla de asesores
+  // con "pocas respuestas".
+  let puesto = 0;
+  el.innerHTML = rows.map((r) => {
+    const pocas = !(r.respuestas > 1);
+    const rank = pocas ? '—' : String(++puesto);
+    return `
+    <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-2.5 ${pocas ? 'opacity-60' : ''}">
+      <span class="text-xs text-slate-400 w-4 text-right font-bold flex-shrink-0">${rank}</span>
       <div class="min-w-0 flex-1">
         <div class="text-sm font-semibold text-slate-800 truncate">${r.nombre || 'Sin nombre'}</div>
         <div class="text-xs text-slate-400 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
@@ -747,15 +773,16 @@ function renderTabla(containerId, rows, tipo) {
       <div class="text-right flex-shrink-0 pl-3">
         <div class="text-sm font-black ${colorClass} leading-tight">${r.fmt}</div>
         <!-- Dice "mediana" porque es la mediana. Decia "prom." de cuando el
-             calculo era un promedio, y quedo asi despues de cambiarlo: Ana
-             leyo la etiqueta y dio por hecho que el cambio no se habia
-             hecho. La etiqueta es lo unico que la gente ve del calculo. -->
+             calculo era un promedio, y quedo asi al cambiarlo: quien leia la
+             etiqueta daba por hecho que el cambio no se habia hecho. La
+             etiqueta es lo unico que la gente ve del calculo. -->
         <div class="text-[11px] text-slate-400 leading-tight">${
-          r.respuestas > 1 ? `mediana de ${r.respuestas} respuestas` : '1 respuesta'
+          pocas ? 'una sola respuesta' : `mediana de ${r.respuestas} respuestas`
         }</div>
       </div>
     </a>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderAsesores(porAsesor, minMuestra) {
@@ -911,10 +938,14 @@ async function cargarDatos() {
     const avisoCob = document.getElementById('aviso-cobertura');
     if (cob && cob.pct < 95) {
       const faltan = cob.dias_laborables - cob.dias_con_datos;
+      // Eran tres oraciones para decir una cosa, y no se entendia. El detalle
+      // de POR QUE pasa queda en el title, para quien lo quiera; el cartel
+      // dice solo lo accionable.
+      const dias = faltan === 1 ? 'día hábil' : 'días hábiles';
       document.getElementById('texto-cobertura').innerHTML =
-        `<strong>Faltan datos de ${faltan} de los ${cob.dias_laborables} días hábiles de este período</strong>
-         (${cob.pct}% cubierto). Esos días el webhook no estuvo recibiendo mensajes, así que
-         los números salen solo de los leads que volvieron a moverse después. Tomalos con cuidado.`;
+        `<strong>Faltan ${faltan} ${dias} de ${cob.dias_laborables}.</strong>
+         Los números de esos días están incompletos.
+         <span class="text-amber-700/70 cursor-help" title="Esos días el webhook de Kommo estuvo caído y no recibimos mensajes. Los leads que igual aparecen son los que volvieron a moverse después, así que son una muestra parcial.">¿por qué?</span>`;
       avisoCob.classList.remove('hidden');
     } else {
       avisoCob.classList.add('hidden');
@@ -948,14 +979,15 @@ async function cargarDatos() {
     // termina mostrando un tiempo que no espero ningun cliente real.
     document.getElementById('kpi-promedio').textContent  = fmtSeg(d.metricas.mediana_seg);
     document.getElementById('kpi-p90').textContent       = fmtSeg(d.metricas.p90_seg);
-    document.getElementById('kpi-prom-sec').textContent  = fmtSeg(d.metricas.promedio_seg);
-    document.getElementById('kpi-maximo').textContent    = fmtSeg(d.metricas.maximo_seg);
+    // El promedio y el maximo se siguen calculando y viajan en la respuesta;
+    // solo se sacaron de la tarjeta principal. Si alguien los pide, es volver
+    // a pintarlos, no volver a calcularlos.
 
     const badge = getBadgeTag(d.metricas.mediana_seg, d.config.franjas);
     if (badge && d.metricas.total > 0) {
       const el = document.getElementById('kpi-badge-prom');
       el.textContent = badge.tag;
-      el.className = `tag ${tagClass(badge.tag)}`;
+      el.className = `tag-kpi ${tagClass(badge.tag)}`;
       el.classList.remove('hidden');
     }
 
@@ -980,7 +1012,7 @@ async function cargarDatos() {
         `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
     }
 
-    // Casos extremos: se guardan los dos y se muestra el seleccionado
+    // Lentas y rapidas: se guardan las dos listas y se muestra la elegida
     TOP_LENTOS  = d.top_lentos;
     TOP_RAPIDOS = d.top_rapidos;
     renderExtremos();
