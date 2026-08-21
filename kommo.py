@@ -1452,6 +1452,189 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
             })
     return turnos, dict(descartes)
 
+@app.route('/health/salientes')
+@token_requerido
+def health_salientes():
+    """Los mensajes del ASESOR si llegan, con otro nombre de clave.
+
+    Se dio por hecho durante meses que Kommo no los manda. Lo que pasa es que
+    no vienen bajo 'message[add][n]' como los entrantes, sino bajo
+    'outgoing_message[add][n]'. _procesar_webhook solo busca el primero, asi
+    que todos cayeron en tipo_evento='desconocido' y nunca se miraron: 1.019
+    de los ultimos 3.000 desconocidos de tucoytico son mensajes salientes.
+
+    Estan guardados enteros en 'eventos', o sea que se recuperan hacia atras.
+
+    Antes de escribir nada hay que contestar dos cosas, y para eso es este
+    endpoint:
+
+      1. QUIEN los manda. Si todos son del bot de bienvenida no sirven para
+         medir al asesor. El dato esta en author[type] y author[user_id]:
+         user_id = 0 es automatico, distinto de 0 es una persona.
+      2. A QUE LEAD pertenecen. Los entrantes traen element_id; los salientes
+         no, solo chat_id / talk_id / contact_id. Hay que unirlos por ahi, y
+         el puente solo existe si esos ids aparecen tambien en los entrantes,
+         que si traen el lead. Eso se mide abajo en 'puente'.
+
+    Solo lee. No escribe ni modifica nada."""
+    subdomain = request.args.get('subdomain', '').strip()
+    try:
+        limite = min(int(request.args.get('limite', 2000)), 8000)
+    except ValueError:
+        limite = 2000
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        # Se filtra por LIKE y se corta por id DESC: son cientos de miles de
+        # filas y no hay indice por contenido, asi que se recorre hacia atras
+        # desde lo mas nuevo y se para al llegar al limite.
+        q = ("SELECT subdomain, raw_data FROM eventos "
+             "WHERE tipo_evento = 'desconocido' AND raw_data LIKE %s")
+        params = ['%outgoing_message[add]%']
+        if subdomain:
+            q += ' AND subdomain = %s'
+            params.append(subdomain)
+        q += ' ORDER BY id DESC LIMIT %s'
+        params.append(limite)
+        c.execute(q, params)
+        rows = c.fetchall()
+
+        q2 = "SELECT raw_data FROM eventos WHERE tipo_evento = 'mensaje'"
+        params2 = []
+        if subdomain:
+            q2 += ' AND subdomain = %s'
+            params2.append(subdomain)
+        q2 += ' ORDER BY id DESC LIMIT %s'
+        params2.append(limite)
+        c.execute(q2, params2)
+        rows_ent = c.fetchall()
+    finally:
+        conn.close()
+
+    por_sub    = defaultdict(int)
+    autor_tipo = Counter()
+    autor_uid  = Counter()
+    tipo_msj   = Counter()
+    origen     = Counter()
+    claves     = Counter()
+    talks_out  = set()
+    chats_out  = set()
+    talks_hum  = set()
+    chats_hum  = set()
+    humanos    = []
+    n_out = n_humanos = con_lead_directo = 0
+
+    for row in rows:
+        try:
+            data = json.loads(row['raw_data'] or '{}')
+        except (ValueError, TypeError):
+            continue
+        for i in get_batch_indices(data, 'outgoing_message[add]'):
+            p = f'outgoing_message[add][{i}]'
+            n_out += 1
+            por_sub[row['subdomain']] += 1
+            for k in data:
+                if k.startswith(p):
+                    claves[k[len(p):]] += 1
+            uid = str(data.get(f'{p}[author][user_id]'))
+            autor_tipo[str(data.get(f'{p}[author][type]'))] += 1
+            autor_uid[uid] += 1
+            tipo_msj[str(data.get(f'{p}[message_type]'))] += 1
+            origen[str(data.get(f'{p}[origin]'))] += 1
+            if data.get(f'{p}[element_id]') or data.get(f'{p}[entity_id]'):
+                con_lead_directo += 1
+            talk, chat = data.get(f'{p}[talk_id]'), data.get(f'{p}[chat_id]')
+            if talk:
+                talks_out.add(str(talk))
+            if chat:
+                chats_out.add(str(chat))
+            # user_id distinto de 0 = lo escribio una persona, no un bot.
+            if uid not in ('0', 'None', ''):
+                n_humanos += 1
+                if talk:
+                    talks_hum.add(str(talk))
+                if chat:
+                    chats_hum.add(str(chat))
+                if len(humanos) < 15:
+                    humanos.append({
+                        'subdomain':   row['subdomain'],
+                        'user_id':     uid,
+                        'author_type': data.get(f'{p}[author][type]'),
+                        # nombre_asesor hace int(): un user_id no numerico
+                        # tumbaria el endpoint entero.
+                        'autor':       nombre_asesor(uid) if uid.isdigit() else None,
+                        'author_name': data.get(f'{p}[author][name]'),
+                        'created_at':  data.get(f'{p}[created_at]'),
+                        'talk_id':     talk,
+                        'chat_id':     chat,
+                        'origin':      data.get(f'{p}[origin]'),
+                    })
+
+    # El puente: de los entrantes se saca talk_id/chat_id -> lead, porque esos
+    # si traen element_id. Si el id del saliente esta en este mapa, el mensaje
+    # del asesor se puede pegar a su lead.
+    talk_a_lead, chat_a_lead = {}, {}
+    for row in rows_ent:
+        try:
+            data = json.loads(row['raw_data'] or '{}')
+        except (ValueError, TypeError):
+            continue
+        for i in get_batch_indices(data, 'message[add]'):
+            p = f'message[add][{i}]'
+            lead = data.get(f'{p}[element_id]')
+            if not lead:
+                continue
+            if data.get(f'{p}[talk_id]'):
+                talk_a_lead[str(data[f'{p}[talk_id]'])] = str(lead)
+            if data.get(f'{p}[chat_id]'):
+                chat_a_lead[str(data[f'{p}[chat_id]'])] = str(lead)
+
+    def pct(a, b):
+        return round(100.0 * a / b, 1) if b else None
+
+    return jsonify({
+        'muestra': {
+            'payloads_salientes': len(rows),
+            'mensajes_salientes': n_out,
+            'payloads_entrantes_para_el_puente': len(rows_ent),
+            'limite': limite,
+            'subdomain': subdomain or 'todos',
+        },
+        'por_subdominio': dict(por_sub),
+        'quien_lo_mando': {
+            'author_type':          dict(autor_tipo.most_common()),
+            'author_user_id':       dict(autor_uid.most_common(15)),
+            'de_una_persona':       n_humanos,
+            'de_una_persona_pct':   pct(n_humanos, n_out),
+            'ejemplos':             humanos,
+        },
+        'trae_el_lead_directo': {
+            'con_element_id': con_lead_directo,
+            'nota': 'Si es 0, hay que unirlos por talk_id o chat_id.',
+        },
+        'puente': {
+            'talk_id_conocidos_por_entrantes': len(talk_a_lead),
+            'chat_id_conocidos_por_entrantes': len(chat_a_lead),
+            'talks_salientes':      len(talks_out),
+            'talks_que_cruzan':     len(talks_out & set(talk_a_lead)),
+            'talks_que_cruzan_pct': pct(len(talks_out & set(talk_a_lead)), len(talks_out)),
+            'chats_salientes':      len(chats_out),
+            'chats_que_cruzan':     len(chats_out & set(chat_a_lead)),
+            'chats_que_cruzan_pct': pct(len(chats_out & set(chat_a_lead)), len(chats_out)),
+            'talks_humanos':        len(talks_hum),
+            'talks_humanos_que_cruzan': len(talks_hum & set(talk_a_lead)),
+            'chats_humanos':        len(chats_hum),
+            'chats_humanos_que_cruzan': len(chats_hum & set(chat_a_lead)),
+            'nota': 'Las dos muestras son de momentos distintos, asi que un '
+                    'cruce bajo aca no prueba que el puente no exista; subir '
+                    '"limite" acerca las dos ventanas.',
+        },
+        'campos_del_saliente': dict(claves.most_common()),
+        'message_type': dict(tipo_msj.most_common()),
+        'origin': dict(origen.most_common()),
+    })
+
 @app.route('/health/sesgo')
 def health_sesgo():
     """Mide cuanto SUBESTIMA Pulse la espera real del cliente.
