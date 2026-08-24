@@ -1,0 +1,754 @@
+{
+  "gruporegalado": {
+    "embudos": {
+      "10396768": {
+        "etapas": {
+          "109115528": "INTERESADOS CIIE",
+          "109115532": "ASESORIAS CIIE",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "79715496": "Leads Entrantes",
+          "79715500": "Contacto inicial",
+          "79715504": "Negociación",
+          "81002940": "CESCH",
+          "81003140": "Eventos",
+          "81075404": "CITAS",
+          "90271776": "ENVIOS MASIVOS POR PAUSA",
+          "90272124": "RESPONDIO",
+          "97866176": "FERIAS"
+        },
+        "nombre": "EXPORTACIÓN",
+        "principal": false
+      },
+      "10445880": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "80095636": "Leads Entrantes",
+          "80095640": "CONTACTO INICIAL",
+          "80095644": "INSCRITOS paso 1",
+          "80095784": "ASISTENCIA",
+          "80095788": "RESPONDIDO",
+          "80095792": "BASE DE DATOS",
+          "93598660": "Interesados",
+          "98380236": "duplicados"
+        },
+        "nombre": "CURSOS",
+        "principal": false
+      },
+      "10476372": {
+        "etapas": {
+          "142": "ventas logradas",
+          "143": "Ventas Perdidos",
+          "80331936": "Leads Entrantes",
+          "80331940": "Contacto inicial",
+          "80331944": "respondidos",
+          "80331948": "ventas concretadas",
+          "80640784": "clientes resagados",
+          "80640788": "muñecos de resina",
+          "80640792": "rompecabezas",
+          "80640796": "compañeros de la empresa",
+          "80640800": "importacion espera",
+          "80640804": "ferias",
+          "81365380": "POR ENTREGAR",
+          "81504800": "base de datos",
+          "81560500": "CAMPAÑA WANT",
+          "86455600": "ULTIMA OPORTUNIDAD",
+          "91674204": "Visita",
+          "94760028": "PRUEBAS ia"
+        },
+        "nombre": "WANT",
+        "principal": false
+      },
+      "10776368": {
+        "etapas": {
+          "101082300": "REMARKETING",
+          "101566788": "detalles de producto",
+          "101566792": "cotiza cliente",
+          "108917916": "por agendar p1 denisse",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "82635940": "Leads Entrantes",
+          "82635944": "Contacto inicial",
+          "83636772": "por liquidar",
+          "83636776": "liquidado",
+          "83648672": "DEFINICIÓN del producto",
+          "97338332": "liq enviada",
+          "97338336": "venta concretada",
+          "98527864": "producto con datos",
+          "98528040": "CAPACITACION/CURSOS",
+          "98528112": "requiere asesor",
+          "99475420": "por agendar p1",
+          "99475424": "por agendar p2",
+          "99475428": "contrato",
+          "99641472": "ULTIMO INTENTO",
+          "99641516": "INFORMACION",
+          "99778568": "BASE MESSENGER",
+          "99905820": "base de dat0s"
+        },
+        "nombre": "PERÚ",
+        "principal": false
+      },
+      "11086236": {
+        "etapas": {
+          "110051072": "iNTERESADOS EN VIAJES",
+          "110051076": "INFORMACIÓN ENVIADA",
+          "110051080": "ASESORIA",
+          "110051084": "LOGRADO",
+          "110051088": "BASE DE DATOS",
+          "142": "LOGRADO CON EXITO",
+          "143": "Ventas Perdidos",
+          "85050716": "Leads Entrantes",
+          "85050720": "Contacto inicial"
+        },
+        "nombre": "VIAJES CÁMARA",
+        "principal": false
+      },
+      "12960352": {
+        "etapas": {
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "99934352": "Leads Entrantes",
+          "99934356": "spam definitivo",
+          "99934360": "PROVEEDORES",
+          "99934364": "Tomar decisión"
+        },
+        "nombre": "OTROS CONTACTOS",
+        "principal": false
+      },
+      "13216680": {
+        "etapas": {
+          "101910388": "Leads Entrantes",
+          "101910392": "Contacto inicial",
+          "101910396": "Negociación",
+          "101910400": "Tomar decisión",
+          "108447356": "Contenedor 162",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "ENTREGAS  L",
+        "principal": false
+      },
+      "13361388": {
+        "etapas": {
+          "103055584": "Leads Entrantes",
+          "103055588": "ALISHOP BODEGA",
+          "104623048": "ALISHOP NUEVO",
+          "104623052": "ALISHOP CON OP",
+          "106120400": "REQUIERE ASESOR",
+          "106120404": "ALISHOP CON PRODUCTO",
+          "106120408": "ALISHOP LIQUIDADO",
+          "106120412": "ALISHOP CAMBIO DE PRECIO",
+          "106120416": "ALISHOP DEVOLUCION",
+          "142": "Entregado/finalizado",
+          "143": "PERDIDOS/CERRADOS"
+        },
+        "nombre": "ALISHOP",
+        "principal": false
+      },
+      "13951768": {
+        "etapas": {
+          "107670432": "Leads Entrantes",
+          "107670436": "INSUMOS Y EQUIPOS MEDICOS ODONTOLÓGICOS",
+          "107670440": "VEHICULOS COMBUSTION",
+          "107670444": "VEHÍCULOS ELECTRICOS",
+          "108804452": "NEUMÁTICOS",
+          "108804456": "BISUTERÍA",
+          "108804460": "ROPA Y ZAPATOS",
+          "108804464": "MAQUINARIA",
+          "108804468": "QUiMICOS y COSMeTICOS",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "LARGA DATA",
+        "principal": false
+      },
+      "14245316": {
+        "etapas": {
+          "109998776": "Leads Entrantes",
+          "109998780": "Contacto inicial",
+          "109999024": "ACERCAMIENTOS EVN",
+          "109999028": "CAPACITACIONES MES",
+          "109999032": "UNIVERSIDADES",
+          "109999036": "CÁMARAS",
+          "109999040": "PREFECTURAS",
+          "109999044": "ALCALDÍAS",
+          "142": "AFILIADOS",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "CÁMARA EVENTOS",
+        "principal": false
+      },
+      "14276496": {
+        "etapas": {
+          "110248544": "Leads Entrantes",
+          "110248548": "POR LLEGAR",
+          "110248552": "POR ALERTAR",
+          "110248556": "PENDIENTE PAGO",
+          "110248896": "PAGADOS",
+          "110248900": "DESCONOCIDOS",
+          "110248904": "CARGADOS",
+          "110249480": "CON NOVEDAD",
+          "110251848": "CREAR BULTO ALIBOX",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "ALIBOX BODEGA",
+        "principal": false
+      },
+      "6981715": {
+        "etapas": {
+          "108293124": "Carta China",
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "58320691": "Leads Entrantes",
+          "58320695": "Contacto inicial",
+          "58320699": "BASE DE DATOS",
+          "59086599": "REMARKETINg",
+          "59140187": "por agendar p1",
+          "61717487": "SPAM",
+          "62084771": "POR DEFINIR PRODUCTO",
+          "63093647": "BASE MESSENGER",
+          "67662220": "INFORMACION",
+          "70470500": "consulta de restricciones",
+          "75339012": "por agendar p2",
+          "75972668": "COMENTARIOS DE RRSS",
+          "78673012": "REQUIERE CALL CENTER",
+          "80021636": "PRODUCTO CON DATOS",
+          "80976180": "ULTIMO INTENTO DE RESPUESTA",
+          "84636572": "RESPUESTA RESTRICCIONES"
+        },
+        "nombre": "MARKETING",
+        "principal": true
+      },
+      "6981839": {
+        "etapas": {
+          "100526276": "POR AGENDAR",
+          "100526280": "AGENDADOS",
+          "100528108": "CAMPAÑA ALIBOX",
+          "100528224": "PRODUCTOS POR LLEGAR",
+          "105615544": "PRODUCTOS RESTRINGIDOS",
+          "142": "ENTREGADO / FINALIZADO",
+          "143": "Closed - lost",
+          "58321403": "Leads Entrantes",
+          "58599587": "ATENCION ASESOR",
+          "70505316": "CONTACTO INICIAL",
+          "83328492": "lista de bodega",
+          "83328496": "maritimos",
+          "83328500": "aéreos",
+          "86925940": "CASILLERO NUEVO",
+          "87487408": "ULTIMA OPORTUNIDAD",
+          "87487412": "BASE DE DATOS",
+          "89743052": "liquidaDO",
+          "91378144": "VIENE DE MARKETING",
+          "91696372": "POR ABRIR CASILLERO",
+          "91736984": "PRODUCTOS POR ALERTAR",
+          "91861768": "por LIQUIDAR",
+          "92067240": "BASE DE DATOS SIN CASILLERO",
+          "92245960": "ORDEN DE ENVIO",
+          "95290844": "Plataformas Chinas",
+          "96166888": "DEVOLUCIONES",
+          "97154656": "SOLICITUDES"
+        },
+        "nombre": "ALIBOX",
+        "principal": false
+      },
+      "7008155": {
+        "etapas": {
+          "104167632": "subir venta/solo asesores con soporte de adriana",
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "58473947": "Leads Entrantes",
+          "58473951": "Contacto inicial",
+          "58473955": "DEFINICION DE LISTA",
+          "58473959": "COTIZA EL CLIENTE",
+          "58474131": "POR LIQUIDAR",
+          "58474135": "LIQUIDACION ENVIADA",
+          "58474143": "CONTRATO",
+          "58474207": "COTIZA EL ASESOR",
+          "58964555": "LIQUIDADO",
+          "59561095": "SERVICIOS CAMARA",
+          "61089931": "FALTA INFO PARA LIQUIDAR",
+          "73578024": "VENTA CONCRETADA",
+          "74938892": "agendado/citas pendientes",
+          "91237412": "reliq",
+          "93640472": "REQUIERE ASESOR",
+          "93640624": "TESTING ia"
+        },
+        "nombre": "VENTAS",
+        "principal": false
+      },
+      "7122783": {
+        "etapas": {
+          "108969924": "Clasificados",
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "59188695": "Leads Entrantes",
+          "59188699": "Contacto inicial",
+          "59188703": "CAMPAÑA",
+          "59188707": "RESPONDIO",
+          "59189015": "NO QUIERE MAS MENSAJES",
+          "67736672": "VIA TELEFONICA",
+          "67736676": "ENVIAR CORREO",
+          "67736680": "seguimiento POR AGENDAR",
+          "67739264": "no contesta llamada",
+          "70213040": "campañas lcl"
+        },
+        "nombre": "CAMPAÑA",
+        "principal": false
+      },
+      "7456431": {
+        "etapas": {
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "61088135": "Leads Entrantes",
+          "61088239": "PROBLEMAS",
+          "61088307": "VENTAS CONCRETADAS",
+          "64669460": "RELIQ SF",
+          "70801196": "periodicidad",
+          "73166164": "reliquidado",
+          "81599176": "RELIQ REVISAR ASESOR"
+        },
+        "nombre": "VENTAS CONCRETADAS",
+        "principal": false
+      },
+      "7513455": {
+        "etapas": {
+          "103177404": "datos de proforma",
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "61419747": "Leads Entrantes",
+          "61419751": "PENDIENTE POR COTIZAR",
+          "61419759": "COTIZACIÓN EN PROCESO",
+          "61520459": "ESPERANDO RESPUESTA DEL CLIENTE",
+          "62229827": "CONSULTA DE CLIENTE",
+          "84306972": "OBSERVACIONES"
+        },
+        "nombre": "COTIZACIONES CHINA",
+        "principal": false
+      },
+      "7637487": {
+        "etapas": {
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "62142619": "Leads Entrantes",
+          "62142623": "Contacto Inicial",
+          "62142783": "ENVIAR INVITACIÓN",
+          "62142787": "OFRECER SERVICIO",
+          "62870827": "club enviado",
+          "66799748": "Alibox enviado",
+          "67512572": "por enviar",
+          "76490712": "Prensa",
+          "78935740": "Santo Domingo",
+          "79450524": "Asistio Sem-16.01.25.STDO",
+          "80456780": "Latacunga"
+        },
+        "nombre": "CAPACITACIÓN",
+        "principal": false
+      },
+      "7641595": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "62167035": "Leads Entrantes",
+          "62167039": "contacto inicial",
+          "62167055": "campaña",
+          "62167059": "respondio",
+          "62167063": "no respondio",
+          "62167067": "no quiere más mensajes",
+          "63285423": "BASE MEESENGER",
+          "63285727": "SPAM",
+          "63307551": "Alibox",
+          "66862912": "Base 2023",
+          "75416048": "Exportación",
+          "80743512": "Para campaña"
+        },
+        "nombre": "BASE DE DATOS",
+        "principal": false
+      },
+      "8035500": {
+        "etapas": {
+          "102581256": "Frecuentes",
+          "103098516": "base de datos",
+          "106056600": "Prefecturas",
+          "106306568": "REQUIERE ASESOR",
+          "106306780": "TESTING IA",
+          "107485832": "CURSO PAGADO",
+          "108281464": "Interes afiliación",
+          "108386352": "Distribuidor china",
+          "108817792": "Acercamientos",
+          "109009528": "Interesados viaje de negocio",
+          "109009552": "afiliados",
+          "109009556": "Capacitaciones",
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "64460776": "Leads Entrantes",
+          "64460780": "Contacto inicial",
+          "64460784": "Viaje de negocios CHINA",
+          "65176616": "CONVENIOS",
+          "65176620": "OTROS",
+          "65176624": "Eventos",
+          "72654084": "CAMPAÑA",
+          "72654088": "RESPONDIO CAMPAÑA",
+          "74098580": "Cantón",
+          "74098900": "CIIE",
+          "80898844": "RESPONDIO CAMPAÑA"
+        },
+        "nombre": "SERVICIOS CAMARA",
+        "principal": false
+      },
+      "8478416": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "66989308": "Leads Entrantes",
+          "66989312": "Initial Contact"
+        },
+        "nombre": "testing",
+        "principal": false
+      },
+      "8566480": {
+        "etapas": {
+          "108401116": "Club Mundialista",
+          "108401120": "Respondio",
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "67512292": "Leads Entrantes",
+          "67512296": "Contacto inicial",
+          "67512300": "MENSAJE INMEDIATO",
+          "67512304": "MENSAJE CON PAUSA",
+          "67512368": "enviados",
+          "67515720": "respondio",
+          "68033180": "no enviar cliente activo/problemas",
+          "71098264": "lead problema"
+        },
+        "nombre": "CAMPAÑA VENTAS",
+        "principal": false
+      },
+      "9097620": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "70801792": "Leads Entrantes",
+          "70801796": "PERIODICIDAD INICIAL",
+          "70801800": "MES ACTUAL",
+          "70801804": "MENSAJE INMEDIATO",
+          "71107376": "MENSAJE ENVIADO"
+        },
+        "nombre": "PERIODICIDAD",
+        "principal": false
+      },
+      "9098412": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "70807224": "Leads Entrantes",
+          "70807228": "INFORMACION",
+          "70807232": "BODEGA ECUADOR",
+          "70807236": "GESTION CHINA",
+          "70807628": "RECLAMO PROVEEDOR",
+          "70807632": "RESOLUCIÓN",
+          "71760148": "ALIBOX"
+        },
+        "nombre": "RECLAMOS",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "10090311": "Lizeth Belén Villarroel Naranjo",
+      "10166363": "Pablo Fernando Regalado Pineda",
+      "10722348": "Cecilia Noboa",
+      "10914216": "Ventas",
+      "14483200": "Ventas 3",
+      "14483404": "Ventas 2",
+      "15308260": "Marketing Campañas",
+      "15309624": "Marketing ADS",
+      "6453065": "Luis Marroquin",
+      "6767570": "Soporte Core Power Consulting",
+      "9407311": "Información Grupo Regalado",
+      "9442311": "Jorge Regalado",
+      "9655271": "Camara de Comercio Ecuador Shanghai",
+      "9750963": "Marketing",
+      "9750975": "Administrador",
+      "9750987": "Darío Regalado",
+      "9750991": "Daniel Benítez",
+      "9751875": "◈ Alibox ◈",
+      "9773995": "Nicolas Vacacela",
+      "9773999": "Marly Moran",
+      "9774003": "Margarita Carpio",
+      "9780683": "Sami Cachiguango",
+      "9780687": "Liliana Pachacama",
+      "9780707": "Carlos Castro",
+      "9914268": "Karina Vivas"
+    }
+  },
+  "ventasdirectas": {
+    "embudos": {
+      "11049476": {
+        "etapas": {
+          "107695248": "Codigo creado",
+          "107702796": "Seguimiento activo",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "84763276": "Leads Entrantes",
+          "84763280": "Contacto inicial",
+          "84763284": "Primera Visita",
+          "84763288": "Segunda Visita",
+          "84814856": "Tercera Visita",
+          "84815508": "Visita de Seguimiento"
+        },
+        "nombre": "FH",
+        "principal": false
+      },
+      "11448976": {
+        "etapas": {
+          "107867084": "GESTION DE COBRO",
+          "108327240": "URGENCIA",
+          "142": "CASO RESUELTO ",
+          "143": " VENDEDOR DESCARTADO",
+          "87904456": "Leads Entrantes",
+          "87904460": "CONTACTO INICIAL",
+          "87904464": "SEGUIMIENTO AL VENDEDOR",
+          "87904468": "SOLICITUD DE SERVICIO",
+          "87905524": "PARA LLAMAR",
+          "88854352": "EN CONVERSACION",
+          "88854356": "EN ESPERA DEL VENDEDOR",
+          "89257620": "EN PROCESO",
+          "89257624": "CONTACTO FECHA FUTURA",
+          "89272868": "Revision FH",
+          "89595976": "Cotz. full",
+          "89595980": "cotz. ley",
+          "89596264": "Validacion de Pago",
+          "89632528": "esperando pago",
+          "96471556": "Vendedores nuevos",
+          "96471560": "Vendedor activado",
+          "96654048": "Seguimiento Puntual"
+        },
+        "nombre": "VENDEDORES",
+        "principal": false
+      },
+      "12007200": {
+        "etapas": {
+          "108881608": "CAPACITACION",
+          "108881636": "CANCELAR CONFIRMADO",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "92615840": "Leads Entrantes",
+          "92615844": "CONTACTO INICIAL",
+          "92615848": "RECORDATORIOS AUTOMATICOS",
+          "92615852": "CONVERSACION",
+          "92616004": "ESPERANDO RESPUESTA DEL CLIENTE",
+          "92616008": "PARA LLAMAR",
+          "92616012": "LLAMADA URGENTE",
+          "92616016": "ESPERANDO PAGO",
+          "92769996": "VALIDACION DE PAGO",
+          "92770000": "CONTACTO FECHA FUTURO",
+          "92770004": "ERROR",
+          "92770008": "PARA CANCELAR",
+          "92770012": "PROHIBIDO NOTIFICAR"
+        },
+        "nombre": "COBROS",
+        "principal": false
+      },
+      "12503544": {
+        "etapas": {
+          "100637660": "ia parametros",
+          "100637664": "ia cotizado",
+          "100637668": "ia servicios",
+          "100637676": "ia datos",
+          "100637680": "ia listo",
+          "100637684": "ia transfer",
+          "100637688": "conversacion",
+          "100637692": "esperando resp cliente",
+          "100637696": "llamar",
+          "100637700": "llamada urgente",
+          "100637704": "proceso de cotizacion",
+          "100637708": "Esperando pago",
+          "100637712": "Revision Freddy",
+          "100640328": "Contacto fecha futura",
+          "101054780": "LLamar 2",
+          "101054784": "Llamar 3",
+          "102084680": "SPAM - Bloquear descartar",
+          "102092576": "capacitacion",
+          "102508860": "Ajsute de Fechas",
+          "103639892": "VALIDACION DE PAGO",
+          "107723724": "correccion",
+          "107891908": "CANDIDATO PROMOTOR",
+          "108086216": "ACEPTACION TC",
+          "108384624": "CIERRE LISTO PAUL",
+          "108398960": "ESPERA WEB",
+          "108448640": "TEST LOAD",
+          "108806512": "en espera - Sebas",
+          "109063684": "correccion 1",
+          "109573856": "LONG LONG TIME",
+          "110205768": "Cierre convo",
+          "142": "Ganado",
+          "143": "Ventas Perdidos",
+          "96569332": "Leads Entrantes",
+          "96569336": "Contacto inicial",
+          "96569340": "IA TIPO"
+        },
+        "nombre": "OBSOLETO - Ventas",
+        "principal": false
+      },
+      "13134804": {
+        "etapas": {
+          "101284188": "Leads Entrantes",
+          "101284192": "Contacto inicial",
+          "101284196": "R-RECORDATORIOS",
+          "101466496": "R-Conversacion",
+          "101466500": "r-espera de cliente",
+          "101466504": "r-proc cotz",
+          "101466508": "r-esperando pago",
+          "101466512": "r-Contacto fecha futura",
+          "101466516": "r-revision",
+          "102541652": "R-LLAMAR",
+          "102541656": "R-Llamar 2",
+          "102541660": "R-LLamar 3",
+          "103984416": "r-transfer",
+          "104626812": "R-EN Proceso",
+          "104712460": "Configuracion seguro",
+          "105424536": "R-Mas adelante",
+          "106139944": "Correcccion",
+          "106923220": "URGENTE - CONF PAGO",
+          "108193196": "R-MAS AD. PROGRAMADO",
+          "109694128": "Capacitacion",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "RENOVACIONES",
+        "principal": false
+      },
+      "13371460": {
+        "etapas": {
+          "103135852": "Leads Entrantes",
+          "103135856": "Contacto inicial",
+          "103135864": "CITA AGENDADA",
+          "103135952": "CITAS DEL DIA",
+          "103135956": "CONVERSACION",
+          "103135960": "EN ESPERA",
+          "103135964": "PROCESO DE CREACION",
+          "103143856": "Revision Perdido",
+          "103945544": "PROXIMAS CITAS",
+          "104168464": "Revision ganado",
+          "107669296": "DATOS RECIBIDOS",
+          "107669948": "HORAS PRESENTADAS",
+          "107780760": "FALLO CALENDARIO",
+          "107916832": "CORRECCION CALEN",
+          "142": "VENDEDOR CREADO",
+          "143": "candidato descartado"
+        },
+        "nombre": "RECLUTAMIENTO",
+        "principal": false
+      },
+      "13970360": {
+        "etapas": {
+          "107817476": "Leads Entrantes",
+          "107817480": "RECLAMO RECIBIDO",
+          "107817484": "NOTIFICADO ASEGURADORA",
+          "107817488": "DOCUMENTOS RECIBIDO ASEG.",
+          "107817620": "Docs entregados ESPERA DE ASEGURADORA",
+          "107817624": "OFERTA RECIBIDA",
+          "107817628": "OFERTA APROBADA PAGO PENDIENTE",
+          "107817632": "OFERTA RECHAZADA-PENDIENTE",
+          "142": "PAGO RECIBIDO - CASO CERRADO",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "RECLAMACIONES",
+        "principal": false
+      },
+      "14030632": {
+        "etapas": {
+          "108295512": "Leads Entrantes",
+          "108295516": "Contacto inicial",
+          "108412376": "TRANSFER HUMANO",
+          "108417204": "COTIZADO",
+          "108417208": "VENTA LISTA LINK DE PAGO",
+          "108417700": "CANDIDATO V.",
+          "108459356": "PROC. COTZ",
+          "108460520": "CONVERSACION",
+          "108460636": "EN ESPERA DEL CLIENTE",
+          "108522736": "DOCS PENDIENTES",
+          "108533648": "LLAMAR 1",
+          "108533652": "LLAMAR 2",
+          "108533656": "LLAMAR 3",
+          "108533664": "COTZ ESPECIAL",
+          "108533672": "CONTACTO FECHA FUTURA",
+          "108533676": "SPAM BLOQUEAR",
+          "108533680": "REVISION SUPERVISOR",
+          "108533684": "CAPACITACION",
+          "108562788": "ESPERANDO PAGO",
+          "108671976": "PROGRAMAR SEGUIMIENTO",
+          "108882188": "REINICIO DE CICLO",
+          "108904200": "URGENTE",
+          "108966508": "SERVICIOS",
+          "108966512": "FORMA DE PAGO",
+          "108976184": "METODO DE PAGO",
+          "108987480": "CRM1",
+          "109279600": "NUNCA RESPONDIO",
+          "110207604": "CIERRE CONV.",
+          "110303012": "PAGO RECIBIDO - EMITIR",
+          "110709608": "IA",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "TESTING",
+        "principal": false
+      },
+      "14219768": {
+        "etapas": {
+          "109790160": "Leads Entrantes",
+          "109790164": "POR REVISAR",
+          "109790168": "EN REVISION",
+          "109790172": "ESPERA ASEGURADORA",
+          "142": "RESUELTO CLIENTE",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "SUPERVISION",
+        "principal": false
+      },
+      "6715307": {
+        "etapas": {
+          "100333604": "LEADS REALES",
+          "110182528": "Vendedores",
+          "110182532": "SPAM",
+          "110185536": "Clientes existentes",
+          "110192384": "MOTOS",
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "56678375": "Leads Entrantes"
+        },
+        "nombre": "Loteka",
+        "principal": true
+      },
+      "6842971": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "57470795": "Leads Entrantes",
+          "57470799": "CONTACTO INICIAL",
+          "57470803": "RECORDATORIOS AUTOMATICOS",
+          "57470807": "CONVERSACION",
+          "57603523": "EN ESPERA DEL CLIENTE",
+          "57603527": "CONTACTO FECHA FUTURO",
+          "57604107": "CLIENTES A LLAMAR",
+          "57857899": "para cancelar",
+          "58421095": "supervisión",
+          "58473651": "Prohibido notificar",
+          "60807996": "VALIDACION DE INGRESO"
+        },
+        "nombre": "RENOVACIONES",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "10152363": "Peterson",
+      "15684248": "Margaret E. Ricart",
+      "15694620": "Yealkis Soto",
+      "6767570": "Soporte Core Power Consulting",
+      "9482679": "Sebastian Millan",
+      "9494503": "Paul Adams",
+      "9562043": "Johan Manrique"
+    }
+  }
+}
