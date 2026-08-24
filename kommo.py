@@ -167,6 +167,62 @@ def init_db():
     # apareceria con dos nombres distintos en la misma pantalla.
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS asesor_nombre TEXT')
 
+    # Mensajes SALIENTES: los que manda el asesor (o el bot) al cliente.
+    #
+    # Llegan bajo la clave 'outgoing_message[add][n]', no bajo 'message[add][n]'
+    # como los entrantes. Por eso durante meses cayeron en tipo_evento
+    # 'desconocido' y se concluyo que Kommo no los mandaba. Si los manda, pero
+    # solo en las cuentas suscritas al evento add_outgoing_message.
+    #
+    # La clave es msg_id y no (lead_id, ts): el mismo asesor puede mandar dos
+    # mensajes en el mismo segundo —pasa seguido, texto + foto— y ademas el
+    # 28% de los salientes no trae lead_id, asi que no serviria como clave.
+    #
+    # NO se decide aca si el mensaje es de una persona o de un bot. Se guardan
+    # user_id, author_type y autor_nombre crudos y la regla se aplica al leer,
+    # porque la clasificacion todavia no esta resuelta: hay respuestas humanas
+    # con user_id = 0 (el asesor contesto desde la app de WhatsApp y Kommo no
+    # sabe quien fue) mezcladas con los saludos automaticos del Salesbot.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS mensajes_asesor (
+            subdomain TEXT,
+            msg_id TEXT,
+            lead_id TEXT,
+            ts BIGINT,
+            user_id BIGINT,
+            autor_nombre TEXT,
+            author_type TEXT,
+            chat_id TEXT,
+            talk_id TEXT,
+            origin TEXT,
+            message_type TEXT,
+            PRIMARY KEY (subdomain, msg_id)
+        )
+    ''')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_asesor_lead
+                 ON mensajes_asesor (subdomain, lead_id, ts)''')
+    # Para el UPDATE que completa los lead_id que faltan.
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_asesor_chat
+                 ON mensajes_asesor (subdomain, chat_id)
+                 WHERE lead_id IS NULL''')
+
+    # Puente chat -> lead. Los salientes traen chat_id siempre (100%) pero el
+    # lead solo a veces (72% en tucoytico, 97% en Core Power). Los ENTRANTES
+    # traen las dos cosas, asi que el mapa se arma con ellos y se usa para
+    # completar los salientes huerfanos.
+    #
+    # La clave es chat_id y no talk_id: un mismo chat pasa por varios talk_id a
+    # lo largo del tiempo (un lead tenia los talks 10838 y 16735 sobre un unico
+    # chat), asi que talk_id no identifica la conversacion.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS conversaciones (
+            subdomain TEXT,
+            chat_id TEXT,
+            lead_id TEXT,
+            PRIMARY KEY (subdomain, chat_id)
+        )
+    ''')
+
     # Supabase expone una API REST publica ademas de la conexion Postgres. Esta
     # app no la usa —se conecta por DATABASE_URL— pero la API sigue abierta, y
     # sin RLS cualquiera con la URL del proyecto puede leer estas tablas. En
@@ -176,7 +232,8 @@ def init_db():
     # Se activa RLS SIN crear politicas: la API REST queda sin acceso, y la app
     # no se ve afectada porque se conecta como dueño de las tablas y el dueño
     # salta RLS. Va en init_db para que un deploy futuro no lo deje sin activar.
-    for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado'):
+    for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado',
+                  'mensajes_asesor', 'conversaciones'):
         try:
             c.execute(f'ALTER TABLE {tabla} ENABLE ROW LEVEL SECURITY')
         except Exception as e:
@@ -358,6 +415,164 @@ def guardar_msjs_entrantes(subdomain, data):
         conn.close()
 
 # ========================
+# MENSAJES SALIENTES (del asesor)
+# ========================
+def msjs_salientes(data):
+    """Extrae los mensajes SALIENTES del payload: los que se le mandan al cliente.
+
+    Vienen bajo 'outgoing_message[add][n]'. Kommo los manda solo si la cuenta
+    esta suscrita al evento add_outgoing_message, que no aparece en la pantalla
+    de Kommo y hay que activar por API (scripts/suscribir_salientes.py).
+
+    Se devuelve todo crudo, sin decidir si es del asesor o de un bot: esa regla
+    no esta cerrada todavia. Lo unico seguro medido hasta ahora es que
+    author][name] = 'Salesbot' es automatico, y que user_id = 0 NO alcanza para
+    descartar, porque el asesor que contesta desde la app de WhatsApp llega con
+    user_id 0 y nombre 'WhatsApp Business'.
+
+    Clave por msg_id para que un mismo POST reprocesado no duplique."""
+    salida = {}
+    for i in get_batch_indices(data, 'outgoing_message[add]'):
+        p = f'outgoing_message[add][{i}]'
+        msg_id = str(data.get(f'{p}[id]') or '').strip()
+        if not msg_id:
+            continue
+        try:
+            ts = int(data.get(f'{p}[created_at]'))
+        except (TypeError, ValueError):
+            continue
+        uid = str(data.get(f'{p}[author][user_id]') or '0').strip()
+        salida[msg_id] = {
+            'msg_id':       msg_id[:120],
+            # element_id falta en ~1 de cada 4; se completa despues por chat_id.
+            'lead_id':      str(data.get(f'{p}[element_id]') or '').strip() or None,
+            'ts':           ts,
+            'user_id':      int(uid) if uid.lstrip('-').isdigit() else 0,
+            'autor_nombre': (data.get(f'{p}[author][name]') or '').strip()[:200] or None,
+            'author_type':  (data.get(f'{p}[author][type]') or '').strip()[:40] or None,
+            'chat_id':      str(data.get(f'{p}[chat_id]') or '').strip() or None,
+            'talk_id':      str(data.get(f'{p}[talk_id]') or '').strip() or None,
+            'origin':       (data.get(f'{p}[origin]') or '').strip()[:40] or None,
+            'message_type': (data.get(f'{p}[message_type]') or '').strip()[:40] or None,
+        }
+    return list(salida.values())
+
+def chats_de_entrantes(data):
+    """(chat_id, lead_id) de cada mensaje ENTRANTE.
+
+    Es el puente para los salientes que no traen lead. Sale de los entrantes
+    porque son los unicos que traen las dos cosas juntas."""
+    salida = {}
+    for i in get_batch_indices(data, 'message[add]'):
+        p = f'message[add][{i}]'
+        chat = str(data.get(f'{p}[chat_id]') or '').strip()
+        lead = str(data.get(f'{p}[element_id]') or '').strip()
+        if chat and lead:
+            salida[chat] = lead
+    return salida
+
+def insertar_conversaciones(cursor, subdomain, mapa):
+    """Guarda el mapa chat -> lead. DO NOTHING y no DO UPDATE: si un chat ya
+    esta asociado a un lead, reasignarlo movería mensajes viejos a otro lead."""
+    if not mapa:
+        return 0
+    execute_values(
+        cursor,
+        'INSERT INTO conversaciones (subdomain, chat_id, lead_id) VALUES %s '
+        'ON CONFLICT (subdomain, chat_id) DO NOTHING',
+        [(subdomain, chat, lead) for chat, lead in mapa.items()]
+    )
+    return len(mapa)
+
+def insertar_msjs_asesor(cursor, subdomain, filas):
+    """Inserta los salientes en UNA sola ida, como los entrantes.
+
+    ON CONFLICT DO UPDATE solo sobre lead_id: un mensaje puede haberse guardado
+    sin lead y completarse despues. El resto de los campos no cambia nunca, asi
+    que reprocesar el historial es idempotente."""
+    if not filas:
+        return 0
+    # Un msg_id repetido dentro del MISMO insert aborta la sentencia entera con
+    # "cannot affect row a second time" y se pierde la pagina completa.
+    unicas = {}
+    for f in filas:
+        previo = unicas.get(f['msg_id'])
+        if previo is None or (previo['lead_id'] is None and f['lead_id']):
+            unicas[f['msg_id']] = f
+    execute_values(
+        cursor,
+        'INSERT INTO mensajes_asesor (subdomain, msg_id, lead_id, ts, user_id, '
+        'autor_nombre, author_type, chat_id, talk_id, origin, message_type) VALUES %s '
+        'ON CONFLICT (subdomain, msg_id) DO UPDATE '
+        'SET lead_id = COALESCE(mensajes_asesor.lead_id, EXCLUDED.lead_id)',
+        [(subdomain, f['msg_id'], f['lead_id'], f['ts'], f['user_id'], f['autor_nombre'],
+          f['author_type'], f['chat_id'], f['talk_id'], f['origin'], f['message_type'])
+         for f in unicas.values()]
+    )
+    return len(unicas)
+
+# Completa los salientes que quedaron sin lead usando el mapa chat -> lead.
+# Hace falta un paso aparte porque el entrante que revela el lead puede llegar
+# DESPUES del saliente (o no haber llegado todavia cuando se guardo).
+SQL_COMPLETAR_LEAD_SALIENTE = '''
+    UPDATE mensajes_asesor m
+       SET lead_id = c.lead_id
+      FROM conversaciones c
+     WHERE m.subdomain = c.subdomain
+       AND m.chat_id   = c.chat_id
+       AND m.lead_id IS NULL
+       AND m.subdomain = %s
+'''
+
+def guardar_msjs_salientes(subdomain, data):
+    """Camino del webhook: guarda los salientes de UN payload."""
+    filas = msjs_salientes(data)
+    if not filas:
+        return 0
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        n = insertar_msjs_asesor(c, subdomain, filas)
+        # Los que llegaron sin lead se completan enseguida si el chat ya se
+        # conoce. Es una consulta acotada a los chats de ESTE payload, no un
+        # UPDATE sobre toda la tabla.
+        chats = [f['chat_id'] for f in filas if not f['lead_id'] and f['chat_id']]
+        if chats:
+            c.execute(
+                'UPDATE mensajes_asesor m SET lead_id = c.lead_id '
+                'FROM conversaciones c '
+                'WHERE m.subdomain = c.subdomain AND m.chat_id = c.chat_id '
+                'AND m.lead_id IS NULL AND m.subdomain = %s AND m.chat_id = ANY(%s)',
+                (subdomain, chats)
+            )
+        conn.commit()
+        return n
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Error mensajes_asesor: {e}")
+        return 0
+    finally:
+        conn.close()
+
+def guardar_conversaciones(subdomain, data):
+    """Camino del webhook: guarda el mapa chat -> lead de los entrantes."""
+    mapa = chats_de_entrantes(data)
+    if not mapa:
+        return 0
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        n = insertar_conversaciones(c, subdomain, mapa)
+        conn.commit()
+        return n
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Error conversaciones: {e}")
+        return 0
+    finally:
+        conn.close()
+
+# ========================
 # GUARDAR EVENTO
 # ========================
 def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
@@ -522,6 +737,24 @@ def _procesar_webhook(data):
             # Ademas del evento crudo, cada mensaje entrante va a su propia
             # fila para poder saber desde cuando espera el cliente.
             guardar_msjs_entrantes(subdomain, data)
+            # Los entrantes son los unicos que traen chat_id y lead juntos: es
+            # el puente para pegarle un lead a los salientes que no lo traen.
+            guardar_conversaciones(subdomain, data)
+
+        # Mensajes SALIENTES. Hasta ahora caian en 'desconocido' porque la clave
+        # es 'outgoing_message[add]' y aca solo se buscaba 'message[add]'.
+        idxs_sal = get_batch_indices(data, 'outgoing_message[add]')
+        for i in idxs_sal:
+            algo_procesado = True
+            guardar_evento(
+                subdomain=subdomain,
+                tipo_evento='mensaje_saliente',
+                lead_id=data.get(f'outgoing_message[add][{i}][element_id]'),
+                timestamp=data.get(f'outgoing_message[add][{i}][created_at]'),
+                data=data
+            )
+        if idxs_sal:
+            guardar_msjs_salientes(subdomain, data)
 
         for i in get_batch_indices(data, 'leads[update]'):
             algo_procesado = True
@@ -873,6 +1106,7 @@ def backfill_mensajes():
         guardados = 0
         errores   = 0
         leidos    = 0
+        chats_vistos = 0
         hay_mas   = True
         while hay_mas and time.monotonic() - arranque < PRESUPUESTO_SEG:
             read_c.execute(
@@ -886,15 +1120,21 @@ def backfill_mensajes():
             # evento contra Supabase daba ~30 mensajes/seg, inviable para las
             # decenas de miles de eventos que hay.
             filas = set()
+            chats = {}
             for row in rows:
                 if not row['raw_data']:
                     continue
                 try:
-                    filas |= msjs_entrantes(json.loads(row['raw_data']))
+                    payload = json.loads(row['raw_data'])
+                    filas |= msjs_entrantes(payload)
+                    # Mismo parseo, dos usos: de aca sale el puente chat -> lead
+                    # que necesitan los salientes que no traen el lead adentro.
+                    chats.update(chats_de_entrantes(payload))
                 except Exception as e:
                     errores += 1
                     print(f"⚠️ Backfill mensajes: {e}")
             guardados += insertar_msjs_cliente(write_c, subdomain, filas)
+            chats_vistos += insertar_conversaciones(write_c, subdomain, chats)
             leidos  += len(rows)
             offset  += len(rows)
             hay_mas  = len(rows) == limit
@@ -923,6 +1163,7 @@ def backfill_mensajes():
             'eventos_procesados':      leidos,
             'segundos':                round(time.monotonic() - arranque, 1),
             'mensajes_encontrados':    guardados,
+            'chats_mapeados':          chats_vistos,
             'errores':                 errores,
             'total_mensajes_cliente':  total_msjs,
             'filas_recalculadas':      recalculado,
@@ -932,6 +1173,124 @@ def backfill_mensajes():
             # offset ya viene avanzado por el loop; sumarle limit saltearia
             # una pagina entera de eventos sin procesar.
             'siguiente': (f'/backfill-mensajes?subdomain={subdomain}&offset={offset}'
+                          if hay_mas else None),
+            'listo': not hay_mas,
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/backfill-salientes')
+@token_requerido
+def backfill_salientes():
+    """Puebla 'mensajes_asesor' con los salientes que ya estan guardados dentro
+    del JSON de 'eventos' con tipo_evento='desconocido'.
+
+    Son los que llegaron ANTES de que el webhook supiera reconocerlos: cayeron
+    en el cajon de "no reconocido" pero con el payload entero, asi que se
+    recuperan sin pedirle nada a Kommo.
+
+    Correr PRIMERO /backfill-mensajes: de ahi sale el mapa chat -> lead que
+    necesitan los salientes que no traen el lead adentro (1 de cada 4). Si se
+    corre al reves, esos quedan sin lead hasta que se vuelva a pasar.
+
+    Paginado igual que /backfill-mensajes: cada llamada hace lo que alcanza en
+    PRESUPUESTO_SEG y devuelve en 'siguiente' donde continuar."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+    try:
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        offset = 0
+    limit = 500
+    PRESUPUESTO_SEG = 45
+
+    conn = get_conn()
+    try:
+        read_c  = conn.cursor(cursor_factory=RealDictCursor)
+        write_c = conn.cursor()
+
+        arranque  = time.monotonic()
+        guardados = 0
+        errores   = 0
+        leidos    = 0
+        hay_mas   = True
+        while hay_mas and time.monotonic() - arranque < PRESUPUESTO_SEG:
+            # Solo 'desconocido': lo que llega de ahora en adelante se guarda
+            # como 'mensaje_saliente' y ya se inserto en vivo.
+            read_c.execute(
+                "SELECT raw_data FROM eventos "
+                "WHERE subdomain = %s AND tipo_evento = 'desconocido' "
+                "AND raw_data LIKE %s "
+                "ORDER BY id DESC LIMIT %s OFFSET %s",
+                (subdomain, '%outgoing_message[add]%', limit, offset)
+            )
+            rows = read_c.fetchall()
+            filas = []
+            for row in rows:
+                if not row['raw_data']:
+                    continue
+                try:
+                    filas.extend(msjs_salientes(json.loads(row['raw_data'])))
+                except Exception as e:
+                    errores += 1
+                    print(f"⚠️ Backfill salientes: {e}")
+            guardados += insertar_msjs_asesor(write_c, subdomain, filas)
+            leidos  += len(rows)
+            offset  += len(rows)
+            hay_mas  = len(rows) == limit
+
+        completados = None
+        if not hay_mas or request.args.get('completar') == '1':
+            write_c.execute(SQL_COMPLETAR_LEAD_SALIENTE, (subdomain,))
+            completados = write_c.rowcount
+        conn.commit()
+
+        read_c.execute(
+            '''SELECT COUNT(*) AS total,
+                      COUNT(lead_id) AS con_lead,
+                      MIN(ts) AS desde, MAX(ts) AS hasta
+                 FROM mensajes_asesor WHERE subdomain = %s''',
+            (subdomain,)
+        )
+        cob = read_c.fetchone()
+        # Quien manda los salientes. Es el dato que falta para decidir la regla
+        # de bot vs persona, y conviene mirarlo sobre el total y no sobre una
+        # muestra: 'WhatsApp Business' con user_id 0 puede ser el asesor
+        # contestando desde la app.
+        read_c.execute(
+            '''SELECT autor_nombre, author_type, user_id, COUNT(*) AS n
+                 FROM mensajes_asesor WHERE subdomain = %s
+                GROUP BY autor_nombre, author_type, user_id
+                ORDER BY n DESC LIMIT 25''',
+            (subdomain,)
+        )
+        autores = [dict(r) for r in read_c.fetchall()]
+
+        tz = PULSE_CONFIG.get(subdomain, {}).get('tz_offset', 0)
+        def local(ts):
+            if not ts:
+                return None
+            return (datetime.utcfromtimestamp(int(ts))
+                    + timedelta(hours=tz)).strftime('%d/%m/%Y %H:%M')
+
+        return jsonify({
+            'offset':               offset,
+            'eventos_procesados':   leidos,
+            'segundos':             round(time.monotonic() - arranque, 1),
+            'salientes_guardados':  guardados,
+            'errores':              errores,
+            'total_en_tabla':       cob['total'],
+            'con_lead':             cob['con_lead'],
+            'sin_lead':             cob['total'] - cob['con_lead'],
+            'pct_con_lead':         round(cob['con_lead'] / cob['total'] * 100, 1) if cob['total'] else 0,
+            'lead_completados_ahora': completados,
+            'ventana':              {'desde': local(cob['desde']), 'hasta': local(cob['hasta'])},
+            'quien_los_manda':      autores,
+            'siguiente': (f'/backfill-salientes?subdomain={subdomain}&offset={offset}'
                           if hay_mas else None),
             'listo': not hay_mas,
         })
