@@ -1,4 +1,151 @@
 {
+  "autonica": {
+    "embudos": {
+      "13502959": {
+        "etapas": {
+          "104173871": "Incoming leads",
+          "104173875": "Contacto inicial",
+          "104173879": "EN CONVERSACION",
+          "104173883": "POR AGENDAR",
+          "142": "CITAS PROGRAMADAS",
+          "143": "CERRADOS"
+        },
+        "nombre": "Embudo de ventas",
+        "principal": true
+      },
+      "13504411": {
+        "etapas": {
+          "104186407": "Leads Entrantes",
+          "104186411": "Contacto inicial",
+          "104186415": "Negociación",
+          "104186419": "Tomar decisión",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "OTROS DEPARTAMENTOS",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "15080019": "Auto Nica",
+      "15081799": "Citas 1",
+      "15093487": "Citas 2",
+      "15093495": "Citas 3",
+      "6453065": "Luis Marroquin",
+      "6767570": "Soporte Core Power Consulting"
+    }
+  },
+  "corepowerconsulting": {
+    "embudos": {
+      "3688433": {
+        "etapas": {
+          "109255144": "LLAMADA RECUPERO",
+          "142": "GANADOS PAGADOS",
+          "143": "CERRADOS",
+          "35878172": "Incoming leads",
+          "35878175": "A CALIFICAR",
+          "36374159": "COTIZACIONES",
+          "57697879": "REUNIONES",
+          "58233651": "EN CONVERSACION",
+          "58233655": "ESPERANDO RESPUESTA DEL CLIENTE",
+          "58368555": "SEEDING",
+          "61907807": "ULTIMO INTENTO ESPERANDO RESPUESTA"
+        },
+        "nombre": "VENTAS",
+        "principal": false
+      },
+      "3894794": {
+        "etapas": {
+          "104532112": "QUIERE REUNIRSE",
+          "104532116": "revision",
+          "104532212": "cita agendada",
+          "104535056": "cita del dia",
+          "142": "ordenes completadas",
+          "143": "ordenes fallidas",
+          "37318523": "Incoming leads",
+          "37318526": "a calificar",
+          "37318529": "respondió",
+          "39481481": "agendado",
+          "39516485": "mailing",
+          "59994287": "CONTACTO INICIAL"
+        },
+        "nombre": "PRUEBAS",
+        "principal": false
+      },
+      "6905743": {
+        "etapas": {
+          "105173464": "test IA Kommo",
+          "106199024": "test ia kommo agendador",
+          "109642508": "COLABORADORES CLIENTES",
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "57868567": "Incoming leads",
+          "57868571": "CONTACTO INICIAL",
+          "57868575": "SOPORTE PROVEEDORES",
+          "61410159": "REFERIDORES",
+          "70837007": "COLABORADORES",
+          "71053492": "EN CONVERSACION",
+          "71053532": "PENDIENTE POR GESTIONAR"
+        },
+        "nombre": "GENERAL",
+        "principal": true
+      },
+      "6938279": {
+        "etapas": {
+          "109267712": "MESA DE AYUDA",
+          "109267716": "SOPORTE AVANZADO",
+          "109269012": "desarrollo",
+          "109318720": "LLAMADAS Y REUNIONES",
+          "109318876": "LLAMADAS Y REUNIONES AGENDADAS",
+          "142": "CLIENTES ACTIVOS",
+          "143": "BAJA",
+          "58052875": "Incoming leads",
+          "62289895": "VENCIDOS",
+          "71750388": "A GESTIONAR",
+          "81178812": "COTIZACIONES y COBROS"
+        },
+        "nombre": "CLIENTES",
+        "principal": false
+      },
+      "7671903": {
+        "etapas": {
+          "142": "GANADOS",
+          "143": "CERRADOS",
+          "62349639": "Incoming leads",
+          "65075567": "OFERTA PENDIENTE",
+          "65136867": "POR GESTIONAR",
+          "70601179": "ON BOARDING",
+          "70601183": "14 DIAS",
+          "70601187": "28 DIAS",
+          "70601191": "EXTRA 7",
+          "70601195": "PENDIENTES DE PAGO",
+          "71142076": "DEMO VENCIDO"
+        },
+        "nombre": "DEMOS",
+        "principal": false
+      },
+      "9109891": {
+        "etapas": {
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "70883391": "Incoming leads",
+          "71065644": "contacto inicial"
+        },
+        "nombre": "SOPORTE",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "11579748": "Giulliana Vera",
+      "11606140": "Jonathan Urbina",
+      "15541872": "Ana Miriam Morán",
+      "6453065": "Luis Marroquin",
+      "6550475": "Ana Miriam Moran",
+      "6731147": "Luis",
+      "6767570": "Soporte Core Power Consulting",
+      "9601187": "Maria Fernanda Morillo"
+    }
+  },
   "gruporegalado": {
     "embudos": {
       "10396768": {
@@ -480,6 +627,174 @@
       "9780687": "Liliana Pachacama",
       "9780707": "Carlos Castro",
       "9914268": "Karina Vivas"
+    }
+  },
+  "lizondrohomes": {
+    "embudos": {
+      "10138827": {
+        "etapas": {
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "77810743": "Leads Entrantes",
+          "77810747": "Contacto inicial",
+          "77810751": "Negociación",
+          "77810755": "Tomar decisión"
+        },
+        "nombre": "CHIRIBIKE ",
+        "principal": false
+      },
+      "8969355": {
+        "etapas": {
+          "100918404": "SEGUIMIENTO - COMERCIAL EXTERNO",
+          "108280180": "coordinar reunión",
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "69982691": "Incoming leads",
+          "69982695": "Contacto Inicial",
+          "69982699": "Documentos para cotizar (IA)",
+          "69982703": "Análisis financiero",
+          "69982707": "Reunión",
+          "70022071": "Recorrido de proyecto",
+          "70452851": "En aprobación en Banco",
+          "70794607": "por Cierre de venta <$70,00",
+          "71765379": "respuesta de banco",
+          "73074263": "Por Cierre de Centa >$70,000",
+          "81588328": "REQUIERE ASESOR",
+          "82565332": "NO CUMPLE REQUISITOS",
+          "84083424": "documentos para cotizar (personal)",
+          "84472896": "CLIENTE ENVIO DOCUMENTOS",
+          "96786420": "Seguimiento general"
+        },
+        "nombre": "VENTAS",
+        "principal": true
+      },
+      "9012247": {
+        "etapas": {
+          "142": "Leads ganados ",
+          "143": "Leads perdidos",
+          "70269131": "Leads Entrantes",
+          "70269135": "Contacto inicial",
+          "70269139": "Alquiler",
+          "70269143": "Lotes en Venta",
+          "86677904": "fincas en venta",
+          "86677908": "Casas de segunda"
+        },
+        "nombre": "OTROS CONTACTOS",
+        "principal": false
+      },
+      "9040183": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "70443591": "Leads Entrantes",
+          "70443595": "Contacto inicial",
+          "70443599": "Negociación",
+          "70443603": "Tomar decisión"
+        },
+        "nombre": "CLIENTES ACTIVOS",
+        "principal": false
+      },
+      "9040531": {
+        "etapas": {
+          "142": "Closed - won",
+          "143": "Closed - lost",
+          "70445943": "Leads Entrantes",
+          "70445947": "Contacto inicial",
+          "70445951": "Negociación",
+          "70445955": "Tomar decisión"
+        },
+        "nombre": "CLIENTES ENTREGADOS",
+        "principal": false
+      },
+      "9097067": {
+        "etapas": {
+          "100243488": "analisis financiero",
+          "100922720": "Seguimiento comercial externo",
+          "142": "Leads ganados",
+          "143": "Leads perdidos",
+          "70798431": "Leads Entrantes",
+          "70798435": "Contacto inicial",
+          "70798439": "pendiente bono cotizado entrega inmediata",
+          "70798443": "pendiente bono mivi por cotizar",
+          "73095715": "pendiente bono cotizado entrega futura",
+          "73096139": "pendiente bono cotizado pronta entrega",
+          "73108463": "cotizados issues pend x resolver",
+          "82505600": "Cotizados con issues x resolver",
+          "85000940": "Cotizar Nuevos PARÁMETROS",
+          "86537504": "Esperando que se acabe la huelga"
+        },
+        "nombre": "LEADS EN PAUSA",
+        "principal": false
+      },
+      "9487187": {
+        "etapas": {
+          "142": "Cerrar-ganar",
+          "143": "Cerrar-perder",
+          "73292055": "Leads Entrantes",
+          "73292059": "Contactado",
+          "73292063": "Análisis financiero ",
+          "73292067": "Respuesta ",
+          "73292159": "Reunión ",
+          "73292163": "Por Cierre "
+        },
+        "nombre": "SOLUCIONES INTEGRALES ",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "11447079": "Oliric Lizondro - Lizondro Homes",
+      "6453065": "Luis Marroquin",
+      "6767570": "Soporte Core Power Consulting"
+    }
+  },
+  "tucoytico": {
+    "embudos": {
+      "11505831": {
+        "etapas": {
+          "102990715": "TESTING IA (V2+)",
+          "104863639": "quiere cotizacion",
+          "142": "Venta",
+          "143": "PERDIDO/CONCLUIDO",
+          "88349879": "Incoming leads",
+          "88349959": "CONTACTO INICIAL",
+          "88349967": "En conversación",
+          "88349971": "Cotización",
+          "88349975": "Pendiente de pago",
+          "88452059": "REQUIERE ASESOR",
+          "88675911": "pendiente de entrega"
+        },
+        "nombre": "Embudo de ventas",
+        "principal": true
+      },
+      "11524827": {
+        "etapas": {
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos",
+          "88496195": "Leads Entrantes",
+          "88496199": "CONTACTOS INTERNOS",
+          "88496203": "PROVEEDORES"
+        },
+        "nombre": "OTROS CONTACTOS",
+        "principal": false
+      },
+      "13322667": {
+        "etapas": {
+          "102743787": "Leads Entrantes",
+          "102743791": "Contacto inicial",
+          "102743795": "Negociación",
+          "102743799": "Tomar decisión",
+          "142": "Logrado con éxito",
+          "143": "Ventas Perdidos"
+        },
+        "nombre": "Testing IA ",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "13467643": "Tuco&amp;Tico",
+      "13478031": "Ventas Tuco&amp;Tico",
+      "6453065": "Luis Marroquin",
+      "6767570": "Soporte Core Power Consulting"
     }
   },
   "ventasdirectas": {

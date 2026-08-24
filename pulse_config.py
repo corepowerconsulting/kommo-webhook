@@ -22,6 +22,12 @@ ASESORES = {
     6453065:  'Luis Marroquín',
     11579748: 'Giulliana Vera',
     15541872: 'Ana Miriam Morán',
+    # Segundo usuario de la misma persona, de antes. Los datos viejos lo
+    # referencian, asi que se conservan los dos ids.
+    6550475:  'Ana Miriam Morán',
+    11606140: 'Jonathan Urbina',
+    9601187:  'Maria Fernanda Morillo',
+    6731147:  'Luis',
 
     # Autonica
     15080019: 'Auto Nica',
@@ -31,6 +37,8 @@ ASESORES = {
 
     # TuCoyTico
     13478031: 'Ventas Tuco & Tico',
+    # La API lo devuelve escapado para HTML ("Tuco&amp;Tico"); aca va limpio.
+    13467643: 'Tuco & Tico',
 
     # Lizondro Homes
     11447079: 'Oliric Lizondro',
