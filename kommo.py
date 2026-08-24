@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 import bisect
+import html
 import json
 import re
 import secrets
@@ -448,7 +449,10 @@ def msjs_salientes(data):
             'lead_id':      str(data.get(f'{p}[element_id]') or '').strip() or None,
             'ts':           ts,
             'user_id':      int(uid) if uid.lstrip('-').isdigit() else 0,
-            'autor_nombre': (data.get(f'{p}[author][name]') or '').strip()[:200] or None,
+            # Kommo escapa el nombre para HTML: llega "Ventas Tuco&amp;Tico".
+            # Sin desescapar, ese &amp; termina impreso tal cual en el ranking.
+            'autor_nombre': html.unescape(
+                (data.get(f'{p}[author][name]') or '').strip())[:200] or None,
             'author_type':  (data.get(f'{p}[author][type]') or '').strip()[:40] or None,
             'chat_id':      str(data.get(f'{p}[chat_id]') or '').strip() or None,
             'talk_id':      str(data.get(f'{p}[talk_id]') or '').strip() or None,
@@ -504,7 +508,11 @@ def insertar_msjs_asesor(cursor, subdomain, filas):
         'INSERT INTO mensajes_asesor (subdomain, msg_id, lead_id, ts, user_id, '
         'autor_nombre, author_type, chat_id, talk_id, origin, message_type) VALUES %s '
         'ON CONFLICT (subdomain, msg_id) DO UPDATE '
-        'SET lead_id = COALESCE(mensajes_asesor.lead_id, EXCLUDED.lead_id)',
+        'SET lead_id = COALESCE(mensajes_asesor.lead_id, EXCLUDED.lead_id), '
+        # Tambien el nombre: sale del mismo payload y es deterministico, asi que
+        # refrescarlo permite corregir hacia atras (por ejemplo el &amp;) con
+        # solo volver a correr el backfill.
+        '    autor_nombre = EXCLUDED.autor_nombre',
         [(subdomain, f['msg_id'], f['lead_id'], f['ts'], f['user_id'], f['autor_nombre'],
           f['author_type'], f['chat_id'], f['talk_id'], f['origin'], f['message_type'])
          for f in unicas.values()]
