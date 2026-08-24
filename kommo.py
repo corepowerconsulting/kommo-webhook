@@ -1395,6 +1395,117 @@ def backfill_salientes():
     finally:
         conn.close()
 
+@app.route('/backfill-embudo')
+@token_requerido
+def backfill_embudo():
+    """Completa leads_estado.pipeline_id desde el JSON de 'eventos'.
+
+    El embudo llegaba en el 100% de los lead_update desde siempre y se tiraba;
+    recien ahora se guarda. Sin este backfill el filtro por embudo solo veria
+    los leads que se movieron despues del deploy, o sea casi ninguno.
+
+    Solo toca pipeline_id, y solo donde esta vacio. Eso lo hace idempotente y
+    ademas resuelve el orden: se lee de lo mas nuevo a lo mas viejo, asi que el
+    primer valor que se escribe es el mas reciente y las paginas siguientes ya
+    no lo pisan.
+
+    A diferencia de /backfill, este no recalcula tiempos de respuesta ni toca
+    ninguna otra columna: es una pasada liviana para una sola cosa."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+    try:
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        offset = 0
+    limit = 1000
+    PRESUPUESTO_SEG = 45
+
+    conn = get_conn()
+    try:
+        read_c  = conn.cursor(cursor_factory=RealDictCursor)
+        write_c = conn.cursor()
+
+        arranque = time.monotonic()
+        leidos = actualizados = errores = 0
+        hay_mas = True
+        while hay_mas and time.monotonic() - arranque < PRESUPUESTO_SEG:
+            read_c.execute(
+                "SELECT lead_id, raw_data FROM eventos "
+                "WHERE subdomain = %s AND tipo_evento = 'lead_update' "
+                "ORDER BY id DESC LIMIT %s OFFSET %s",
+                (subdomain, limit, offset))
+            rows = read_c.fetchall()
+
+            # Un lead puede aparecer muchas veces en la pagina; alcanza con el
+            # primero, que por el ORDER BY id DESC es el mas reciente.
+            pares = {}
+            for row in rows:
+                if not row['raw_data'] or row['lead_id'] in pares:
+                    continue
+                try:
+                    data = json.loads(row['raw_data'])
+                    prefix = prefix_de_lead(data, row['lead_id'])
+                    if prefix is None:
+                        continue
+                    pid = data.get(f'{prefix}[pipeline_id]')
+                    if pid:
+                        pares[row['lead_id']] = int(pid)
+                except Exception as e:
+                    errores += 1
+                    print(f'⚠️ Backfill embudo: {e}')
+
+            if pares:
+                execute_values(
+                    write_c,
+                    'UPDATE leads_estado le SET pipeline_id = v.pid '
+                    'FROM (VALUES %s) AS v(sub, lead_id, pid) '
+                    'WHERE le.subdomain = v.sub AND le.lead_id = v.lead_id '
+                    '  AND le.pipeline_id IS NULL',
+                    [(subdomain, lid, pid) for lid, pid in pares.items()],
+                    template='(%s, %s, %s::bigint)')
+                actualizados += write_c.rowcount if write_c.rowcount > 0 else 0
+
+            leidos  += len(rows)
+            offset  += len(rows)
+            hay_mas  = len(rows) == limit
+        conn.commit()
+
+        read_c.execute(
+            'SELECT COUNT(*) AS total, COUNT(pipeline_id) AS con_embudo '
+            'FROM leads_estado WHERE subdomain = %s', (subdomain,))
+        cob = read_c.fetchone()
+        read_c.execute(
+            'SELECT pipeline_id, COUNT(*) AS leads FROM leads_estado '
+            'WHERE subdomain = %s AND pipeline_id IS NOT NULL '
+            'GROUP BY pipeline_id ORDER BY leads DESC LIMIT 30', (subdomain,))
+        por_embudo = [
+            {'pipeline_id': r['pipeline_id'],
+             'nombre': nombre_embudo(subdomain, r['pipeline_id']),
+             'leads': r['leads']}
+            for r in read_c.fetchall()
+        ]
+
+        return jsonify({
+            'offset':            offset,
+            'eventos_leidos':    leidos,
+            'segundos':          round(time.monotonic() - arranque, 1),
+            'leads_completados': actualizados,
+            'errores':           errores,
+            'leads_totales':     cob['total'],
+            'con_embudo':        cob['con_embudo'],
+            'pct':               round(cob['con_embudo'] / cob['total'] * 100, 1) if cob['total'] else 0,
+            'por_embudo':        por_embudo,
+            'siguiente': (f'/backfill-embudo?subdomain={subdomain}&offset={offset}'
+                          if hay_mas else None),
+            'listo': not hay_mas,
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
 @app.route('/health/carga')
 def health_carga():
     """Cuantos hilos llega a tener el servidor. Es la prueba que falta.
