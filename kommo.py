@@ -3515,34 +3515,64 @@ def pulse_data():
         top_rapidos = sorted(comparables, key=lambda r: r['efectivo_seg'])[:10]
 
         daily = defaultdict(list)
-        daily_asesor = defaultdict(lambda: defaultdict(int))
+        daily_asesor = defaultdict(lambda: defaultdict(list))
         for r in registros_persona:
             dia = _ts_to_local(r['inicio_espera'], tz_offset).strftime('%Y-%m-%d')
             daily[dia].append(r['efectivo_seg'])
+            # Se guardan los segundos y no un contador: con la lista se puede
+            # sacar la cantidad Y la mediana del dia de cada persona, que es lo
+            # que hace falta para comparar un dia contra otro.
+            #
             # Apilar por responsable pierde sentido con UNO solo elegido: seria
             # una sola serie del mismo color que el total. Con varios sigue
             # sirviendo, que es justo para lo que se pidio la seleccion multiple.
             if len(asesor_ids) != 1:
-                daily_asesor[dia][asesor_de_registro(r) or 'Sin asignar'] += 1
+                daily_asesor[dia][asesor_de_registro(r) or 'Sin asignar'].append(
+                    r['efectivo_seg'])
 
         dias_ordenados = sorted(daily.items())[-30:]
+        # mediana_seg y no solo el promedio: el numero grande de la pantalla es
+        # la mediana, y la linea del grafico venia dibujando el promedio sobre
+        # los mismos datos. Quien comparaba los dos numeros veia una diferencia
+        # de horas y concluia que uno estaba roto. El promedio se sigue mandando
+        # para el tooltip, donde ver los dos juntos si informa.
         tendencia = [
-            {'fecha': dia, 'promedio_h': round(sum(v) / len(v) / 3600, 1), 'total': len(v)}
+            {
+                'fecha':      dia,
+                'mediana_seg': _pctl(v, 50),
+                'promedio_seg': round(sum(v) / len(v)),
+                'promedio_h': round(sum(v) / len(v) / 3600, 1),
+                'total':      len(v),
+            }
             for dia, v in dias_ordenados
         ]
 
         tendencia_por_asesor = None
         if len(asesor_ids) != 1:
-            # Barras apiladas por asesor. Con un solo responsable elegido no
-            # aporta nada; con varios es el modo de compararlos dia a dia.
             dias = [dia for dia, _ in dias_ordenados]
             nombres = sorted({n for dia in dias for n in daily_asesor[dia]})
             PALETA_ASESORES = ['#2563eb', '#16a34a', '#f59e0b', '#0891b2', '#e11d48', '#65a30d', '#0d9488', '#0284c7']
+            # Cada serie lleva las dos lecturas del mismo dia:
+            #   data       cuantas respondio  -> barras apiladas
+            #   mediana_seg cuanto tardo      -> una linea por persona
+            #
+            # Las medianas NO se apilan: sumar la mediana de dos personas no da
+            # ningun numero con sentido. Por eso el modo "tiempo" del grafico
+            # dibuja lineas y no barras.
+            #
+            # None cuando esa persona no respondio nada ese dia: asi la linea
+            # queda cortada en vez de bajar a cero y simular que atendio al
+            # instante.
             tendencia_por_asesor = [
                 {
                     'asesor': nombre,
                     'color': PALETA_ASESORES[i % len(PALETA_ASESORES)],
-                    'data': [daily_asesor[dia].get(nombre, 0) for dia in dias],
+                    'data': [len(daily_asesor[dia].get(nombre, [])) for dia in dias],
+                    'mediana_seg': [
+                        _pctl(daily_asesor[dia][nombre], 50)
+                        if daily_asesor[dia].get(nombre) else None
+                        for dia in dias
+                    ],
                 }
                 for i, nombre in enumerate(nombres)
             ]

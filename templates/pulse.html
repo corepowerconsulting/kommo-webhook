@@ -312,14 +312,14 @@
                  reunion no se entendia cual era cual. -->
             <div class="flex items-center gap-x-4 gap-y-1 mt-1 flex-wrap">
               <span class="flex items-center gap-1.5 text-xs text-slate-500">
-                <span class="inline-block w-4 h-3 rounded-sm border flex-shrink-0" style="background:#2563eb33;border-color:#2563eb"></span>
+                <span id="leyenda-barras-caja" class="inline-block w-4 h-3 rounded-sm border flex-shrink-0" style="background:#2563eb33;border-color:#2563eb"></span>
                 <span id="leyenda-barras">Barras: cantidad de respuestas</span>
               </span>
               <span class="flex items-center gap-1.5 text-xs text-slate-500">
                 <svg class="flex-shrink-0" width="20" height="10" viewBox="0 0 20 10" aria-hidden="true"><line x1="1" y1="5" x2="19" y2="5" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/><circle cx="10" cy="5" r="3" fill="#0f172a" stroke="#fff" stroke-width="1.5"/></svg>
                 <span id="leyenda-linea">Línea: tiempo promedio</span>
               </span>
-              <span class="text-xs text-slate-400">Cada eje tiene su propia escala</span>
+              <span id="nota-ejes" class="text-xs text-slate-400">Cada eje tiene su propia escala</span>
             </div>
             <!-- Solo se muestra si el corte cae dentro del periodo elegido.
                  Sin esto, el escalon de la linea se lee como una mejora del
@@ -331,7 +331,16 @@
             </div>
           </div>
         </div>
-        <span id="trend-rango" class="text-sm text-slate-400 mt-1"></span>
+        <div class="flex flex-col items-end gap-2">
+          <!-- Cantidad: cuantas respondio cada uno. Tiempo: cuanto tardo.
+               Son dos preguntas distintas y no entran en el mismo dibujo: las
+               cantidades se apilan, las medianas no se pueden sumar. -->
+          <div class="inline-flex bg-slate-100 rounded-xl p-1">
+            <button id="btn-trend-cantidad" onclick="cambiarTrend('cantidad')" class="px-3 py-1 rounded-lg text-xs font-semibold transition">Cantidad</button>
+            <button id="btn-trend-tiempo"   onclick="cambiarTrend('tiempo')"   class="px-3 py-1 rounded-lg text-xs font-semibold transition">Tiempo</button>
+          </div>
+          <span id="trend-rango" class="text-sm text-slate-400"></span>
+        </div>
       </div>
       <div class="mt-5" style="height:180px">
         <canvas id="chart-trend"></canvas>
@@ -382,6 +391,10 @@ let EXTREMOS = 'lentos';
 let TOP_LENTOS = [];
 let TOP_RAPIDOS = [];
 let MIN_EXTREMOS = 1;
+// 'cantidad' | 'tiempo'. Los dos salen de la misma respuesta del servidor, asi
+// que cambiar de modo no vuelve a pedir datos.
+let TREND_MODO = 'cantidad';
+let TREND_DATOS = null;
 
 // ---------------------------------------------------------------------------
 // Selector multiple con checkboxes. Hoy lo usa "Responsables"; esta escrito
@@ -447,6 +460,23 @@ function cambiarExtremos(cual) {
   if (EXTREMOS === cual) return;
   EXTREMOS = cual;
   renderExtremos();
+}
+
+// Cantidad = cuantas respondio cada uno. Tiempo = cuanto tardo cada uno.
+// Redibuja con lo que ya esta en memoria, sin volver a pedir datos: los dos
+// modos salen de la misma respuesta del servidor.
+function cambiarTrend(modo) {
+  if (TREND_MODO === modo) return;
+  TREND_MODO = modo;
+  actualizarBotonesTrend();
+  if (TREND_DATOS) renderTrend(TREND_DATOS.t, TREND_DATOS.a, TREND_DATOS.corte);
+}
+
+function actualizarBotonesTrend() {
+  const activo   = 'px-3 py-1 rounded-lg text-xs font-semibold transition bg-white text-blue-600 shadow-sm';
+  const inactivo = 'px-3 py-1 rounded-lg text-xs font-semibold transition text-slate-500 hover:text-slate-700';
+  document.getElementById('btn-trend-cantidad').className = TREND_MODO === 'cantidad' ? activo : inactivo;
+  document.getElementById('btn-trend-tiempo').className   = TREND_MODO === 'tiempo'   ? activo : inactivo;
 }
 
 // Se muestran 5, no 10: para ver "los extremos" con cinco alcanza, y quien
@@ -684,14 +714,22 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
   if (notaCorte) notaCorte.classList.toggle('hidden', idxCorte <= 0);
 
   const labels = tendencia.map(d => { const [,m,dia]=d.fecha.split('-'); return `${dia}/${m}`; });
-  const apilado = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
+  const hayAsesores = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
+  const porTiempo = TREND_MODO === 'tiempo';
+  // Las barras apiladas solo tienen sentido contando. En modo tiempo se
+  // dibujan lineas: sumar la mediana de dos personas no da ningun numero.
+  const apilado = hayAsesores && !porTiempo;
   const datasets = [];
 
-  // Cuando las barras se apilan por responsable, cada color es una persona y
-  // el cuadradito azul de la leyenda dejaria de significar lo que muestra.
-  document.getElementById('leyenda-barras').textContent = apilado
-    ? 'Barras: cantidad de respuestas, un color por responsable'
-    : 'Barras: cantidad de respuestas';
+  document.getElementById('leyenda-barras').textContent = porTiempo
+    ? 'Línea por persona: su mediana de ese día'
+    : (apilado ? 'Barras: cantidad de respuestas, un color por responsable'
+               : 'Barras: cantidad de respuestas');
+  document.getElementById('leyenda-linea').textContent = porTiempo
+    ? 'Línea negra: mediana de todo el equipo'
+    : 'Línea: tiempo de respuesta (mediana)';
+  document.getElementById('leyenda-barras-caja').classList.toggle('hidden', porTiempo);
+  document.getElementById('nota-ejes').classList.toggle('hidden', porTiempo);
 
   // 'order' controla que se dibuja encima: Chart.js ordena los datasets por
   // order ascendente y los pinta en orden inverso, asi que el MENOR queda
@@ -710,7 +748,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
         order: 2,
       });
     });
-  } else {
+  } else if (!porTiempo) {
     datasets.push({
       type: 'bar',
       label: 'Respuestas',
@@ -726,21 +764,57 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
     });
   }
 
-  // Linea del tiempo promedio, POR ENCIMA de las barras. Los puntos llevan
-  // borde blanco para que se distingan aunque queden sobre una barra de color.
+  // Una linea por persona con SU mediana de cada dia. Es lo que permite
+  // comparar un dia contra otro por asesor, que antes no se podia: las barras
+  // apiladas solo decian cuantas respondio cada uno, no cuanto tardo.
+  //
+  // 'n' viaja al costado para el tooltip. Una mediana de dos respuestas no es
+  // un desempeño, y sin ver el tamaño de la muestra el punto engaña.
+  if (porTiempo && hayAsesores) {
+    tendenciaPorAsesor.forEach(serie => {
+      datasets.push({
+        type: 'line',
+        label: serie.asesor,
+        data: (serie.mediana_seg || []).map(s => s === null ? null : s / 3600),
+        muestra: serie.data,
+        borderColor: serie.color,
+        backgroundColor: serie.color,
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1.5,
+        tension: 0,
+        fill: false,
+        // Sin esto la linea uniria dos dias salteando uno sin respuestas, y
+        // dibujaria una pendiente que nunca existio.
+        spanGaps: false,
+        yAxisID: 'y1',
+        order: 2,
+      });
+    });
+  }
+
+  // La mediana y no el promedio: el numero grande de la pantalla es la
+  // mediana, y esta linea venia dibujando el promedio sobre los mismos datos.
+  // Con cola larga la diferencia es de horas, y quien comparaba los dos
+  // numeros concluia que uno estaba roto.
   datasets.push({
     type: 'line',
-    label: 'Tiempo promedio',
-    data: tendencia.map(d => d.promedio_h),
+    label: 'Mediana del equipo',
+    data: tendencia.map(d => d.mediana_seg / 3600),
+    muestra: tendencia.map(d => d.total),
     borderColor: '#0f172a',
     backgroundColor: '#0f172a',
-    borderWidth: 2.5,
+    borderWidth: porTiempo ? 3 : 2.5,
+    borderDash: porTiempo && hayAsesores ? [5, 3] : [],
     pointRadius: 4,
     pointHoverRadius: 6,
     pointBackgroundColor: '#0f172a',
     pointBorderColor: '#fff',
     pointBorderWidth: 2,
-    tension: 0.3,
+    // Recta y no curva: la curva inventa valores entre dos dias que no existen.
+    tension: 0,
     fill: false,
     yAxisID: 'y1',
     order: 1,
@@ -761,21 +835,31 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
       plugins: {
         marcaCorte: { indice: idxCorte > 0 ? idxCorte : null },
         legend: {
-          display: apilado,
+          display: apilado || (porTiempo && hayAsesores),
           position: 'bottom',
-          labels: { boxWidth: 10, font: { size: 10 }, color: '#64748b', filter: item => item.text !== 'Tiempo promedio' }
+          labels: { boxWidth: 10, font: { size: 10 }, color: '#64748b',
+                    filter: item => item.text !== 'Mediana del equipo' }
         },
         tooltip: {
           callbacks: {
-            label: ctx => ctx.dataset.yAxisID === 'y1'
-              ? ` Tiempo promedio: ${fmtHoras(ctx.parsed.y)}`
-              : ` ${ctx.dataset.label}: ${ctx.parsed.y} respuestas`
+            label: ctx => {
+              if (ctx.dataset.yAxisID !== 'y1')
+                return ` ${ctx.dataset.label}: ${ctx.parsed.y} respuestas`;
+              if (ctx.parsed.y === null) return null;
+              // El tamaño de la muestra va SIEMPRE al lado del tiempo: una
+              // mediana de 2 respuestas se lee igual que una de 200 y no vale
+              // lo mismo.
+              const n = (ctx.dataset.muestra || [])[ctx.dataIndex];
+              const suf = n ? ` (${n} ${n === 1 ? 'respuesta' : 'respuestas'})` : '';
+              return ` ${ctx.dataset.label}: ${fmtHoras(ctx.parsed.y)}${suf}`;
+            }
           }
         }
       },
       scales: {
         x: { grid:{ display:false }, ticks:{ font:{size:11}, color:'#94a3b8', maxTicksLimit:15 }, stacked: true },
         y: {
+          display: !porTiempo,
           position: 'left',
           stacked: true,
           grid:{ color:'#f1f5f9' },
@@ -784,11 +868,13 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
           title: { display: true, text: 'Respuestas', color:'#94a3b8', font:{size:10, weight:'600'} }
         },
         y1: {
-          position: 'right',
-          grid: { display: false },
+          // En modo tiempo es el unico eje, asi que va a la izquierda con su
+          // grilla: queda un grafico de una sola escala y se lee sin traducir.
+          position: porTiempo ? 'left' : 'right',
+          grid: { display: porTiempo, color: '#f1f5f9' },
           ticks:{ font:{size:11}, color:'#94a3b8', callback: v => v < 1 ? Math.round(v*60)+'m' : v+'h' },
           beginAtZero: true,
-          title: { display: true, text: 'Tiempo promedio', color:'#94a3b8', font:{size:10, weight:'600'} }
+          title: { display: true, text: 'Tiempo (mediana)', color:'#94a3b8', font:{size:10, weight:'600'} }
         }
       }
     }
@@ -1064,8 +1150,13 @@ async function cargarDatos() {
 
     // Tendencia
     if (d.tendencia.length > 0) {
-      renderTrend(d.tendencia, d.tendencia_por_asesor,
-                  (d.config.medicion || {}).corte_fecha);
+      TREND_DATOS = {
+        t: d.tendencia,
+        a: d.tendencia_por_asesor,
+        corte: (d.config.medicion || {}).corte_fecha,
+      };
+      actualizarBotonesTrend();
+      renderTrend(TREND_DATOS.t, TREND_DATOS.a, TREND_DATOS.corte);
       document.getElementById('trend-rango').textContent =
         `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
     }
