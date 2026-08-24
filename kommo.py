@@ -2022,6 +2022,175 @@ def health_comparar_calculo():
                 'igual a los dos metodos y no cambia la comparacion.',
     })
 
+@app.route('/health/inventario')
+@token_requerido
+def health_inventario():
+    """Que capturamos de verdad, por cuenta: que manda Kommo y que guardamos.
+
+    Son dos cosas distintas y conviene verlas juntas. Kommo manda decenas de
+    claves por evento; de esas usamos unas pocas, y el resto queda solo dentro
+    del JSON de 'eventos'. Sin este inventario la unica forma de saberlo es
+    leer el codigo.
+
+    Tres secciones:
+
+      llega_de_kommo   las claves de cada tipo de evento, con los indices
+                       normalizados a [n] y un valor de ejemplo. Sale de los
+                       payloads reales de ESA cuenta, no de la documentacion:
+                       cada cuenta nombra distinto sus campos custom y activa
+                       distintos canales.
+      guardamos        las columnas de nuestras tablas, leidas del catalogo de
+                       Postgres para que no se desactualicen con el codigo.
+      un_lead          un lead concreto con todo lo que tenemos de el. Si no se
+                       pasa lead_id se elige el ultimo que haya respondido un
+                       asesor, que es el caso que interesa mirar.
+
+    Solo lee."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+    lead_id = request.args.get('lead_id', '').strip()
+    try:
+        por_tipo = min(int(request.args.get('muestra', 120)), 400)
+    except ValueError:
+        por_tipo = 120
+
+    tz = PULSE_CONFIG[subdomain].get('tz_offset', 0)
+    def local(ts):
+        try:
+            return (datetime.utcfromtimestamp(int(ts))
+                    + timedelta(hours=tz)).strftime('%d/%m/%Y %H:%M:%S')
+        except (TypeError, ValueError, OSError):
+            return None
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+
+        # --- 1. Que llega de Kommo -------------------------------------------
+        c.execute('SELECT tipo_evento, COUNT(*) AS n FROM eventos '
+                  'WHERE subdomain = %s GROUP BY tipo_evento ORDER BY n DESC',
+                  (subdomain,))
+        totales = {r['tipo_evento']: r['n'] for r in c.fetchall()}
+
+        llega = {}
+        for tipo in totales:
+            c.execute("SELECT raw_data FROM eventos WHERE subdomain = %s "
+                      "AND tipo_evento = %s ORDER BY id DESC LIMIT %s",
+                      (subdomain, tipo, por_tipo))
+            patrones = defaultdict(lambda: {'veces': 0, 'ejemplo': None})
+            leidos = 0
+            for row in c.fetchall():
+                try:
+                    data = json.loads(row['raw_data'] or '{}')
+                except (ValueError, TypeError):
+                    continue
+                leidos += 1
+                for k, v in data.items():
+                    p = re.sub(r'\[\d+\]', '[n]', k)
+                    e = patrones[p]
+                    e['veces'] += 1
+                    if e['ejemplo'] is None and v not in (None, ''):
+                        e['ejemplo'] = str(v)[:70]
+            llega[tipo] = {
+                'eventos_guardados': totales[tipo],
+                'payloads_leidos':   leidos,
+                'claves': [
+                    {'campo': p, 'en_payloads': d['veces'], 'ejemplo': d['ejemplo']}
+                    for p, d in sorted(patrones.items(), key=lambda kv: -kv[1]['veces'])
+                ],
+            }
+
+        # --- 2. Que guardamos nosotros ---------------------------------------
+        # Del catalogo de Postgres y no de una lista escrita a mano: una lista
+        # escrita a mano se desactualiza en el primer ALTER TABLE.
+        c.execute("""
+            SELECT table_name, column_name, data_type
+              FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name IN ('eventos','tiempos_respuesta','mensajes_cliente',
+                                  'leads_estado','mensajes_asesor','conversaciones')
+             ORDER BY table_name, ordinal_position
+        """)
+        guardamos = defaultdict(list)
+        for r in c.fetchall():
+            guardamos[r['table_name']].append(f"{r['column_name']} ({r['data_type']})")
+
+        c.execute("""
+            SELECT 'tiempos_respuesta' AS t, COUNT(*) AS n FROM tiempos_respuesta WHERE subdomain=%s
+            UNION ALL SELECT 'mensajes_cliente', COUNT(*) FROM mensajes_cliente WHERE subdomain=%s
+            UNION ALL SELECT 'mensajes_asesor',  COUNT(*) FROM mensajes_asesor  WHERE subdomain=%s
+            UNION ALL SELECT 'leads_estado',     COUNT(*) FROM leads_estado     WHERE subdomain=%s
+            UNION ALL SELECT 'conversaciones',   COUNT(*) FROM conversaciones   WHERE subdomain=%s
+        """, (subdomain,) * 5)
+        filas_por_tabla = {r['t']: r['n'] for r in c.fetchall()}
+
+        # --- 3. Un lead concreto ---------------------------------------------
+        if not lead_id:
+            # El ultimo que respondio un asesor: es el que tiene las dos
+            # mitades del dato, entrante y saliente.
+            c.execute('SELECT lead_id FROM mensajes_asesor WHERE subdomain = %s '
+                      'AND lead_id IS NOT NULL ORDER BY ts DESC LIMIT 1', (subdomain,))
+            f = c.fetchone()
+            lead_id = f['lead_id'] if f else None
+
+        lead = None
+        if lead_id:
+            c.execute('SELECT * FROM leads_estado WHERE subdomain=%s AND lead_id=%s',
+                      (subdomain, lead_id))
+            estado = c.fetchone()
+            c.execute('SELECT COUNT(*) AS n, MIN(ts) AS primero, MAX(ts) AS ultimo '
+                      'FROM mensajes_cliente WHERE subdomain=%s AND lead_id=%s',
+                      (subdomain, lead_id))
+            ent = c.fetchone()
+            c.execute('SELECT ts, autor_nombre, user_id, origin, message_type '
+                      'FROM mensajes_asesor WHERE subdomain=%s AND lead_id=%s '
+                      'ORDER BY ts DESC LIMIT 8', (subdomain, lead_id))
+            sal = [dict(r) for r in c.fetchall()]
+            c.execute('SELECT COUNT(*) AS n FROM tiempos_respuesta '
+                      'WHERE subdomain=%s AND lead_id=%s', (subdomain, lead_id))
+            tr = c.fetchone()
+
+            e = dict(estado) if estado else {}
+            lead = {
+                'lead_id': lead_id,
+                'link':    f'https://{subdomain}.kommo.com/leads/detail/{lead_id}',
+                'leads_estado': {
+                    'lead_nombre':         e.get('lead_nombre'),
+                    'responsible_user_id': e.get('responsible_user_id'),
+                    'responsable':         nombre_asesor(e.get('responsible_user_id')),
+                    'asesor_nombre_campo': e.get('asesor_nombre'),
+                    'status_id':           e.get('status_id'),
+                    'f_ult_msj_cliente':   local(e.get('f_ult_msj_cliente')),
+                    'f_ult_msj_asesor':    local(e.get('f_ult_msj_asesor')),
+                } if estado else 'sin fila en leads_estado',
+                'mensajes_del_cliente': {
+                    'cuantos': ent['n'],
+                    'primero': local(ent['primero']),
+                    'ultimo':  local(ent['ultimo']),
+                },
+                'mensajes_del_asesor': [
+                    {'hora': local(s['ts']), 'autor': s['autor_nombre'],
+                     'user_id': s['user_id'], 'canal': s['origin'],
+                     'tipo': s['message_type']}
+                    for s in sal
+                ],
+                'respuestas_medidas_por_los_campos': tr['n'],
+            }
+    finally:
+        conn.close()
+
+    return jsonify({
+        'subdomain': subdomain,
+        'zona_horaria': f'UTC{tz:+d}',
+        'llega_de_kommo': llega,
+        'guardamos': {
+            'tablas': {t: cols for t, cols in guardamos.items()},
+            'filas_de_esta_cuenta': filas_por_tabla,
+        },
+        'un_lead': lead,
+    })
+
 @app.route('/health/atencion')
 @token_requerido
 def health_atencion():
