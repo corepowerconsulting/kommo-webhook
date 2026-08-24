@@ -327,14 +327,6 @@
               </span>
               <span id="nota-ejes" class="text-xs text-slate-400">Cada eje tiene su propia escala</span>
             </div>
-            <!-- Solo se muestra si el corte cae dentro del periodo elegido.
-                 Sin esto, el escalon de la linea se lee como una mejora del
-                 equipo en vez de un cambio en como se mide. -->
-            <div id="nota-corte" class="hidden mt-1.5 text-xs text-slate-500">
-              <span class="inline-block w-4 border-t-2 border-dashed border-slate-400 align-middle mr-1"></span>
-              Desde la línea punteada el tiempo sale de los mensajes reales, no
-              de los campos de Kommo: es más preciso y encuentra más respuestas.
-            </div>
           </div>
         </div>
         <div class="flex flex-col items-end gap-2">
@@ -716,8 +708,6 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
   // -1 cuando el corte queda fuera del rango: si es anterior, todo lo que se
   // ve ya es medicion nueva y no hay nada que separar.
   const idxCorte = corteFecha ? tendencia.findIndex(d => d.fecha >= corteFecha) : -1;
-  const notaCorte = document.getElementById('nota-corte');
-  if (notaCorte) notaCorte.classList.toggle('hidden', idxCorte <= 0);
 
   const labels = tendencia.map(d => { const [,m,dia]=d.fecha.split('-'); return `${dia}/${m}`; });
   const hayAsesores = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
@@ -731,9 +721,12 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
     ? 'Línea por persona: su mediana de ese día'
     : (apilado ? 'Barras: cantidad de respuestas, un color por responsable'
                : 'Barras: cantidad de respuestas');
+  // 'tiempo real' cuando se miran los mensajes de fuera de horario: ahi el
+  // reloj no salta las horas no laborables y el numero es otro.
+  const real = (typeof MODO !== 'undefined' && MODO === 'fuera_horario') ? ' real' : '';
   document.getElementById('leyenda-linea').textContent = porTiempo
-    ? 'Línea negra: mediana de todo el equipo'
-    : 'Línea: tiempo de respuesta (mediana)';
+    ? `Línea negra: mediana${real} de todo el equipo`
+    : `Línea: tiempo${real} de respuesta (mediana)`;
   document.getElementById('leyenda-barras-caja').classList.toggle('hidden', porTiempo);
   document.getElementById('nota-ejes').classList.toggle('hidden', porTiempo);
 
@@ -1070,19 +1063,24 @@ async function cargarDatos() {
     document.getElementById('titulo-distribucion').textContent = esFueraHorario
       ? 'Distribución — fuera de horario'
       : 'Distribución';
-    document.getElementById('leyenda-linea').textContent = esFueraHorario
-      ? 'Línea: tiempo real promedio'
-      : 'Línea: tiempo promedio';
-    // Con campo "Asesor" cargado, el ranking mide a la persona que atendio y
-    // no al dueño del lead. Decirlo importa: son cosas distintas y el titulo
-    // viejo afirmaba lo contrario.
+    // La leyenda del grafico la arma renderTrend, que es quien sabe si esta en
+    // modo cantidad o tiempo. Antes se pisaba aca y volvia a decir "promedio"
+    // despues de haberla puesto en "mediana".
+
+    // El ranking mide a QUIEN CONTESTO, no al dueño del lead, en dos casos:
+    // cuando la cuenta carga el campo custom "Asesor", y —desde que capturamos
+    // los mensajes salientes— en todas, porque el mensaje trae su remitente.
+    // Solo se cae al responsable en lo anterior al corte, que es lo que dice
+    // la segunda mitad del subtitulo.
     const hayCampoAsesor = (d.config.asesores_campo || []).length > 0;
-    document.getElementById('titulo-por-asesor').textContent = hayCampoAsesor
+    const sabemosQuienContesto =
+      hayCampoAsesor || !!(d.config.medicion || {}).corte_mensajes;
+    document.getElementById('titulo-por-asesor').textContent = sabemosQuienContesto
       ? 'Tiempo de respuesta por asesor'
       : 'Tiempo de respuesta por responsable';
     document.getElementById('sub-por-asesor').textContent =
       (esFueraHorario ? 'Mediana del tiempo real · ' : 'Mediana · ') +
-      (hayCampoAsesor
+      (sabemosQuienContesto
         ? 'asesor que atendió; si el lead no lo trae, el responsable'
         : 'responsable del lead, no quien contestó');
 
