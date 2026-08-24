@@ -2330,6 +2330,10 @@ def health_inventario():
                     'responsable':         nombre_asesor(e.get('responsible_user_id')),
                     'asesor_nombre_campo': e.get('asesor_nombre'),
                     'status_id':           e.get('status_id'),
+                    'etapa':               nombre_etapa(subdomain, e.get('pipeline_id'),
+                                                        e.get('status_id')),
+                    'pipeline_id':         e.get('pipeline_id'),
+                    'embudo':              nombre_embudo(subdomain, e.get('pipeline_id')),
                     'f_ult_msj_cliente':   local(e.get('f_ult_msj_cliente')),
                     'f_ult_msj_asesor':    local(e.get('f_ult_msj_asesor')),
                 } if estado else 'sin fila en leads_estado',
@@ -2341,7 +2345,9 @@ def health_inventario():
                 'mensajes_del_asesor': [
                     {'hora': local(s['ts']), 'autor': s['autor_nombre'],
                      'user_id': s['user_id'], 'canal': s['origin'],
-                     'tipo': s['message_type']}
+                     'tipo': s['message_type'],
+                     # Misma regla que el dashboard: por nombre, no por user_id.
+                     'automatico': s['autor_nombre'] in remitentes_auto_de(subdomain)}
                     for s in sal
                 ],
                 'respuestas_medidas_por_los_campos': tr['n'],
@@ -2602,9 +2608,15 @@ def health_conversacion():
                 continue
             vistos.add(mid)
             uid = str(data.get(f'{p}[author][user_id]') or '0')
+            autor = html.unescape((data.get(f'{p}[author][name]') or '').strip())
+            # Por NOMBRE y no por user_id = 0, igual que el dashboard. Con el
+            # user_id, 'whatsappWZ' y 'WhatsApp Business' salian como bot: son
+            # personas contestando por una integracion, y este endpoint existe
+            # justamente para verificar lo que muestra la pantalla. Si los dos
+            # clasifican distinto, el diagnostico desmiente al producto.
             salientes.append({
                 'ts':      data.get(f'{p}[created_at]'),
-                'quien':   'BOT' if uid in ('0', '') else 'ASESOR',
+                'quien':   'AUTOMATICO' if autor in remitentes_auto_de(subdomain) else 'ASESOR',
                 'autor':   (nombre_asesor(uid) if uid.isdigit() and uid != '0'
                             else data.get(f'{p}[author][name]')),
                 'user_id': uid,
