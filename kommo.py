@@ -1216,6 +1216,17 @@ def backfill_salientes():
     limit = 500
     PRESUPUESTO_SEG = 45
 
+    # Por defecto solo el cajon viejo: lo que llega de ahora en adelante se
+    # guarda como 'mensaje_saliente' y ya se inserto en vivo, asi que releerlo
+    # es trabajo al pedo y ese conjunto crece todos los dias.
+    #
+    # Con ?incluir_vivos=1 se leen tambien esos. Sirve cuando cambia el parseo
+    # y hay que corregir hacia atras lo ya guardado: paso con el nombre del
+    # autor, que se guardaba con el &amp; de Kommo sin desescapar.
+    tipos = ['desconocido']
+    if request.args.get('incluir_vivos') == '1':
+        tipos.append('mensaje_saliente')
+
     conn = get_conn()
     try:
         read_c  = conn.cursor(cursor_factory=RealDictCursor)
@@ -1227,14 +1238,12 @@ def backfill_salientes():
         leidos    = 0
         hay_mas   = True
         while hay_mas and time.monotonic() - arranque < PRESUPUESTO_SEG:
-            # Solo 'desconocido': lo que llega de ahora en adelante se guarda
-            # como 'mensaje_saliente' y ya se inserto en vivo.
             read_c.execute(
                 "SELECT raw_data FROM eventos "
-                "WHERE subdomain = %s AND tipo_evento = 'desconocido' "
+                "WHERE subdomain = %s AND tipo_evento = ANY(%s) "
                 "AND raw_data LIKE %s "
                 "ORDER BY id DESC LIMIT %s OFFSET %s",
-                (subdomain, '%outgoing_message[add]%', limit, offset)
+                (subdomain, tipos, '%outgoing_message[add]%', limit, offset)
             )
             rows = read_c.fetchall()
             filas = []
@@ -1298,7 +1307,11 @@ def backfill_salientes():
             'lead_completados_ahora': completados,
             'ventana':              {'desde': local(cob['desde']), 'hasta': local(cob['hasta'])},
             'quien_los_manda':      autores,
+            # El flag viaja en 'siguiente': si se pierde, la segunda pagina deja
+            # de leer los vivos y la reparacion queda a medias sin avisar. Es el
+            # mismo error que tenia /backfill con el subdomain.
             'siguiente': (f'/backfill-salientes?subdomain={subdomain}&offset={offset}'
+                          + ('&incluir_vivos=1' if 'mensaje_saliente' in tipos else '')
                           if hay_mas else None),
             'listo': not hay_mas,
         })
