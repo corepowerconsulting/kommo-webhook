@@ -467,7 +467,7 @@ function cambiarTrend(modo) {
   if (TREND_MODO === modo) return;
   TREND_MODO = modo;
   actualizarBotonesTrend();
-  if (TREND_DATOS) renderTrend(TREND_DATOS.t, TREND_DATOS.a, TREND_DATOS.corte);
+  if (TREND_DATOS) renderTrend(TREND_DATOS.t, TREND_DATOS.a);
 }
 
 function actualizarBotonesTrend() {
@@ -665,49 +665,10 @@ function renderDonut(distribucion) {
   });
 }
 
-// Linea vertical en el dia que cambio la forma de medir. Antes de esa fecha la
-// respuesta del asesor sale del campo de fecha de Kommo; desde ahi sale del
-// mensaje real, con el segundo exacto y contando TODOS los turnos.
-//
-// La marca no es decoracion: en el corte los numeros dan un escalon —en
-// tucoytico la mediana baja de 1h53m a 1h01m— y sin explicar por que, alguien
-// lo lee como que el equipo mejoro y felicita a la gente equivocada.
-const marcaCorte = {
-  id: 'marcaCorte',
-  afterDatasetsDraw(chart, args, opts) {
-    const i = opts && opts.indice;
-    if (i === null || i === undefined || i < 0) return;
-    const x = chart.scales.x.getPixelForValue(i);
-    const { top, bottom } = chart.chartArea;
-    const ctx = chart.ctx;
-    ctx.save();
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x, top);
-    ctx.lineTo(x, bottom);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#64748b';
-    ctx.font = '600 10px system-ui, -apple-system, sans-serif';
-    // Si el corte cae cerca del borde derecho, la etiqueta se sale del canvas.
-    const haciaIzq = x > chart.chartArea.right - 90;
-    ctx.textAlign = haciaIzq ? 'right' : 'left';
-    ctx.fillText('medición exacta', x + (haciaIzq ? -5 : 5), top + 9);
-    ctx.restore();
-  }
-};
-
-function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
+function renderTrend(tendencia, tendenciaPorAsesor) {
   const ctx = document.getElementById('chart-trend').getContext('2d');
   const existing = Chart.getChart('chart-trend');
   if (existing) existing.destroy();
-
-  // El indice del dia del corte dentro de los dias que se estan mostrando.
-  // -1 cuando el corte queda fuera del rango: si es anterior, todo lo que se
-  // ve ya es medicion nueva y no hay nada que separar.
-  const idxCorte = corteFecha ? tendencia.findIndex(d => d.fecha >= corteFecha) : -1;
 
   const labels = tendencia.map(d => { const [,m,dia]=d.fecha.split('-'); return `${dia}/${m}`; });
   const hayAsesores = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
@@ -836,7 +797,6 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
   new Chart(ctx, {
     type: 'bar',
     data: { labels, datasets },
-    plugins: [marcaCorte],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -846,7 +806,6 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
       // barra alta lo tapaba no habia forma de leer ese dia.
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        marcaCorte: { indice: idxCorte > 0 ? idxCorte : null },
         legend: {
           display: apilado || (porTiempo && hayAsesores),
           position: 'bottom',
@@ -1188,13 +1147,9 @@ async function cargarDatos() {
 
     // Tendencia
     if (d.tendencia.length > 0) {
-      TREND_DATOS = {
-        t: d.tendencia,
-        a: d.tendencia_por_asesor,
-        corte: (d.config.medicion || {}).corte_fecha,
-      };
+      TREND_DATOS = { t: d.tendencia, a: d.tendencia_por_asesor };
       actualizarBotonesTrend();
-      renderTrend(TREND_DATOS.t, TREND_DATOS.a, TREND_DATOS.corte);
+      renderTrend(TREND_DATOS.t, TREND_DATOS.a);
       document.getElementById('trend-rango').textContent =
         `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
     }
