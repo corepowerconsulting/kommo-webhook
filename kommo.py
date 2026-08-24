@@ -13,7 +13,7 @@ from collections import defaultdict, Counter
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
-from pulse_config import PULSE_CONFIG, ASESORES
+from pulse_config import PULSE_CONFIG, ASESORES, REMITENTES_AUTOMATICOS
 
 app = Flask(__name__)
 
@@ -610,13 +610,35 @@ def nombre_asesor(responsible_user_id):
         return None
     return ASESORES.get(int(responsible_user_id), f'Usuario {responsible_user_id}')
 
+def remitentes_auto_de(subdomain):
+    """Los remitentes que no son personas en esta cuenta."""
+    return set(PULSE_CONFIG.get(subdomain, {}).get(
+        'remitentes_automaticos', REMITENTES_AUTOMATICOS))
+
 def asesor_de_registro(r):
-    """Quien atendio una respuesta: el campo custom si esta, el responsable si no.
+    """Quien atendio una respuesta.
+
+    Tres fuentes, en este orden:
+
+      1. Si el mensaje lo mando un BOT, gana el nombre del bot. Va primero
+         porque el campo custom es del LEAD, no del mensaje: si el Salesbot
+         saluda en un lead que atiende Ivis, atribuirle a Ivis esa respuesta de
+         4 segundos le mejora la mediana con algo que no hizo.
+      2. El campo custom 'Asesor' del lead. Solo lo carga Camara China, y ahi
+         es mejor que el remitente del mensaje: todos comparten el usuario
+         'Ventas', asi que el mensaje dice 'Ventas' y el campo dice la persona.
+      3. Quien mando el mensaje, que es lo que tenemos desde que capturamos los
+         salientes. Para las otras cinco cuentas es la fuente real.
+      4. El responsable del lead, que es lo unico que habia antes del corte.
 
     La regla vive en un solo lugar porque la usan el ranking, la tendencia
     diaria y el detalle de la distribucion; si se separan, el dashboard puede
     mostrar un nombre en el ranking y otro distinto al abrir la franja."""
-    return r.get('asesor_nombre') or nombre_asesor(r.get('responsible_user_id'))
+    if r.get('respondio_auto'):
+        return r.get('respondio_nombre')
+    return (r.get('asesor_nombre')
+            or r.get('respondio_nombre')
+            or nombre_asesor(r.get('responsible_user_id')))
 
 def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id=None,
                              lead_nombre=None, asesor_nombre=None):
@@ -1832,7 +1854,7 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
             })
     return turnos, dict(descartes)
 
-def _turnos_de_mensajes(entrantes, salientes):
+def _turnos_de_mensajes(entrantes, salientes, autos=None):
     """Arma los turnos cliente -> respuesta a partir de los mensajes REALES.
 
     Un turno empieza con el primer mensaje del cliente que quedo sin contestar
@@ -1848,7 +1870,12 @@ def _turnos_de_mensajes(entrantes, salientes):
     nombre tal cual y cada uno es una fila del ranking. Eso evita tener que
     adivinar que es 'WhatsApp Business', que son 538 mensajes en tucoytico.
 
-    entrantes: [(lead_id, ts)]   salientes: [(lead_id, ts, autor, user_id)]"""
+    entrantes: [(lead_id, ts)]   salientes: [(lead_id, ts, autor, user_id)]
+
+    'auto' marca los turnos que cerro un bot. No se descartan aca: el ranking
+    los muestra como una fila propia, que es como se pidio. Los descarta despues
+    quien calcula el numero grande."""
+    autos = autos or set()
     por_lead = defaultdict(lambda: {'ent': [], 'sal': []})
     for lead_id, ts in entrantes:
         por_lead[lead_id]['ent'].append(ts)
@@ -1885,6 +1912,7 @@ def _turnos_de_mensajes(entrantes, salientes):
                 'seg':     ts_sal - esperando,
                 'autor':   autor or f'usuario {uid}',
                 'user_id': uid,
+                'auto':    (autor or '') in autos,
             })
             esperando = None
     return turnos
@@ -1949,7 +1977,7 @@ def health_comparar_calculo():
     finally:
         conn.close()
 
-    turnos = _turnos_de_mensajes(entrantes, salientes)
+    turnos = _turnos_de_mensajes(entrantes, salientes, remitentes_auto_de(subdomain))
 
     def resumen(segs):
         segs = sorted(s for s in segs if s is not None and s >= 0)
@@ -1986,8 +2014,9 @@ def health_comparar_calculo():
         },
         # Lo mismo sacando al bot que saluda, para ver cuanto lo arrastra hacia
         # abajo. Es la decision que hay que tomar sobre el numero grande.
-        'metodo_nuevo_sin_salesbot': resumen(
-            [t['seg'] for t in turnos if (t['autor'] or '') != 'Salesbot']),
+        'metodo_nuevo_solo_personas': resumen(
+            [t['seg'] for t in turnos if not t['auto']]),
+        'remitentes_tratados_como_bot': sorted(remitentes_auto_de(subdomain)),
         'quien_contesto': ranking,
         'nota': 'Segundos crudos, sin descuento de horario laboral: se aplica '
                 'igual a los dos metodos y no cambia la comparacion.',
@@ -2775,17 +2804,28 @@ def _calc_por_asesor(registros):
       - los que tienen menos de MIN_MUESTRA_ASESOR respuestas, porque con
         pocos casos el numero es suerte, no desempeño
       - 'Sin asignar', que no es una persona sino los leads sin responsable:
-        ponerlo a competir haria que 'nadie' pueda salir primero"""
+        ponerlo a competir haria que 'nadie' pueda salir primero
+      - los BOTS. Se muestran a proposito, con su volumen y su tiempo, porque
+        saber cuanto y que tan rapido responde el bot es informacion util. Pero
+        no compiten: el Salesbot contesta en 4 segundos y encabezaria el
+        ranking todos los meses, empujando a las personas hacia abajo como si
+        atendieran peor que una maquina que solo saluda."""
     # El campo custom "Asesor" manda sobre el responsable cuando esta cargado.
     # En las cuentas que comparten un usuario de Kommo entre varias personas,
     # el responsable no identifica a nadie: el trabajo de tres asesores aparece
     # bajo un solo nombre y el ranking no dice nada. Cuando el campo no viene,
     # se cae al responsable y la cuenta se comporta como siempre.
     grupos = defaultdict(list)
+    bots = set()
     for r in registros:
-        grupos[asesor_de_registro(r) or SIN_ASIGNAR].append(r['efectivo_seg'])
+        nombre = asesor_de_registro(r) or SIN_ASIGNAR
+        grupos[nombre].append(r['efectivo_seg'])
+        if r.get('respondio_auto'):
+            bots.add(nombre)
 
     def sin_puesto(nombre, segs):
+        if nombre in bots:
+            return 'automático'
         if nombre == SIN_ASIGNAR:
             return 'sin responsable'
         if len(segs) < MIN_MUESTRA_ASESOR:
@@ -2805,6 +2845,114 @@ def _calc_por_asesor(registros):
     ]
     resultado.sort(key=lambda x: (x['sin_puesto'] is not None, x['mediana_seg']))
     return resultado
+
+def _corte_salientes(cursor, subdomain):
+    """Desde cuando esta cuenta tiene mensajes salientes propios.
+
+    Es la frontera entre los dos metodos de medicion. Antes de esta hora la
+    respuesta del asesor solo se sabe por el campo de fecha de Kommo; desde
+    aca se sabe por el mensaje, con el segundo exacto y con quien lo mando.
+
+    Se calcula por cuenta y no con una fecha fija porque cada una se suscribio
+    en un momento distinto: tucoytico y corepowerconsulting el 18/08/2026, las
+    otras cuatro el 24/08/2026.
+
+    None = esa cuenta no tiene salientes y todo se mide como antes."""
+    cursor.execute('SELECT MIN(ts) AS corte FROM mensajes_asesor WHERE subdomain = %s',
+                   (subdomain,))
+    fila = cursor.fetchone()
+    return fila['corte'] if fila else None
+
+def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
+                           fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre):
+    """Arma los registros del dashboard desde los MENSAJES, no desde los campos.
+
+    Devuelve exactamente la misma forma que la consulta vieja, para que todo lo
+    que sigue —metricas, ranking, distribucion, tendencia, extremos— no tenga
+    que saber de donde salio cada fila.
+
+    Dos diferencias de fondo con el metodo viejo:
+      - mide desde el PRIMER mensaje sin contestar y cuenta TODOS los turnos.
+        Los campos guardan un solo valor y cada respuesta pisa la anterior: en
+        el lead 47412902 quedaba 1 respuesta donde hubo 7.
+      - sabe quien contesto de verdad, incluido si fue un bot.
+
+    Los entrantes se leen desde antes del corte a proposito: un cliente pudo
+    escribir el dia anterior y recibir respuesta despues del corte. Si se
+    leyeran solo desde el corte, ese turno se mediria desde un mensaje que no
+    es el primero sin contestar."""
+    if not corte:
+        return []
+
+    cursor.execute(
+        'SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s AND ts >= %s',
+        (subdomain, corte - GAP_REACTIVACION_SEG))
+    entrantes = [(r['lead_id'], r['ts']) for r in cursor.fetchall()]
+
+    cursor.execute(
+        'SELECT lead_id, ts, autor_nombre, user_id FROM mensajes_asesor '
+        'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
+        (subdomain, corte))
+    salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'])
+                 for r in cursor.fetchall()]
+    if not salientes:
+        return []
+
+    turnos = _turnos_de_mensajes(entrantes, salientes, remitentes_auto_de(subdomain))
+
+    # La frontera se decide por CUANDO SE RESPONDIO, no por cuando escribio el
+    # cliente. Asi cada respuesta cae en un metodo y en uno solo: la consulta
+    # vieja se corta con f_ult_msj_asesor < corte. Si se partiera por el inicio,
+    # una respuesta del borde quedaria contada dos veces.
+    turnos = [t for t in turnos
+              if t['fin'] >= corte and t['seg'] <= GAP_REACTIVACION_SEG]
+    if not turnos:
+        return []
+
+    # Responsable, nombre del lead y campo custom 'Asesor'. Sale de
+    # leads_estado, que ya tiene una fila por lead.
+    leads = sorted({t['lead_id'] for t in turnos})
+    cursor.execute(
+        'SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre '
+        'FROM leads_estado WHERE subdomain = %s AND lead_id = ANY(%s)',
+        (subdomain, leads))
+    meta = {r['lead_id']: r for r in cursor.fetchall()}
+
+    registros = []
+    for t in turnos:
+        m = meta.get(t['lead_id']) or {}
+
+        if desde_ts is not None and t['inicio'] < desde_ts:
+            continue
+        if hasta_ts is not None and t['inicio'] > hasta_ts:
+            continue
+        if asesor_ids and m.get('responsible_user_id') not in asesor_ids:
+            continue
+        if asesores_nombre and (m.get('asesor_nombre') or '') not in asesores_nombre:
+            continue
+
+        dt_cliente = _ts_to_local(t['inicio'], tz_offset)
+        if fuera_horario:
+            if _en_horario_laboral(dt_cliente, h_ini, h_fin, dias_lab):
+                continue
+            efectivo = t['seg']
+        else:
+            efectivo = _calc_tiempo_efectivo(t['inicio'], t['fin'],
+                                             tz_offset, h_ini, h_fin, dias_lab)
+
+        registros.append({
+            'lead_id':             t['lead_id'],
+            'lead_nombre':         (m.get('lead_nombre') or '').strip() or None,
+            'inicio_espera':       t['inicio'],
+            'efectivo_seg':        efectivo,
+            'responsible_user_id': m.get('responsible_user_id'),
+            'asesor_nombre':       (m.get('asesor_nombre') or '').strip() or None,
+            # Quien mando el mensaje de verdad, y si fue un bot. Los lee
+            # asesor_de_registro para armar el ranking.
+            'respondio_nombre':    t['autor'],
+            'respondio_auto':      t['auto'],
+        })
+    return registros
 
 # Cuantas respuestas se promedian por lead en la lista de mas lentas/rapidas.
 TOP_ULTIMAS_RESPUESTAS = 5
@@ -3183,9 +3331,14 @@ def pulse_data():
     fuera_horario = request.args.get('modo', 'laboral').strip() == 'fuera_horario'
     solo_abiertas = request.args.get('abiertas', '').strip() == '1'
 
+    desde_ts = _local_date_to_ts(desde_str, tz_offset) if desde_str else None
+    hasta_ts = (_local_date_to_ts(hasta_str, tz_offset) + 86399) if hasta_str else None
+
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
+        # Frontera entre los dos metodos de medicion. Ver _corte_salientes.
+        corte = _corte_salientes(c, subdomain)
         # DISTINCT ON: si el asesor manda varios mensajes seguidos respondiendo
         # al MISMO mensaje del cliente, cada uno actualiza f_ult_msj_asesor y
         # generaba una fila "respuesta" separada, inflando el conteo. Nos
@@ -3217,12 +3370,18 @@ def pulse_data():
               AND (f_ult_msj_asesor - f_ult_msj_cliente) <= %s
         '''
         params = [subdomain, GAP_REACTIVACION_SEG]
-        if desde_str:
+        # Desde el corte manda el mensaje real y no el campo de fecha. El "<"
+        # es lo que evita contar dos veces: cada respuesta cae en un metodo y
+        # en uno solo, partida por CUANDO se respondio.
+        if corte:
+            query += ' AND f_ult_msj_asesor < %s'
+            params.append(corte)
+        if desde_ts is not None:
             query += ' AND LEAST(f_primer_msj_cliente, f_ult_msj_cliente) >= %s'
-            params.append(_local_date_to_ts(desde_str, tz_offset))
-        if hasta_str:
+            params.append(desde_ts)
+        if hasta_ts is not None:
             query += ' AND LEAST(f_primer_msj_cliente, f_ult_msj_cliente) <= %s'
-            params.append(_local_date_to_ts(hasta_str, tz_offset) + 86399)
+            params.append(hasta_ts)
         if asesor_ids:
             query += ' AND responsible_user_id = ANY(%s)'
             params.append(asesor_ids)
@@ -3244,9 +3403,15 @@ def pulse_data():
         #
         # DISTINCT ON ... ORDER BY ts DESC toma el nombre mas reciente: si el
         # contacto se renombro en Kommo, vale el ultimo.
+        # Lo que ocurrio DESDE el corte se mide con los mensajes propios.
+        registros_msj = _registros_de_mensajes(
+            c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
+            fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre)
+
         nombres_cliente = {}
-        faltantes = list({r['lead_id'] for r in rows
-                          if not (r['lead_nombre'] or '').strip()})
+        faltantes = list(
+            {r['lead_id'] for r in rows if not (r['lead_nombre'] or '').strip()}
+            | {r['lead_id'] for r in registros_msj if not r['lead_nombre']})
         if faltantes:
             # Aca se reusa el cursor ya abierto en vez de _completar_nombres,
             # que abre su propia conexion: estamos adentro del bloque que ya
@@ -3296,6 +3461,25 @@ def pulse_data():
                 'asesor_nombre':    (row['asesor_nombre'] or '').strip() or None,
             })
 
+        # Las filas medidas con los mensajes se suman a las viejas. No se
+        # solapan: la consulta vieja se corto en f_ult_msj_asesor < corte y
+        # estas empiezan ahi.
+        for r in registros_msj:
+            if not r['lead_nombre']:
+                r['lead_nombre'] = nombres_cliente.get(r['lead_id'])
+        registros.extend(registros_msj)
+
+        # El numero grande, la distribucion y la tendencia miden la atencion de
+        # una PERSONA. Los turnos que cerro un bot se sacan aca y no antes,
+        # porque el ranking si los muestra: se pidio ver al bot como un asesor
+        # mas, con su volumen y su tiempo.
+        #
+        # Si entraran al numero grande lo volverian inutil: en tucoytico el
+        # Salesbot contesta en 4 segundos y son 505 de 1.215 turnos, asi que la
+        # mediana caeria de 1h 01m a 3m 38s. Seria cierto y no querria decir
+        # nada, porque el cliente sigue esperando a una persona.
+        registros_persona = [r for r in registros if not r.get('respondio_auto')]
+
         # Consolidado POR LEAD, no por respuesta. Antes cada respuesta era una
         # fila, asi que un mismo lead aparecia varias veces en la lista: en
         # corepowerconsulting el lead 9872182 ocupaba tres de los cinco puestos.
@@ -3306,7 +3490,7 @@ def pulse_data():
         # viene atendiendo esa conversacion en vez de un caso suelto, que puede
         # ser un pico aislado.
         por_lead = defaultdict(list)
-        for r in registros:
+        for r in registros_persona:
             por_lead[r['lead_id']].append(r)
 
         consolidado = []
@@ -3332,7 +3516,7 @@ def pulse_data():
 
         daily = defaultdict(list)
         daily_asesor = defaultdict(lambda: defaultdict(int))
-        for r in registros:
+        for r in registros_persona:
             dia = _ts_to_local(r['inicio_espera'], tz_offset).strftime('%Y-%m-%d')
             daily[dia].append(r['efectivo_seg'])
             # Apilar por responsable pierde sentido con UNO solo elegido: seria
@@ -3400,12 +3584,20 @@ def pulse_data():
                 # tanto subestima la espera: sirve para saber desde que fecha
                 # los numeros son comparables.
                 'medicion': {
-                    'total':           len(registros),
+                    'total':           len(registros_persona),
                     'con_inicio_real': con_inicio_real,
                     'pct_inicio_real': round(con_inicio_real / len(registros) * 100, 1) if registros else 0,
+                    # Desde aca la respuesta sale del mensaje real y no del
+                    # campo de fecha. El dashboard lo marca en la tendencia:
+                    # sin la marca, el escalon de los numeros se lee como una
+                    # mejora del equipo y no como un cambio de instrumento.
+                    'corte_mensajes': corte,
+                    'corte_fecha': (_ts_to_local(corte, tz_offset).strftime('%Y-%m-%d')
+                                    if corte else None),
+                    'respuestas_de_bot': len(registros) - len(registros_persona),
                 },
             },
-            'metricas':      _calc_metricas(registros, franjas, tz_offset),
+            'metricas':      _calc_metricas(registros_persona, franjas, tz_offset),
             'top_lentos':    [_fmt_row(r, tz_offset) for r in top_lentos],
             'top_rapidos':   [_fmt_row(r, tz_offset) for r in top_rapidos],
             'tendencia':     tendencia,

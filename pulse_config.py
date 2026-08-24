@@ -39,6 +39,28 @@ ASESORES = {
     9494503:  'Paul Adams',
 }
 
+# Remitentes AUTOMATICOS: mensajes salientes que no los escribio una persona.
+#
+# Con los mensajes salientes capturados, cada respuesta trae el nombre de quien
+# la mando. Estos tres son bots, y se sabe por el tiempo que tardan: en
+# tucoytico el Salesbot responde con una MEDIANA de 4 segundos, Instagram 4 y
+# Facebook 5. Ninguna persona contesta asi.
+#
+# No se usa author][user_id] = 0 para decidirlo, aunque seria mas comodo: el
+# asesor que contesta desde la app de WhatsApp tambien llega con user_id 0 y
+# nombre 'WhatsApp Business', y su mediana es de 15 minutos con un p90 de 37
+# horas. Filtrar por user_id descartaria 538 respuestas humanas en tucoytico.
+#
+# Para que sirve: estos aparecen en el ranking como una fila propia —para poder
+# ver cuanto responde el bot y a cuantos— pero NO entran en el numero grande ni
+# en la distribucion, porque si entraran la mediana de tucoytico caeria de
+# 1h 01m a 3m 38s y diria que atendemos en tres minutos, que es falso: el
+# cliente sigue esperando a una persona.
+#
+# Si aparece un bot nuevo se agrega aca. La pista es siempre la misma: una
+# mediana de segundos.
+REMITENTES_AUTOMATICOS = {'Salesbot', 'Instagram', 'Facebook'}
+
 # tz_offset: la diferencia con UTC de la ciudad donde atiende cada cuenta. Se
 # usa para dos cosas: mostrar las horas y decidir si un mensaje entro dentro
 # del horario laboral. Si esta mal, las horas del dashboard no coinciden con
