@@ -29,6 +29,12 @@
     .tag-orange { background:#ffedd5; color:#9a3412; }
     .tag-red    { background:#fee2e2; color:#991b1b; }
     .row-hover:hover { background:#f8fafc; border-radius:10px; }
+    /* Barra del ranking por asesor. El ojo compara longitudes mucho mejor que
+       numeros con unidades distintas: "12m" contra "1h 05m" obliga a convertir
+       de cabeza, dos barras no. Todas arrancan en la misma vertical y comparten
+       escala, que es lo unico que hace comparable una barra. */
+    .barra-asesor      { height:5px; background:#f1f5f9; border-radius:99px; overflow:hidden; }
+    .barra-asesor-fill { height:100%; background:#2563eb; border-radius:99px; transition:width .3s; }
     .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
     .franja-row:hover { background:#f1f5f9; }
     .chevron { transition:transform .2s; }
@@ -820,6 +826,20 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
     order: 1,
   });
 
+  // UNA sola unidad para todo el eje de tiempo. El callback anterior decidia
+  // por tick —"45m" arriba de "2h"— y eso rompe la proporcion visual, que es
+  // lo unico que un eje aporta: dos marcas separadas por la misma distancia
+  // parecian valer lo mismo y no valian.
+  const valoresY1 = datasets
+    .filter(ds => ds.yAxisID === 'y1')
+    .reduce((acc, ds) => acc.concat(ds.data), [])
+    .filter(v => v !== null && v !== undefined);
+  const maxY1 = valoresY1.length ? Math.max.apply(null, valoresY1) : 0;
+  const ejeEnMinutos = maxY1 < 1.5;      // hasta 1h30 se lee mejor en minutos
+  const fmtEje = v => ejeEnMinutos
+    ? Math.round(v * 60) + ' min'
+    : (Math.round(v * 10) / 10) + ' h';
+
   new Chart(ctx, {
     type: 'bar',
     data: { labels, datasets },
@@ -872,9 +892,10 @@ function renderTrend(tendencia, tendenciaPorAsesor, corteFecha) {
           // grilla: queda un grafico de una sola escala y se lee sin traducir.
           position: porTiempo ? 'left' : 'right',
           grid: { display: porTiempo, color: '#f1f5f9' },
-          ticks:{ font:{size:11}, color:'#94a3b8', callback: v => v < 1 ? Math.round(v*60)+'m' : v+'h' },
+          ticks:{ font:{size:11}, color:'#94a3b8', callback: fmtEje },
           beginAtZero: true,
-          title: { display: true, text: 'Tiempo (mediana)', color:'#94a3b8', font:{size:10, weight:'600'} }
+          title: { display: true, color:'#94a3b8', font:{size:10, weight:'600'},
+                   text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
       }
     }
@@ -936,8 +957,19 @@ function renderAsesores(porAsesor, minMuestra) {
     return;
   }
   const min = minMuestra || 10;
+
+  // Escala comun para las barras. Sale de los que SI compiten: si la tomara de
+  // todos, un 'Sin asignar' con una mediana enorme aplastaria a las personas
+  // contra el margen izquierdo y no se distinguiria ninguna.
+  const conPuesto = porAsesor.filter(a => !a.sin_puesto);
+  const escala = Math.max(1, ...(conPuesto.length ? conPuesto : porAsesor).map(a => a.mediana_seg || 0));
+
   let puesto = 0;
   el.innerHTML = porAsesor.map(a => {
+    // La barra es el cambio: comparar "12m" contra "1h 05m" como texto obliga
+    // a convertir unidades mentalmente. Con longitud sobre una escala comun la
+    // comparacion es inmediata, que es para lo que sirve un ranking.
+    const pct = Math.min(100, Math.round((a.mediana_seg || 0) / escala * 100));
     // Solo llevan puesto los comparables: rankear a alguien con 3 respuestas
     // contra alguien con 300 no compara nada, y 'Sin asignar' no es una
     // persona — si compitiera, "nadie" podria salir primero.
@@ -950,17 +982,25 @@ function renderAsesores(porAsesor, minMuestra) {
          </span>`
       : '';
     return `
-    <div class="row-hover flex items-center justify-between px-2 py-3 ${a.sin_puesto ? 'opacity-60' : ''}">
-      <div class="flex items-center gap-2.5 min-w-0">
-        ${rank}
-        <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
-        <span class="text-xs text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
-        ${aviso}
+    <div class="row-hover px-2 py-3 ${a.sin_puesto ? 'opacity-60' : ''}">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5 min-w-0">
+          ${rank}
+          <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
+          <span class="text-xs text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
+          ${aviso}
+        </div>
+        <div class="text-right flex-shrink-0 pl-3">
+          <div class="text-sm font-black text-blue-600 leading-tight">${fmtSeg(a.mediana_seg)}</div>
+          <div class="text-[11px] text-slate-400 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
+        </div>
       </div>
-      <div class="text-right flex-shrink-0 pl-3">
-        <div class="text-sm font-black text-blue-600 leading-tight">${fmtSeg(a.mediana_seg)}</div>
-        <div class="text-[11px] text-slate-400 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
+      <!-- La barra arranca despues del puesto y del icono para que todas
+           empiecen en la misma vertical: si cada una arrancara donde termina su
+           nombre, las longitudes no se podrian comparar. -->
+      <div class="barra-asesor mt-2 ml-[42px]">
+        <div class="barra-asesor-fill" style="width:${pct}%"></div>
       </div>
     </div>`;
   }).join('');
