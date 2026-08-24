@@ -1427,8 +1427,15 @@ def backfill_embudo():
         write_c = conn.cursor()
 
         arranque = time.monotonic()
-        leidos = actualizados = errores = 0
+        leidos = errores = 0
         hay_mas = True
+        # Cuantos habia ANTES, para poder decir cuantos se completaron en esta
+        # corrida. No se usa cursor.rowcount: execute_values parte el INSERT en
+        # paginas internas y rowcount refleja solo la ultima, asi que el numero
+        # sale mucho mas chico que la realidad.
+        read_c.execute('SELECT COUNT(pipeline_id) AS n FROM leads_estado '
+                       'WHERE subdomain = %s', (subdomain,))
+        antes = read_c.fetchone()['n']
         while hay_mas and time.monotonic() - arranque < PRESUPUESTO_SEG:
             read_c.execute(
                 "SELECT lead_id, raw_data FROM eventos "
@@ -1464,7 +1471,6 @@ def backfill_embudo():
                     '  AND le.pipeline_id IS NULL',
                     [(subdomain, lid, pid) for lid, pid in pares.items()],
                     template='(%s, %s, %s::bigint)')
-                actualizados += write_c.rowcount if write_c.rowcount > 0 else 0
 
             leidos  += len(rows)
             offset  += len(rows)
@@ -1490,7 +1496,7 @@ def backfill_embudo():
             'offset':            offset,
             'eventos_leidos':    leidos,
             'segundos':          round(time.monotonic() - arranque, 1),
-            'leads_completados': actualizados,
+            'leads_completados': cob['con_embudo'] - antes,
             'errores':           errores,
             'leads_totales':     cob['total'],
             'con_embudo':        cob['con_embudo'],
