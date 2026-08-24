@@ -1832,6 +1832,136 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
             })
     return turnos, dict(descartes)
 
+@app.route('/health/atencion')
+@token_requerido
+def health_atencion():
+    """Mide sobre que se puede apoyar el ESTADO DE ATENCION en cada cuenta.
+
+    La idea del doble embudo —el de Kommo mide la venta, este mediria la
+    atencion— necesita clasificar cada lead en Nuevo / En cola / Atencion Bot /
+    Atendido / Finalizado / Abandono. Antes de escribir esa clasificacion hay
+    que saber que hay debajo, porque cambia por cuenta:
+
+      - las 2 cuentas suscritas a salientes pueden decir "contesto una PERSONA"
+      - las otras 4 solo tienen el campo de fecha del asesor, que es el mismo
+        que en Camara China esta viejo y produce 1.556 falsos "sin responder"
+
+    Tres preguntas concretas que el diseño no puede responder solo:
+
+      1. "En cola" (asignado pero sin escribir) solo existe si asignar es un
+         paso real. Si Kommo pone responsable a todos al crear el lead, "En
+         cola" y "Nuevo" son el mismo grupo con dos nombres. Se mide con
+         'sin_atencion_con_responsable'.
+      2. "Atencion IA/Bot" no puede ser "el bot le hablo": el Salesbot saluda a
+         todos. Se mide cuantos leads tienen MAS de un mensaje del bot, que es
+         la unica señal de que hizo algo mas que saludar.
+      3. "Finalizado" depende de que status_id signifiquen cierre, y cada
+         cuenta arma su embudo. Se devuelve la distribucion para poder mirarla.
+
+    Solo lee."""
+    pedido = request.args.get('subdomain', '').strip()
+    subs = [pedido] if pedido else list(PULSE_CONFIG)
+
+    salida = {}
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        for sub in subs:
+            if sub not in PULSE_CONFIG:
+                continue
+            c.execute('''
+                SELECT COUNT(*) AS leads,
+                       COUNT(responsible_user_id) AS con_responsable,
+                       COUNT(f_ult_msj_cliente)   AS con_fecha_cliente,
+                       COUNT(f_ult_msj_asesor)    AS con_fecha_asesor,
+                       COUNT(asesor_nombre)       AS con_campo_asesor
+                  FROM leads_estado WHERE subdomain = %s
+            ''', (sub,))
+            base = dict(c.fetchone() or {})
+
+            # Lo que aportan los salientes reales. Solo existe donde el evento
+            # add_outgoing_message esta suscrito.
+            c.execute('''
+                SELECT COUNT(DISTINCT lead_id) AS leads_con_saliente,
+                       COUNT(DISTINCT lead_id) FILTER (WHERE user_id <> 0) AS leads_con_persona,
+                       COUNT(DISTINCT lead_id) FILTER (WHERE autor_nombre = 'Salesbot') AS leads_con_salesbot,
+                       COUNT(*) AS mensajes
+                  FROM mensajes_asesor WHERE subdomain = %s AND lead_id IS NOT NULL
+            ''', (sub,))
+            sal = dict(c.fetchone() or {})
+
+            # Pregunta 2: el bot saluda a todos, asi que "le hablo el bot" no
+            # separa nada. Lo que separa es que haya hablado MAS de una vez.
+            c.execute('''
+                SELECT n_bot, COUNT(*) AS leads FROM (
+                    SELECT lead_id, COUNT(*) AS n_bot
+                      FROM mensajes_asesor
+                     WHERE subdomain = %s AND user_id = 0 AND lead_id IS NOT NULL
+                     GROUP BY lead_id
+                ) t GROUP BY n_bot ORDER BY n_bot LIMIT 8
+            ''', (sub,))
+            bot_por_lead = [dict(r) for r in c.fetchall()]
+
+            # Pregunta 1: de los leads que NADIE atendio todavia, cuantos ya
+            # tienen responsable. Si es casi el 100%, asignar es automatico.
+            c.execute('''
+                SELECT COUNT(*) AS sin_atencion,
+                       COUNT(le.responsible_user_id) AS sin_atencion_con_responsable
+                  FROM leads_estado le
+                 WHERE le.subdomain = %s
+                   AND le.f_ult_msj_cliente IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM mensajes_asesor ma
+                        WHERE ma.subdomain = le.subdomain
+                          AND ma.lead_id = le.lead_id
+                          AND ma.user_id <> 0)
+            ''', (sub,))
+            cola = dict(c.fetchone() or {})
+
+            # Pregunta 3: que etapas hay. 142/143 son las de Kommo para
+            # ganado/perdido; el resto las arma cada cuenta.
+            c.execute('''
+                SELECT status_id, COUNT(*) AS leads
+                  FROM leads_estado WHERE subdomain = %s AND status_id IS NOT NULL
+                 GROUP BY status_id ORDER BY leads DESC LIMIT 12
+            ''', (sub,))
+            etapas = [dict(r) for r in c.fetchall()]
+
+            leads = base.get('leads') or 0
+            def pct(n):
+                return round(100.0 * n / leads, 1) if leads else None
+
+            salida[sub] = {
+                'leads': leads,
+                'fuente_disponible': ('mensajes reales' if sal.get('mensajes')
+                                      else 'solo campos de fecha'),
+                'cobertura': {
+                    'con_responsable':   f"{base.get('con_responsable')} ({pct(base.get('con_responsable') or 0)}%)",
+                    'con_fecha_cliente': f"{base.get('con_fecha_cliente')} ({pct(base.get('con_fecha_cliente') or 0)}%)",
+                    'con_fecha_asesor':  f"{base.get('con_fecha_asesor')} ({pct(base.get('con_fecha_asesor') or 0)}%)",
+                    'con_campo_asesor':  base.get('con_campo_asesor'),
+                },
+                'salientes': sal,
+                'p1_en_cola': {
+                    **cola,
+                    'pct_de_los_no_atendidos': (
+                        round(100.0 * (cola.get('sin_atencion_con_responsable') or 0)
+                              / cola['sin_atencion'], 1) if cola.get('sin_atencion') else None),
+                    'lectura': 'Si es ~100%, asignar es automatico y "En cola" '
+                               'no se distingue de "Nuevo".',
+                },
+                'p2_bot': {
+                    'mensajes_de_bot_por_lead': bot_por_lead,
+                    'lectura': 'n_bot = 1 suele ser solo el saludo. Los que '
+                               'separan de verdad son los de n_bot >= 2.',
+                },
+                'p3_etapas': etapas,
+            }
+    finally:
+        conn.close()
+
+    return jsonify(salida)
+
 @app.route('/health/conversacion')
 @token_requerido
 def health_conversacion():
