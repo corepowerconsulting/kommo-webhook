@@ -1832,6 +1832,167 @@ def _reconstruir_turnos(msjs_cliente, respuestas, tz_offset, h_ini, h_fin, dias_
             })
     return turnos, dict(descartes)
 
+def _turnos_de_mensajes(entrantes, salientes):
+    """Arma los turnos cliente -> respuesta a partir de los mensajes REALES.
+
+    Un turno empieza con el primer mensaje del cliente que quedo sin contestar
+    y termina con el primer mensaje saliente posterior. Los mensajes que el
+    cliente encadena mientras espera NO reinician el reloj: si escribe 10:00,
+    10:05 y 10:10 y le contestan 10:12, espero 12 minutos, no 2.
+
+    Es la diferencia de fondo con el calculo viejo. 'F ult msj cliente' guarda
+    el ULTIMO mensaje, asi que medir desde ahi subestima la espera; y como cada
+    respuesta pisa la anterior, de un lead con 7 respuestas quedaba 1 sola.
+
+    NO se decide si el que contesto es un bot o una persona: se devuelve el
+    nombre tal cual y cada uno es una fila del ranking. Eso evita tener que
+    adivinar que es 'WhatsApp Business', que son 538 mensajes en tucoytico.
+
+    entrantes: [(lead_id, ts)]   salientes: [(lead_id, ts, autor, user_id)]"""
+    por_lead = defaultdict(lambda: {'ent': [], 'sal': []})
+    for lead_id, ts in entrantes:
+        por_lead[lead_id]['ent'].append(ts)
+    for lead_id, ts, autor, uid in salientes:
+        por_lead[lead_id]['sal'].append((ts, autor, uid))
+
+    turnos = []
+    for lead_id, m in por_lead.items():
+        if not m['sal']:
+            continue
+        ent = sorted(m['ent'])
+        sal = sorted(m['sal'])
+        # Piso de captura: una respuesta anterior al primer mensaje que
+        # guardamos contesta algo que nunca vimos. Medirla daria una espera
+        # inventada, asi que se descarta.
+        if not ent:
+            continue
+        piso = ent[0]
+        i = 0
+        esperando = None
+        for ts_sal, autor, uid in sal:
+            if ts_sal < piso:
+                continue
+            while i < len(ent) and ent[i] <= ts_sal:
+                if esperando is None:
+                    esperando = ent[i]
+                i += 1
+            if esperando is None:
+                continue          # respuesta sin mensaje previo del cliente
+            turnos.append({
+                'lead_id': lead_id,
+                'inicio':  esperando,
+                'fin':     ts_sal,
+                'seg':     ts_sal - esperando,
+                'autor':   autor or f'usuario {uid}',
+                'user_id': uid,
+            })
+            esperando = None
+    return turnos
+
+@app.route('/health/comparar-calculo')
+@token_requerido
+def health_comparar_calculo():
+    """Compara el calculo VIEJO contra el NUEVO sobre el mismo periodo.
+
+    El viejo sale de los campos de fecha de Kommo ('F ult msj cliente' /
+    'F ult msj enviado'), que guardan un solo valor y se truncan a minutos.
+    El nuevo sale de los mensajes que atrapa el webhook, con segundos exactos
+    y todos los turnos, no solo el ultimo.
+
+    Se mide antes de cambiar el dashboard porque los numeros se van a mover y
+    hay que poder explicar cuanto y por que. Comparar en segundos crudos, que
+    es lo que guarda 'tiempos_respuesta': el descuento de horario laboral se
+    aplica despues y por igual a los dos, asi que no afecta la comparacion.
+
+    La ventana arranca donde arrancan los salientes de esa cuenta: antes de eso
+    el metodo nuevo no tiene con que medir.
+
+    Solo lee."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('SELECT MIN(ts) AS desde FROM mensajes_asesor WHERE subdomain = %s',
+                  (subdomain,))
+        fila = c.fetchone()
+        desde = fila['desde'] if fila else None
+        if not desde:
+            return jsonify({
+                'subdomain': subdomain,
+                'error': 'esta cuenta no tiene mensajes salientes todavia',
+                'como_arreglarlo': 'suscribirla a add_outgoing_message con '
+                                   'scripts/suscribir_salientes.py',
+            })
+        try:
+            desde = int(request.args.get('desde', desde))
+        except ValueError:
+            pass
+
+        c.execute('SELECT lead_id, ts FROM mensajes_cliente '
+                  'WHERE subdomain = %s AND ts >= %s', (subdomain, desde))
+        entrantes = [(r['lead_id'], r['ts']) for r in c.fetchall()]
+
+        c.execute('SELECT lead_id, ts, autor_nombre, user_id FROM mensajes_asesor '
+                  'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
+                  (subdomain, desde))
+        salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'])
+                     for r in c.fetchall()]
+
+        # El calculo viejo, acotado a la MISMA ventana.
+        c.execute('SELECT lead_id, tiempo_respuesta_seg FROM tiempos_respuesta '
+                  'WHERE subdomain = %s AND f_ult_msj_asesor >= %s '
+                  'AND tiempo_respuesta_seg IS NOT NULL', (subdomain, desde))
+        viejo = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+
+    turnos = _turnos_de_mensajes(entrantes, salientes)
+
+    def resumen(segs):
+        segs = sorted(s for s in segs if s is not None and s >= 0)
+        if not segs:
+            return None
+        return {
+            'n':       len(segs),
+            'mediana': _pctl(segs, 50),
+            'p90':     _pctl(segs, 90),
+            'maximo':  segs[-1],
+        }
+
+    # Por quien contesto. Esta es la vista que pidio el usuario: el bot no se
+    # filtra, se muestra como una fila mas y se ve su volumen y su velocidad.
+    por_autor = defaultdict(list)
+    for t in turnos:
+        por_autor[t['autor']].append(t['seg'])
+    ranking = sorted(
+        ({'autor': a, **(resumen(s) or {})} for a, s in por_autor.items()),
+        key=lambda r: -(r.get('n') or 0))
+
+    tz = PULSE_CONFIG.get(subdomain, {}).get('tz_offset', 0)
+    return jsonify({
+        'subdomain': subdomain,
+        'ventana_desde': (datetime.utcfromtimestamp(desde)
+                          + timedelta(hours=tz)).strftime('%d/%m/%Y %H:%M'),
+        'metodo_viejo_campos_de_fecha': {
+            **(resumen([r['tiempo_respuesta_seg'] for r in viejo]) or {}),
+            'leads': len({r['lead_id'] for r in viejo}),
+        },
+        'metodo_nuevo_mensajes_reales': {
+            **(resumen([t['seg'] for t in turnos]) or {}),
+            'leads': len({t['lead_id'] for t in turnos}),
+        },
+        # Lo mismo sacando al bot que saluda, para ver cuanto lo arrastra hacia
+        # abajo. Es la decision que hay que tomar sobre el numero grande.
+        'metodo_nuevo_sin_salesbot': resumen(
+            [t['seg'] for t in turnos if (t['autor'] or '') != 'Salesbot']),
+        'quien_contesto': ranking,
+        'nota': 'Segundos crudos, sin descuento de horario laboral: se aplica '
+                'igual a los dos metodos y no cambia la comparacion.',
+    })
+
 @app.route('/health/atencion')
 @token_requerido
 def health_atencion():
