@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>PULSE — Propuesta de gráficos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    .card { background:#fff; border-radius:18px; padding:24px; border:1px solid #e5e9f0; box-shadow:0 1px 3px rgba(15,23,42,.04); }
+    .section-title { font-size:1.05rem; font-weight:700; color:#1e293b; }
+    .tag { font-size:0.65rem; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:99px; }
+    .lado-lbl { font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+    /* Barra del ranking, igual que en el dashboard. */
+    .barra      { height:5px; background:#f1f5f9; border-radius:99px; overflow:hidden; }
+    .barra-fill { height:100%; border-radius:99px; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<div class="max-w-6xl mx-auto px-5 py-8 space-y-8">
+
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <div class="flex items-center gap-2.5 mb-1">
+        <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <span class="text-lg font-black text-slate-900 tracking-tight">PULSE</span>
+        <span class="tag bg-amber-100 text-amber-800">PROPUESTA</span>
+      </div>
+      <h1 class="text-2xl font-black text-slate-900 tracking-tight">Tres cambios de gráficos</h1>
+      <p class="text-sm text-slate-500 mt-1">
+        Mismos datos que el dashboard. Lo único que cambia es cómo se dibujan.
+      </p>
+    </div>
+    <a href="/pulse?subdomain={{ subdomain }}"
+       class="text-sm font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap">← Volver al dashboard</a>
+  </div>
+
+  <div id="cargando" class="card text-center text-slate-400 py-12">Cargando datos reales…</div>
+  <div id="error" class="hidden card border-l-4 !border-l-red-400 text-sm text-red-700"></div>
+
+  <div id="contenido" class="hidden space-y-8">
+
+    <!-- ============ 1. Distribución ============ -->
+    <div class="card">
+      <div class="flex items-baseline gap-3 mb-1">
+        <span class="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-black flex items-center justify-center flex-shrink-0">1</span>
+        <div class="section-title">Distribución de tiempos</div>
+      </div>
+      <p class="text-sm text-slate-500 ml-9 mb-6">
+        Las cuatro franjas van de mejor a peor. Un círculo no tiene principio ni
+        fin, así que pierde justamente ese orden. Y al lado ya está la lista con
+        los números: el donut no agrega información.
+      </p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 ml-9">
+        <div>
+          <div class="lado-lbl text-slate-400 mb-3">Ahora</div>
+          <div class="relative mx-auto" style="width:190px;height:190px">
+            <canvas id="c-donut"></canvas>
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div class="text-2xl font-black text-slate-800" id="donut-total">—</div>
+              <div class="text-xs text-slate-500 font-medium">respuestas</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="lado-lbl text-blue-600 mb-3">Propuesta</div>
+          <div id="barras-dist" class="space-y-3.5"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 2. Tendencia ============ -->
+    <div class="card">
+      <div class="flex items-baseline gap-3 mb-1">
+        <span class="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-black flex items-center justify-center flex-shrink-0">2</span>
+        <div class="section-title">Tendencia diaria</div>
+      </div>
+      <p class="text-sm text-slate-500 ml-9 mb-6">
+        Hoy las barras y la línea usan escalas distintas. Donde se cruzan parece
+        que significa algo, y no significa nada: cambiando una escala se puede
+        invertir la conclusión. Partido en dos, cada uno se lee solo.
+      </p>
+      <div class="ml-9 space-y-8">
+        <div>
+          <div class="lado-lbl text-slate-400 mb-1">Ahora — dos escalas en un dibujo</div>
+          <div class="text-xs text-slate-400 mb-3">Barras: respuestas · Línea: tiempo · Cada eje tiene su propia escala</div>
+          <div style="height:190px"><canvas id="c-doble"></canvas></div>
+        </div>
+        <div>
+          <div class="lado-lbl text-blue-600 mb-3">Propuesta — el tiempo arriba, el volumen abajo</div>
+          <div style="height:150px"><canvas id="c-tiempo"></canvas></div>
+          <div style="height:80px" class="mt-1"><canvas id="c-volumen"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 3. Color ============ -->
+    <div class="card">
+      <div class="flex items-baseline gap-3 mb-1">
+        <span class="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-black flex items-center justify-center flex-shrink-0">3</span>
+        <div class="section-title">Disciplina de color</div>
+      </div>
+      <p class="text-sm text-slate-500 ml-9 mb-6">
+        Cuando todo resalta, nada resalta. La propuesta deja gris lo que está
+        dentro del objetivo y usa el color solo para lo que hay que mirar.
+      </p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 ml-9">
+        <div>
+          <div class="lado-lbl text-slate-400 mb-3">Ahora</div>
+          <div id="rank-ahora" class="divide-y divide-slate-50"></div>
+        </div>
+        <div>
+          <div class="lado-lbl text-blue-600 mb-3">Propuesta</div>
+          <div id="rank-nuevo" class="divide-y divide-slate-50"></div>
+          <div class="mt-4 text-xs text-slate-500 flex items-center gap-2">
+            <span class="inline-block w-3 h-3 rounded-sm bg-red-500"></span>
+            Por encima del objetivo
+            <span class="inline-block w-3 h-3 rounded-sm bg-slate-300 ml-3"></span>
+            Dentro del objetivo
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bg-slate-900 border-slate-900">
+      <div class="text-white font-bold mb-1">¿Qué hacemos?</div>
+      <p class="text-sm text-slate-300">
+        Si les gustan, se aplican al dashboard. Si no, no se toca nada y queda
+        todo como está. Se puede aceptar uno y rechazar otro: son independientes.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SUBDOMAIN = "{{ subdomain }}";
+const GRIS = '#cbd5e1', ROJO = '#ef4444', TINTA = '#0f172a';
+
+function fmtSeg(s) {
+  s = Math.round(s || 0);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
+
+// El objetivo sale de la primera franja configurada ("Ideal"), no de un numero
+// escrito aca: si el cliente cambia el umbral, esto lo sigue solo.
+let OBJETIVO = 300;
+
+fetch(`/pulse/data?subdomain=${encodeURIComponent(SUBDOMAIN)}`)
+  .then(r => r.json())
+  .then(d => {
+    if (d.error) throw new Error(d.error);
+    document.getElementById('cargando').classList.add('hidden');
+    document.getElementById('contenido').classList.remove('hidden');
+    const franjas = (d.config.franjas || []);
+    if (franjas.length && franjas[0].max_seg) OBJETIVO = franjas[0].max_seg;
+    dibujarDistribucion(d.metricas.distribucion || []);
+    dibujarTendencia(d.tendencia || []);
+    dibujarRanking(d.por_asesor || []);
+  })
+  .catch(e => {
+    document.getElementById('cargando').classList.add('hidden');
+    const el = document.getElementById('error');
+    el.textContent = 'No se pudieron cargar los datos: ' + e.message;
+    el.classList.remove('hidden');
+  });
+
+// ---------------------------------------------------------------- 1. Distribución
+function dibujarDistribucion(dist) {
+  const total = dist.reduce((a, f) => a + f.count, 0);
+  document.getElementById('donut-total').textContent = total;
+
+  new Chart(document.getElementById('c-donut'), {
+    type: 'doughnut',
+    data: { labels: dist.map(f => f.label),
+            datasets: [{ data: dist.map(f => f.count || 0.001),
+                         backgroundColor: dist.map(f => f.color), borderWidth: 0 }] },
+    options: { cutout: '74%', plugins: { legend: { display: false } } }
+  });
+
+  // Barras horizontales, en el mismo orden que las franjas. Longitud sobre una
+  // escala comun: es lo que el ojo compara mejor despues de la posicion.
+  const max = Math.max(1, ...dist.map(f => f.count));
+  document.getElementById('barras-dist').innerHTML = dist.map(f => `
+    <div>
+      <div class="flex items-baseline justify-between mb-1.5">
+        <span class="text-sm font-semibold text-slate-700">${f.label}</span>
+        <span class="text-sm text-slate-500">
+          <span class="font-bold text-slate-800">${f.count}</span>
+          <span class="text-slate-400 ml-1">${f.pct}%</span>
+        </span>
+      </div>
+      <div class="barra">
+        <div class="barra-fill" style="width:${Math.round(f.count / max * 100)}%;background:${f.color}"></div>
+      </div>
+    </div>`).join('');
+}
+
+// ---------------------------------------------------------------- 2. Tendencia
+function dibujarTendencia(t) {
+  const labels = t.map(d => { const [, m, dia] = d.fecha.split('-'); return `${dia}/${m}`; });
+  const horas  = t.map(d => (d.mediana_seg || 0) / 3600);
+  const conteo = t.map(d => d.total);
+
+  // --- Ahora: dos ejes en el mismo dibujo
+  new Chart(document.getElementById('c-doble'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { type: 'bar', label: 'Respuestas', data: conteo, yAxisID: 'y',
+        backgroundColor: '#2563eb33', borderColor: '#2563eb', borderWidth: 1.5, borderRadius: 5, order: 2 },
+      { type: 'line', label: 'Tiempo', data: horas, yAxisID: 'y1',
+        borderColor: TINTA, backgroundColor: TINTA, borderWidth: 2.5,
+        pointRadius: 3, pointBorderColor: '#fff', pointBorderWidth: 2, tension: 0, order: 1 },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x:  { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94a3b8', maxTicksLimit: 12 } },
+        y:  { position: 'left',  beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#94a3b8' } },
+        y1: { position: 'right', beginAtZero: true, grid: { display: false },
+              ticks: { font: { size: 10 }, color: '#94a3b8', callback: v => v + 'h' } },
+      } }
+  });
+
+  // --- Propuesta: el tiempo arriba con su meta, el volumen abajo como apoyo.
+  // La linea de la meta es lo que convierte cada punto en una respuesta a
+  // "cumplimos ese dia".
+  const metaH = OBJETIVO / 3600;
+  const lineaMeta = {
+    id: 'lineaMeta',
+    afterDatasetsDraw(chart) {
+      const y = chart.scales.y.getPixelForValue(metaH);
+      const { left, right } = chart.chartArea;
+      if (!isFinite(y) || y < chart.chartArea.top) return;
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.setLineDash([5, 4]); ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#16a34a'; ctx.font = '700 10px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`objetivo ${fmtSeg(OBJETIVO)}`, left + 4, y - 4);
+      ctx.restore();
+    }
+  };
+
+  new Chart(document.getElementById('c-tiempo'), {
+    type: 'line',
+    data: { labels, datasets: [{
+      label: 'Mediana', data: horas, borderColor: TINTA, backgroundColor: TINTA,
+      borderWidth: 2.5, pointRadius: 3, pointBorderColor: '#fff', pointBorderWidth: 2,
+      tension: 0, fill: false }] },
+    plugins: [lineaMeta],
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: { label: c => ' Mediana: ' + fmtSeg(c.parsed.y * 3600) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { display: false } },
+        y: { beginAtZero: true, grid: { color: '#f1f5f9' },
+             ticks: { font: { size: 10 }, color: '#94a3b8', callback: v => fmtSeg(v * 3600) },
+             title: { display: true, text: 'Tiempo de respuesta', color: '#94a3b8', font: { size: 10, weight: '600' } } },
+      } }
+  });
+
+  new Chart(document.getElementById('c-volumen'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Respuestas', data: conteo,
+      backgroundColor: '#cbd5e1', borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: { label: c => ' ' + c.parsed.y + ' respuestas' } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94a3b8', maxTicksLimit: 12 } },
+        y: { beginAtZero: true, grid: { display: false }, ticks: { display: false } },
+      } }
+  });
+}
+
+// ---------------------------------------------------------------- 3. Color
+function dibujarRanking(filas) {
+  const vivos = filas.slice(0, 6);
+  const max = Math.max(1, ...vivos.map(a => a.mediana_seg || 0));
+
+  const fila = (a, color) => `
+    <div class="py-2.5">
+      <div class="flex items-center justify-between gap-3">
+        <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
+        <span class="text-sm font-black" style="color:${color === GRIS ? '#475569' : color}">${fmtSeg(a.mediana_seg)}</span>
+      </div>
+      <div class="barra mt-1.5">
+        <div class="barra-fill" style="width:${Math.round((a.mediana_seg || 0) / max * 100)}%;background:${color}"></div>
+      </div>
+    </div>`;
+
+  // Ahora: todo del mismo azul, sin decir nada sobre si esta bien o mal.
+  document.getElementById('rank-ahora').innerHTML =
+    vivos.map(a => fila(a, '#2563eb')).join('');
+
+  // Propuesta: gris el que cumple, rojo el que no. El color senala, no decora.
+  document.getElementById('rank-nuevo').innerHTML =
+    vivos.map(a => fila(a, (a.mediana_seg || 0) > OBJETIVO ? ROJO : GRIS)).join('');
+}
+</script>
+</body>
+</html>

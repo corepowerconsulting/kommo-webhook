@@ -3704,6 +3704,24 @@ def pulse():
 
     return render_template('pulse.html', subdomain=subdomain)
 
+@app.route('/pulse/propuesta')
+def pulse_propuesta():
+    """Version de prueba de los tres cambios de graficos, con datos reales.
+
+    Existe para que el cliente los vea ANTES de tocar el dashboard: son
+    elementos que mira todos los dias, y enterarse del cambio abriendo la
+    pantalla es la peor forma de enterarse.
+
+    Usa /pulse/data, o sea los mismos numeros. Lo unico que cambia es como se
+    dibujan. Y pide la misma contraseña que el dashboard: muestra los mismos
+    datos de clientes."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if not subdomain or subdomain not in PULSE_CONFIG:
+        return f'Subdomain "{subdomain}" no configurado en PULSE', 400
+    if not pulse_autorizado(subdomain):
+        return redirect(url_for('pulse', subdomain=subdomain))
+    return render_template('pulse_propuesta.html', subdomain=subdomain)
+
 @app.route('/pulse/logout')
 def pulse_logout():
     subdomain = request.args.get('subdomain', '').strip()
