@@ -202,6 +202,18 @@
             </button>
             <div id="multi-asesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
+
+          <!-- Embudos y etapas, anidado como en Kommo: el embudo es el padre y
+               al abrirlo aparecen sus etapas. Arranca oculto y se muestra solo
+               si la cuenta ya tiene pipeline_id cargado. -->
+          <div class="multi-wrap relative hidden" id="filtro-embudo">
+            <button type="button" onclick="multiToggle('embudo')" class="multi-btn">
+              <span class="grupo-lbl">Embudos</span>
+              <span class="truncate font-medium" id="multi-embudo-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-400 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-embudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-80 max-h-80 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
         </div>
 
         <button onclick="cargarDatos()" class="btn-primary ml-auto !py-2">Aplicar</button>
@@ -379,6 +391,7 @@ const DIAS_LABEL = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 let distData = [];
 let CRM_URL = null;
 let asesoresListados = false;
+let embudosListados = false;
 let FECHA_MINIMA = null;
 // Evita que el recorte del rango por defecto se vuelva un bucle de recargas.
 let RANGO_AJUSTADO = false;
@@ -441,6 +454,105 @@ function multiToggle(nombre) {
   const abierto = !panel.classList.contains('hidden');
   document.querySelectorAll('.multi-panel').forEach(p => p.classList.add('hidden'));
   if (!abierto) panel.classList.remove('hidden');
+}
+
+// ---------------------------------------------------------------------------
+// Selector de embudos, anidado como el de Kommo: el embudo es el padre y al
+// abrirlo aparecen sus etapas.
+//
+// No usa MULTI porque ese componente es plano y aca hay dos niveles con una
+// regla propia: tildar el embudo entero implica todas sus etapas, y en ese caso
+// las etapas sueltas de ese embudo no se mandan (serian redundantes).
+//
+// Las etapas viajan como "pipeline:status" y no como status suelto: Kommo
+// reserva 142 y 143 para ganado y perdido, asi que esos ids se repiten en TODOS
+// los embudos con nombres distintos.
+// ---------------------------------------------------------------------------
+let EMBUDOS = [];
+
+function embudoInit(lista) {
+  EMBUDOS = lista || [];
+  const wrap = document.getElementById('filtro-embudo');
+  // Sin embudos cargados el filtro no filtraria nada: se esconde en vez de
+  // ofrecer un desplegable vacio.
+  wrap.classList.toggle('hidden', EMBUDOS.length === 0);
+  if (EMBUDOS.length === 0) return;
+
+  document.getElementById('multi-embudo-panel').innerHTML = EMBUDOS.map(e => `
+    <div class="border-b border-slate-50 last:border-0">
+      <div class="flex items-center gap-1 px-2 py-2 hover:bg-slate-50">
+        <button type="button" onclick="embudoAbrir(${e.id})"
+                class="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 flex-shrink-0"
+                title="Ver etapas">
+          <svg id="emb-flecha-${e.id}" class="chevron -rotate-90" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <label class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+          <input type="checkbox" data-emb="${e.id}" onchange="embudoCambio()"
+                 class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
+          <span class="text-sm font-semibold text-slate-700 truncate">${e.nombre}</span>
+          <span class="ml-auto text-xs text-slate-400 flex-shrink-0">${e.leads}</span>
+        </label>
+      </div>
+      <div id="emb-hijos-${e.id}" class="hidden pb-1">
+        ${e.etapas.map(et => `
+          <label class="flex items-center gap-2 pl-9 pr-3 py-1.5 hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" data-etapa="${et.clave}" data-padre="${e.id}" onchange="embudoCambio()"
+                   class="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
+            <span class="text-xs text-slate-600 truncate">${et.nombre}</span>
+            <span class="ml-auto text-xs text-slate-300 flex-shrink-0">${et.leads}</span>
+          </label>`).join('')}
+      </div>
+    </div>`).join('');
+  embudoCambio();
+}
+
+function embudoAbrir(pid) {
+  const hijos = document.getElementById(`emb-hijos-${pid}`);
+  const flecha = document.getElementById(`emb-flecha-${pid}`);
+  const abierto = !hijos.classList.contains('hidden');
+  hijos.classList.toggle('hidden', abierto);
+  flecha.classList.toggle('-rotate-90', abierto);
+}
+
+function embudoCambio() {
+  const panel = document.getElementById('multi-embudo-panel');
+  const embMarcados = Array.from(panel.querySelectorAll('input[data-emb]:checked'))
+                           .map(i => i.dataset.emb);
+
+  // Si el embudo entero esta tildado, sus etapas quedan implicadas: se marcan
+  // y se bloquean para que no parezca que hay que elegirlas una por una.
+  panel.querySelectorAll('input[data-etapa]').forEach(i => {
+    const padreMarcado = embMarcados.includes(i.dataset.padre);
+    i.disabled = padreMarcado;
+    i.parentElement.classList.toggle('opacity-50', padreMarcado);
+  });
+
+  const etaMarcadas = Array.from(panel.querySelectorAll('input[data-etapa]:checked'))
+                           .filter(i => !i.disabled)
+                           .map(i => i.dataset.etapa);
+
+  const txt = document.getElementById('multi-embudo-txt');
+  const total = embMarcados.length + etaMarcadas.length;
+  if (total === 0) {
+    txt.textContent = 'Todos';
+    txt.classList.add('text-slate-400');
+  } else if (embMarcados.length === 1 && etaMarcadas.length === 0) {
+    const uno = EMBUDOS.find(e => String(e.id) === embMarcados[0]);
+    txt.textContent = uno ? uno.nombre : '1 embudo';
+    txt.classList.remove('text-slate-400');
+  } else {
+    txt.textContent = `${total} seleccionados`;
+    txt.classList.remove('text-slate-400');
+  }
+}
+
+function embudoValores() {
+  const panel = document.getElementById('multi-embudo-panel');
+  return {
+    embudos: Array.from(panel.querySelectorAll('input[data-emb]:checked')).map(i => i.dataset.emb),
+    etapas:  Array.from(panel.querySelectorAll('input[data-etapa]:checked'))
+                  .filter(i => !i.disabled).map(i => i.dataset.etapa),
+  };
 }
 
 // Cerrar al hacer clic afuera. Sin esto el panel queda abierto tapando la
@@ -979,6 +1091,11 @@ async function cargarDatos() {
   // Un parametro por elegido; sin ninguno, el backend no filtra.
   multiValores('asesor').forEach(v => params.append('asesor', v));
   multiValores('asesorcampo').forEach(v => params.append('asesor_nombre', v));
+  // Embudos tildados enteros y etapas sueltas van por separado: el backend los
+  // combina con OR sobre leads_estado.
+  const emb = embudosListados ? embudoValores() : { embudos: [], etapas: [] };
+  emb.embudos.forEach(v => params.append('embudo', v));
+  emb.etapas.forEach(v => params.append('etapa', v));
   params.append('modo', MODO);
   if (document.getElementById('chk-solo-abiertas').checked) params.append('abiertas', '1');
 
@@ -1070,6 +1187,14 @@ async function cargarDatos() {
         document.getElementById('filtro-asesor-campo').classList.remove('hidden');
       }
       asesoresListados = true;
+    }
+
+    // Embudos: mismo criterio, se dibuja una sola vez. Redibujarlo en cada
+    // carga borraria lo que la persona acaba de tildar, que es justo lo que
+    // provoco la recarga.
+    if (!embudosListados && (d.config.embudos || []).length) {
+      embudoInit(d.config.embudos);
+      embudosListados = true;
     }
 
     // Cobertura del periodo. Si faltan dias, los numeros salen de los leads

@@ -3202,7 +3202,8 @@ def _corte_salientes(cursor, subdomain):
     return fila['corte'] if fila else None
 
 def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
-                           fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre):
+                           fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre,
+                           embudos_sel=(), etapas_sel=()):
     """Arma los registros del dashboard desde los MENSAJES, no desde los campos.
 
     Devuelve exactamente la misma forma que la consulta vieja, para que todo lo
@@ -3250,15 +3251,24 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
     # Responsable, nombre del lead y campo custom 'Asesor'. Sale de
     # leads_estado, que ya tiene una fila por lead.
     leads = sorted({t['lead_id'] for t in turnos})
+    sql_emb, par_emb = _filtro_embudo(embudos_sel, etapas_sel)
     cursor.execute(
         'SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre '
-        'FROM leads_estado WHERE subdomain = %s AND lead_id = ANY(%s)',
-        (subdomain, leads))
+        'FROM leads_estado WHERE subdomain = %s AND lead_id = ANY(%s)' + sql_emb,
+        tuple([subdomain, leads] + par_emb))
     meta = {r['lead_id']: r for r in cursor.fetchall()}
 
     registros = []
+    filtra_embudo = bool(embudos_sel or etapas_sel)
     for t in turnos:
-        m = meta.get(t['lead_id']) or {}
+        m = meta.get(t['lead_id'])
+        # Con filtro de embudo, la consulta de arriba ya devolvio SOLO los
+        # leads que pasan. Un lead que no esta en 'meta' quedo fuera y no
+        # puede colarse con los datos vacios.
+        if m is None:
+            if filtra_embudo:
+                continue
+            m = {}
 
         if desde_ts is not None and t['inicio'] < desde_ts:
             continue
@@ -3387,8 +3397,64 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
 STATUS_CERRADOS = (142, 143)
 FILTRO_SOLO_ABIERTAS = 'AND (status_id IS NULL OR status_id NOT IN (142, 143))'
 
+def _filtro_embudo(embudos, etapas):
+    """Fragmento SQL para acotar por embudo y por etapa. Se aplica sobre
+    leads_estado, que es donde vive pipeline_id.
+
+    Dos listas porque el selector es anidado: se puede tildar un embudo entero
+    ('VENTAS') o solo algunas de sus etapas. Van con OR, asi que tildar el
+    embudo y ademas una etapa suya no achica el resultado.
+
+    Las etapas viajan como "pipeline:status" y no como status suelto. Kommo
+    reserva 142 y 143 para ganado y perdido, asi que esos dos ids se repiten en
+    TODOS los embudos con nombres distintos —en Autonica el 142 es "CITAS
+    PROGRAMADAS" y en Camara China "ENTREGADO / FINALIZADO"—. Filtrar por 142 a
+    secas mezclaria etapas de embudos que no tienen nada que ver."""
+    if not embudos and not etapas:
+        return '', []
+    partes, params = [], []
+    if embudos:
+        partes.append('pipeline_id = ANY(%s)')
+        params.append(embudos)
+    if etapas:
+        partes.append("(pipeline_id::text || ':' || status_id::text) = ANY(%s)")
+        params.append(etapas)
+    return ' AND (' + ' OR '.join(partes) + ')', params
+
+def _embudos_con_leads(cursor, subdomain):
+    """Los embudos y etapas que REALMENTE tienen leads en esta cuenta, con su
+    conteo. Se lista lo que hay y no los 24 embudos que existen en Camara
+    China: un selector con veinte opciones vacias no se puede usar."""
+    cursor.execute(
+        'SELECT pipeline_id, status_id, COUNT(*) AS leads FROM leads_estado '
+        'WHERE subdomain = %s AND pipeline_id IS NOT NULL '
+        'GROUP BY pipeline_id, status_id', (subdomain,))
+    por_embudo = defaultdict(lambda: {'leads': 0, 'etapas': []})
+    for r in cursor.fetchall():
+        e = por_embudo[r['pipeline_id']]
+        e['leads'] += r['leads']
+        if r['status_id'] is not None:
+            e['etapas'].append({
+                'id':     r['status_id'],
+                'clave':  f"{r['pipeline_id']}:{r['status_id']}",
+                'nombre': nombre_etapa(subdomain, r['pipeline_id'], r['status_id']),
+                'leads':  r['leads'],
+            })
+    salida = [
+        {
+            'id':     pid,
+            'nombre': nombre_embudo(subdomain, pid),
+            'leads':  v['leads'],
+            'etapas': sorted(v['etapas'], key=lambda x: -x['leads']),
+        }
+        for pid, v in por_embudo.items()
+    ]
+    salida.sort(key=lambda x: -x['leads'])
+    return salida
+
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
-                          solo_abiertas=False, desde_ts=None):
+                          solo_abiertas=False, desde_ts=None,
+                          sql_embudo='', params_embudo=()):
     """Leads cuyo último mensaje en la conversación es del cliente y el
     asesor no ha respondido después. No depende del rango de fechas del
     filtro: es el estado pendiente ahora mismo.
@@ -3418,6 +3484,9 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             params.append(list(responsible_user_ids))
         if solo_abiertas:
             query += ' ' + FILTRO_SOLO_ABIERTAS
+        if sql_embudo:
+            query += sql_embudo
+            params.extend(params_embudo)
         query += ' ORDER BY f_ult_msj_cliente DESC'
         c.execute(query, params)
         rows = c.fetchall()
@@ -3425,7 +3494,8 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         conn.close()
     return [_fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente') for r in rows]
 
-def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None, solo_abiertas=False):
+def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None,
+                          solo_abiertas=False, sql_embudo='', params_embudo=()):
     """Leads a los que el asesor le escribió (respuesta o mensaje propio)
     hoy, dentro del horario laboral configurado."""
     inicio, fin = _hoy_rango_ts(tz_offset)
@@ -3444,6 +3514,9 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
             params.append(list(responsible_user_ids))
         if solo_abiertas:
             query += ' ' + FILTRO_SOLO_ABIERTAS
+        if sql_embudo:
+            query += sql_embudo
+            params.extend(params_embudo)
         query += ' ORDER BY f_ult_msj_asesor DESC'
         c.execute(query, params)
         rows = c.fetchall()
@@ -3669,6 +3742,20 @@ def pulse_data():
     fuera_horario = request.args.get('modo', 'laboral').strip() == 'fuera_horario'
     solo_abiertas = request.args.get('abiertas', '').strip() == '1'
 
+    # Embudos tildados enteros, y etapas sueltas como "pipeline:status".
+    embudos_sel = []
+    for crudo in request.args.getlist('embudo'):
+        for p in str(crudo).split(','):
+            if p.strip().isdigit():
+                embudos_sel.append(int(p.strip()))
+    embudos_sel = sorted(set(embudos_sel))
+    etapas_sel = sorted({
+        p.strip() for crudo in request.args.getlist('etapa')
+        for p in str(crudo).split(',')
+        if p.strip() and ':' in p
+    })
+    sql_embudo, params_embudo = _filtro_embudo(embudos_sel, etapas_sel)
+
     desde_ts = _local_date_to_ts(desde_str, tz_offset) if desde_str else None
     hasta_ts = (_local_date_to_ts(hasta_str, tz_offset) + 86399) if hasta_str else None
 
@@ -3730,6 +3817,13 @@ def pulse_data():
         if asesores_nombre:
             query += ' AND asesor_nombre = ANY(%s)'
             params.append(asesores_nombre)
+        # El embudo vive en leads_estado, no en tiempos_respuesta: se acota con
+        # una subconsulta, igual que hace el interruptor de "solo abiertas".
+        if sql_embudo:
+            query += (' AND lead_id IN (SELECT lead_id FROM leads_estado '
+                      'WHERE subdomain = %s' + sql_embudo + ')')
+            params.append(subdomain)
+            params.extend(params_embudo)
         query += ' ORDER BY lead_id, f_ult_msj_cliente, f_ult_msj_asesor ASC'
         c.execute(query, params)
         rows = c.fetchall()
@@ -3744,7 +3838,11 @@ def pulse_data():
         # Lo que ocurrio DESDE el corte se mide con los mensajes propios.
         registros_msj = _registros_de_mensajes(
             c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
-            fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre)
+            fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre,
+            embudos_sel, etapas_sel)
+
+        # Lo que se ofrece en el selector: solo embudos con leads de verdad.
+        lista_embudos = _embudos_con_leads(c, subdomain)
 
         nombres_cliente = {}
         faltantes = list(
@@ -3919,8 +4017,10 @@ def pulse_data():
         fecha_min = _fecha_minima(subdomain)
         piso_captura = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
-        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas, piso_captura)
-        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_ids, solo_abiertas)
+        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
+                                                piso_captura, sql_embudo, params_embudo)
+        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_ids,
+                                                solo_abiertas, sql_embudo, params_embudo)
         # Estas dos listas salen de leads_estado, que no tiene el nombre del
         # cliente. Sin esto las tarjetas muestran "Sin nombre" aunque el dato
         # este guardado, que es lo que reporto Ana.
@@ -3941,6 +4041,12 @@ def pulse_data():
                 # Vacio en las cuentas sin campo "Asesor": el dashboard usa eso
                 # para no mostrar un filtro que no filtraria nada.
                 'asesores_campo': _lista_asesores_campo(subdomain),
+                # Selector anidado: el embudo es el padre y sus etapas los
+                # hijos. Vacio en las cuentas sin pipeline_id todavia cargado,
+                # y ahi el dashboard no muestra el filtro.
+                'embudos':           lista_embudos,
+                'embudos_elegidos':  embudos_sel,
+                'etapas_elegidas':   etapas_sel,
                 'fecha_minima': fecha_min,
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
