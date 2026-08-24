@@ -6,12 +6,22 @@
 #
 # Agrupados por cuenta solo para que se lea; la busqueda es por id.
 # Si un asesor no esta aca, el dashboard muestra 'Usuario <id>' al cliente.
+# Bajados de la API con scripts/bajar_embudos.py el 2026-08-24, no escritos a
+# mano: la lista tenia 21 nombres y le faltaban tres que SI mandan mensajes
+# (Oliric Lizondro, Margaret E. Ricart, Yealkis Soto), que salian en el
+# dashboard como "Usuario 15684248".
+#
+# Se conservan los usuarios INACTIVOS y los que ya no estan en la API. Los
+# datos historicos siguen refiriendolos, y sin el nombre esas filas quedarian
+# con un numero. En Camara China eso importa especialmente: casi todos los
+# asesores con nombre propio estan inactivos y trabajan bajo el usuario
+# compartido "Ventas".
 ASESORES = {
-    # Core Power Consulting (soporte: tiene usuario en las 4 cuentas)
+    # Core Power Consulting (soporte: tiene usuario en las 6 cuentas)
     6767570:  'Soporte Core Power Consulting',
     6453065:  'Luis Marroquín',
     11579748: 'Giulliana Vera',
-    15541872: 'Ana Mirian Moran',
+    15541872: 'Ana Miriam Morán',
 
     # Autonica
     15080019: 'Auto Nica',
@@ -22,21 +32,46 @@ ASESORES = {
     # TuCoyTico
     13478031: 'Ventas Tuco & Tico',
 
+    # Lizondro Homes
+    11447079: 'Oliric Lizondro',
+
     # Camara de Comercio China Ecuador (gruporegalado)
-    10166363: 'Pablo Regalado',
     10914216: 'Ventas',
     14483404: 'Ventas 2',
     14483200: 'Ventas 3',
     9750963:  'Marketing',
     15309624: 'Marketing ADS',
+    15308260: 'Marketing Campañas',
     9750975:  'Administrador',
+    10166363: 'Pablo Regalado',
+    9442311:  'Jorge Regalado',
+    9750987:  'Darío Regalado',
+    9750991:  'Daniel Benítez',
+    9914268:  'Karina Vivas',
+    9780683:  'Sami Cachiguango',
+    9780687:  'Liliana Pachacama',
+    10090311: 'Lizeth Belén Villarroel Naranjo',
+    9774003:  'Margarita Carpio',
+    9773999:  'Marly Moran',
+    9773995:  'Nicolas Vacacela',
+    9780707:  'Carlos Castro',
+    10722348: 'Cecilia Noboa',
+    9407311:  'Información Grupo Regalado',
+    9655271:  'Camara de Comercio Ecuador Shanghai',
+    9751875:  '◈ Alibox ◈',
 
     # Ventas Directas
+    15684248: 'Margaret E. Ricart',
+    15694620: 'Yealkis Soto',
+    9482679:  'Sebastian Millan',
+    9494503:  'Paul Adams',
+    9562043:  'Johan Manrique',
+    10152363: 'Peterson',
+    # Ya no estan en la API —los borraron de Kommo— pero los datos viejos
+    # todavia los referencian.
     13127364: 'Maria Ventura',
     13127368: 'Mayte Jimenez',
     13902356: 'Freddy Hernandez',
-    9482679:  'Sebastian Millan',
-    9494503:  'Paul Adams',
 }
 
 # Remitentes AUTOMATICOS: mensajes salientes que no los escribio una persona.

@@ -15,6 +15,48 @@ import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
 from pulse_config import PULSE_CONFIG, ASESORES, REMITENTES_AUTOMATICOS
 
+# Nombres de embudos y etapas, bajados de la API con scripts/bajar_embudos.py.
+# El webhook manda numeros (pipeline_id 7008155, status_id 74938892) y los
+# nombres solo estan en la API.
+#
+# Se lee de un archivo y no se consulta en vivo: los embudos casi no cambian, y
+# depender de la API en cada carga del dashboard agregaria una llamada de red
+# al camino critico y obligaria a tener un token de larga duracion en
+# produccion. Es el mismo criterio que ASESORES.
+#
+# Si el archivo no esta, el dashboard sigue funcionando y muestra los numeros.
+def _cargar_embudos():
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'embudos.json')
+    try:
+        with open(ruta, encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print('⚠️  Sin embudos.json: los embudos se muestran por numero. '
+              'Correr scripts/bajar_embudos.py <cuenta> --guardar')
+        return {}
+    except ValueError as e:
+        print(f'⚠️  embudos.json ilegible ({e}); se muestran los numeros.')
+        return {}
+
+EMBUDOS = _cargar_embudos()
+
+def nombre_embudo(subdomain, pipeline_id):
+    if pipeline_id in (None, ''):
+        return None
+    emb = (EMBUDOS.get(subdomain, {}).get('embudos') or {}).get(str(pipeline_id))
+    return (emb or {}).get('nombre') or f'Embudo {pipeline_id}'
+
+def nombre_etapa(subdomain, pipeline_id, status_id):
+    """El nombre de la etapa. Hace falta el embudo: los ids de etapa son unicos
+    por cuenta salvo 142 y 143, que Kommo reserva para ganado y perdido y por
+    eso se repiten en TODOS los embudos con nombres distintos ('Leads ganados',
+    'CITAS PROGRAMADAS', 'VENDEDOR CREADO'...). Buscar 142 sin saber el embudo
+    devolveria el nombre de otro."""
+    if status_id in (None, ''):
+        return None
+    emb = (EMBUDOS.get(subdomain, {}).get('embudos') or {}).get(str(pipeline_id)) or {}
+    return (emb.get('etapas') or {}).get(str(status_id)) or f'Etapa {status_id}'
+
 app = Flask(__name__)
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -162,6 +204,11 @@ def init_db():
     ''')
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
     c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS status_id BIGINT')
+    # El embudo. Llega en el 100% de los lead_update y hasta ahora se tiraba.
+    # Sin esto no se puede filtrar por embudo, que es lo que se pidio en la
+    # reunion: Camara China tiene 24 embudos y mezclarlos en un solo numero
+    # hace que el dashboard promedie ventas con reclamos y con cursos.
+    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS pipeline_id BIGINT')
     # Tambien aca y no solo en tiempos_respuesta: las tarjetas de "Sin
     # responder" y "Atendidos hoy" leen esta tabla, y si mostraran el
     # responsable mientras el ranking muestra al asesor, el mismo lead
@@ -666,7 +713,8 @@ def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsibl
         conn.close()
 
 def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, evento_ts,
-                        lead_nombre=None, status_id=None, asesor_nombre=None):
+                        lead_nombre=None, status_id=None, asesor_nombre=None,
+                        pipeline_id=None):
     """Guarda el estado vigente del lead (quién es responsable, cuándo escribió
     cliente/asesor por última vez, en qué status esta). Se llama en CADA
     leads[update], sin importar quién respondió último. evento_ts evita que
@@ -681,8 +729,8 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
     try:
         c.execute('''
             INSERT INTO leads_estado
-                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id, asesor_nombre)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id, asesor_nombre, pipeline_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                 responsible_user_id = COALESCE(EXCLUDED.responsible_user_id, leads_estado.responsible_user_id),
                 f_ult_msj_cliente   = COALESCE(EXCLUDED.f_ult_msj_cliente,   leads_estado.f_ult_msj_cliente),
@@ -691,9 +739,10 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
                 actualizado_at      = EXCLUDED.actualizado_at,
                 lead_nombre         = COALESCE(EXCLUDED.lead_nombre,         leads_estado.lead_nombre),
                 status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id),
-                asesor_nombre       = COALESCE(EXCLUDED.asesor_nombre,       leads_estado.asesor_nombre)
+                asesor_nombre       = COALESCE(EXCLUDED.asesor_nombre,       leads_estado.asesor_nombre),
+                pipeline_id         = COALESCE(EXCLUDED.pipeline_id,         leads_estado.pipeline_id)
             WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
-        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre))
+        ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre, pipeline_id))
         conn.commit()
     except Exception as e:
         print(f"❌ Error lead_estado: {e}")
@@ -805,6 +854,7 @@ def _procesar_webhook(data):
             evento_ts = data.get(f'{prefix}[updated_at]')
             lead_nombre = data.get(f'{prefix}[name]')
             status_id = data.get(f'{prefix}[status_id]')
+            pipeline_id = data.get(f'{prefix}[pipeline_id]')
             # Solo en las cuentas que lo configuraron; en el resto queda None y
             # todo sigue midiendose por responsable como hasta ahora.
             asesor_nombre = get_custom_field_texto(data, prefix, campo_quien_atendio_de(subdomain))
@@ -812,7 +862,7 @@ def _procesar_webhook(data):
             # Estado vigente del lead (para "no respondidos" / "trabajados hoy"),
             # se guarda siempre, sin importar quién escribió último.
             guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_asesor,
-                                evento_ts, lead_nombre, status_id, asesor_nombre)
+                                evento_ts, lead_nombre, status_id, asesor_nombre, pipeline_id)
 
             if f_cliente and f_asesor and f_asesor > f_cliente:
                 guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor,
@@ -1002,13 +1052,14 @@ def backfill():
                 evento_ts = data.get(f'{prefix}[updated_at]')
                 lead_nombre = data.get(f'{prefix}[name]')
                 status_id = data.get(f'{prefix}[status_id]')
+                pipeline_id = data.get(f'{prefix}[pipeline_id]')
                 asesor_nombre = get_custom_field_texto(data, prefix, campo_quien_atendio_de(row['subdomain']))
 
                 if evento_ts:
                     write_c.execute('''
                         INSERT INTO leads_estado
-                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id, asesor_nombre)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            (subdomain, lead_id, responsible_user_id, f_ult_msj_cliente, f_ult_msj_asesor, evento_ts, actualizado_at, lead_nombre, status_id, asesor_nombre, pipeline_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (subdomain, lead_id) DO UPDATE SET
                             responsible_user_id = COALESCE(EXCLUDED.responsible_user_id, leads_estado.responsible_user_id),
                             f_ult_msj_cliente   = COALESCE(EXCLUDED.f_ult_msj_cliente,   leads_estado.f_ult_msj_cliente),
@@ -1017,11 +1068,12 @@ def backfill():
                             actualizado_at      = EXCLUDED.actualizado_at,
                             lead_nombre         = COALESCE(EXCLUDED.lead_nombre,         leads_estado.lead_nombre),
                             status_id           = COALESCE(EXCLUDED.status_id,           leads_estado.status_id),
-                            asesor_nombre       = COALESCE(EXCLUDED.asesor_nombre,       leads_estado.asesor_nombre)
+                            asesor_nombre       = COALESCE(EXCLUDED.asesor_nombre,       leads_estado.asesor_nombre),
+                            pipeline_id         = COALESCE(EXCLUDED.pipeline_id,         leads_estado.pipeline_id)
                         WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
                     ''', (
                         row['subdomain'], row['lead_id'], responsible_user_id,
-                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre
+                        f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre, pipeline_id
                     ))
 
                 if f_cliente and f_asesor and f_asesor > f_cliente:

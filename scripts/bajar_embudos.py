@@ -17,10 +17,16 @@ El token nunca se escribe en el comando: se lee de una variable de entorno,
 asi no queda en el historial de la consola.
 
     $env:KOMMO_TOKEN = "el-token-de-esa-cuenta"
-    python scripts/bajar_embudos.py gruporegalado
+    python scripts/bajar_embudos.py gruporegalado             # solo muestra
+    python scripts/bajar_embudos.py gruporegalado --guardar    # ademas escribe
 
-La salida se pega tal cual en pulse_config.py. Este script NO escribe nada, ni
-en Kommo ni en la base.
+Con --guardar mezcla lo bajado dentro de embudos.json, sin tocar las otras
+cuentas. Se escribe un archivo en vez de pegar a mano: Camara China sola tiene
+24 embudos con cerca de 300 etapas, y transcribir eso garantiza erratas que
+despues aparecen como una etapa con el nombre equivocado en el dashboard.
+
+Este script no toca Kommo ni la base: lee de la API y, si se le pide, escribe
+un archivo local.
 """
 
 import json
@@ -28,6 +34,9 @@ import os
 import sys
 import urllib.error
 import urllib.request
+
+ARCHIVO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       'embudos.json')
 
 
 def pedir(subdomain, token, ruta):
@@ -108,9 +117,42 @@ def main():
         activo = '' if u.get('rights', {}).get('is_active', True) else '   # INACTIVO'
         print(f"    {u['id']}: {json.dumps(u.get('name'), ensure_ascii=False)},{activo}")
 
+    # --- Guardar -------------------------------------------------------------
+    if '--guardar' in sys.argv:
+        # Se MEZCLA, no se reemplaza: cada cuenta se baja por separado porque
+        # cada una necesita su token, y escribir el archivo entero borraria las
+        # que se bajaron antes.
+        try:
+            with open(ARCHIVO, encoding='utf-8') as f:
+                todo = json.load(f)
+        except (FileNotFoundError, ValueError):
+            todo = {}
+
+        todo[subdomain] = {
+            'embudos': {
+                str(p['id']): {
+                    'nombre': p.get('name'),
+                    'principal': bool(p.get('is_main')),
+                    'etapas': {
+                        str(e['id']): e.get('name')
+                        for e in (p.get('_embedded') or {}).get('statuses') or []
+                    },
+                }
+                for p in pipelines
+            },
+            'usuarios': {str(u['id']): u.get('name') for u in usuarios},
+        }
+
+        with open(ARCHIVO, 'w', encoding='utf-8') as f:
+            json.dump(todo, f, ensure_ascii=False, indent=2, sort_keys=True)
+        print()
+        print(f'# Guardado en {ARCHIVO}')
+        print(f'# Cuentas en el archivo: {", ".join(sorted(todo))}')
+
     print()
     print(f'# Listo. {len(pipelines)} embudos y {len(usuarios)} usuarios de {subdomain}.')
-    print('# No se modifico nada.')
+    if '--guardar' not in sys.argv:
+        print('# No se escribio nada. Agrega --guardar para que se guarde.')
     return 0
 
 
