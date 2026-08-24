@@ -20,6 +20,21 @@ asi no queda en el historial de la consola.
     python scripts/bajar_embudos.py gruporegalado             # solo muestra
     python scripts/bajar_embudos.py gruporegalado --guardar    # ademas escribe
 
+Para no repetir el comando una vez por cuenta, se puede dejar un archivo
+.env.kommo en la raiz del repo con una linea por cuenta:
+
+    gruporegalado=eyJ0eXAiOiJKV1Qi...
+    tucoytico=eyJ0eXAiOiJKV1Qi...
+
+y correr:
+
+    python scripts/bajar_embudos.py todas --guardar
+
+El nombre .env.kommo no es casual: el .gitignore ya ignora .env.*, asi que ese
+archivo no se puede commitear por accidente. Un tokens.txt si se commitearia.
+Son tokens de acceso total a los CRM de los clientes: conviene borrar el
+archivo cuando se termina.
+
 Con --guardar mezcla lo bajado dentro de embudos.json, sin tocar las otras
 cuentas. Se escribe un archivo en vez de pegar a mano: Camara China sola tiene
 24 embudos con cerca de 300 etapas, y transcribir eso garantiza erratas que
@@ -35,8 +50,32 @@ import sys
 import urllib.error
 import urllib.request
 
-ARCHIVO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       'embudos.json')
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ARCHIVO = os.path.join(RAIZ, 'embudos.json')
+ENV_TOKENS = os.path.join(RAIZ, '.env.kommo')
+
+
+def tokens_del_archivo():
+    """Lee .env.kommo -> {subdomain: token}. {} si no existe.
+
+    Se ignoran lineas vacias y comentarios. El token no se imprime nunca, ni
+    siquiera recortado: el sentido de tenerlo en un archivo es que no aparezca
+    en la consola ni en el historial."""
+    try:
+        with open(ENV_TOKENS, encoding='utf-8') as f:
+            crudo = f.read()
+    except FileNotFoundError:
+        return {}
+    salida = {}
+    for linea in crudo.splitlines():
+        linea = linea.strip().lstrip('﻿')      # BOM si se guardo desde PowerShell
+        if not linea or linea.startswith('#') or '=' not in linea:
+            continue
+        cuenta, _, token = linea.partition('=')
+        cuenta, token = cuenta.strip(), token.strip().strip('"').strip("'")
+        if cuenta and token:
+            salida[cuenta] = token
+    return salida
 
 
 def pedir(subdomain, token, ruta):
@@ -65,17 +104,7 @@ def pedir(subdomain, token, ruta):
         sys.exit(1)
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(__doc__)
-        return 1
-    subdomain = sys.argv[1]
-    token = os.environ.get('KOMMO_TOKEN', '').strip()
-    if not token:
-        print('Falta el token. Antes de correr esto:')
-        print('    $env:KOMMO_TOKEN = "el-token-largo-de-esa-cuenta"')
-        return 1
-
+def bajar(subdomain, token, guardar):
     # --- Embudos y etapas ----------------------------------------------------
     datos = pedir(subdomain, token, 'leads/pipelines')
     pipelines = (datos.get('_embedded') or {}).get('pipelines') or []
@@ -118,7 +147,7 @@ def main():
         print(f"    {u['id']}: {json.dumps(u.get('name'), ensure_ascii=False)},{activo}")
 
     # --- Guardar -------------------------------------------------------------
-    if '--guardar' in sys.argv:
+    if guardar:
         # Se MEZCLA, no se reemplaza: cada cuenta se baja por separado porque
         # cada una necesita su token, y escribir el archivo entero borraria las
         # que se bajaron antes.
@@ -151,8 +180,55 @@ def main():
 
     print()
     print(f'# Listo. {len(pipelines)} embudos y {len(usuarios)} usuarios de {subdomain}.')
-    if '--guardar' not in sys.argv:
+    if not guardar:
         print('# No se escribio nada. Agrega --guardar para que se guarde.')
+    return len(pipelines), len(usuarios)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return 1
+    subdomain = sys.argv[1]
+    guardar = '--guardar' in sys.argv
+    del_archivo = tokens_del_archivo()
+
+    if subdomain == 'todas':
+        if not del_archivo:
+            print(f'Para "todas" hace falta el archivo {ENV_TOKENS}')
+            print('con una linea por cuenta:  gruporegalado=eyJ0eXAi...')
+            return 1
+        print(f'{len(del_archivo)} cuentas en {os.path.basename(ENV_TOKENS)}: '
+              f'{", ".join(sorted(del_archivo))}\n')
+        resumen = []
+        for cuenta in sorted(del_archivo):
+            print('#' * 72)
+            print(f'# {cuenta}')
+            print('#' * 72)
+            # Una cuenta que falla no puede cortar las otras cinco: cada token
+            # es distinto y uno vencido es el caso mas probable.
+            try:
+                emb, us = bajar(cuenta, del_archivo[cuenta], guardar)
+                resumen.append(f'   {cuenta:<24} {emb} embudos, {us} usuarios')
+            except SystemExit:
+                resumen.append(f'   {cuenta:<24} FALLO (ver el error arriba)')
+        print()
+        print('=' * 72)
+        print('RESUMEN')
+        print('=' * 72)
+        for r in resumen:
+            print(r)
+        return 0
+
+    # El token del entorno manda sobre el del archivo: si alguien lo puso a
+    # proposito para esta corrida, es lo que quiso usar.
+    token = os.environ.get('KOMMO_TOKEN', '').strip() or del_archivo.get(subdomain, '')
+    if not token:
+        print('Falta el token. Dos formas:')
+        print('    $env:KOMMO_TOKEN = "el-token-largo-de-esa-cuenta"')
+        print(f'  o una linea "{subdomain}=..." en {ENV_TOKENS}')
+        return 1
+    bajar(subdomain, token, guardar)
     return 0
 
 
