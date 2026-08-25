@@ -657,6 +657,30 @@ def nombre_asesor(responsible_user_id):
         return None
     return ASESORES.get(int(responsible_user_id), f'Usuario {responsible_user_id}')
 
+def nombre_de_remitente(user_id, nombre_del_mensaje):
+    """Como se llama el que mando un mensaje saliente.
+
+    Manda NUESTRA lista sobre el nombre que viene en el mensaje, cuando el
+    user_id se conoce. Los dos son la misma persona escrita distinto —Kommo
+    manda "Luis Marroquin" y nuestra lista dice "Luis Marroquín"— y esa tilde
+    partia al mismo asesor en dos filas del ranking: 310 respuestas bajo una
+    grafia y 22 bajo la otra, cada una con su mediana y ninguna real.
+
+    Se elige nuestra lista y no la de Kommo porque es la unica que tambien
+    cubre lo anterior al corte, donde solo hay responsible_user_id. Si mandara
+    el nombre del mensaje, el mismo asesor volveria a partirse en dos: una
+    grafia antes del corte y otra despues.
+
+    Con user_id 0 —bots e integraciones como Wazzup— no hay a quien resolver y
+    queda el nombre del mensaje, que es el del canal."""
+    if user_id:
+        propio = nombre_asesor(user_id)
+        # nombre_asesor devuelve 'Usuario 123' cuando no lo conoce. Ahi el
+        # nombre del mensaje dice mas que un numero.
+        if propio and not propio.startswith('Usuario '):
+            return propio
+    return nombre_del_mensaje
+
 def remitentes_auto_de(subdomain):
     """Los remitentes que no son personas en esta cuenta."""
     return set(PULSE_CONFIG.get(subdomain, {}).get(
@@ -2079,8 +2103,12 @@ def _turnos_de_mensajes(entrantes, salientes, autos=None):
                 'inicio':  esperando,
                 'fin':     ts_sal,
                 'seg':     ts_sal - esperando,
-                'autor':   autor or f'usuario {uid}',
+                # Normalizado contra nuestra lista para que el mismo asesor no
+                # aparezca dos veces por una tilde. Ver nombre_de_remitente.
+                'autor':   nombre_de_remitente(uid, autor) or f'usuario {uid}',
                 'user_id': uid,
+                # 'auto' se decide con el nombre ORIGINAL del mensaje: es el
+                # que figura en REMITENTES_AUTOMATICOS.
                 'auto':    (autor or '') in autos,
             })
             esperando = None
@@ -3680,6 +3708,23 @@ def _cobertura(subdomain, desde_str, hasta_str, dias_lab):
         'pct':             round(cubiertos / laborables * 100),
     }
 
+def _fmt_dias(dias_lab):
+    """Los dias laborables como rango: "Lun a Vie" en vez de
+    "Lun · Mar · Mié · Jue · Vie".
+
+    La lista con puntos se leia como opciones seleccionables, no como el
+    horario que es. Cuando los dias no son consecutivos —que puede pasar— se
+    cae a la lista, que ahi si es la unica forma de decirlo."""
+    dias = sorted(dias_lab)
+    if not dias:
+        return '—'
+    if len(dias) == 1:
+        return DIAS_LABEL[dias[0]]
+    consecutivos = dias == list(range(dias[0], dias[-1] + 1))
+    if consecutivos:
+        return f'{DIAS_LABEL[dias[0]]} a {DIAS_LABEL[dias[-1]]}'
+    return ' · '.join(DIAS_LABEL[d] for d in dias)
+
 # Un dia laborable suelto sin eventos puede ser un feriado o un dia flojo.
 # Dos o mas seguidos ya no: eso es el webhook caido.
 MAX_DIAS_SIN_DATOS = 1
@@ -4112,7 +4157,7 @@ def pulse_data():
             'config': {
                 'nombre':      cfg['nombre'],
                 'horario_fmt': _fmt_horario(h_ini, h_fin),
-                'dias_fmt':    ' · '.join(DIAS_LABEL[d] for d in sorted(dias_lab)),
+                'dias_fmt':    _fmt_dias(dias_lab),
                 'franjas':     franjas,
                 'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
                 'asesores':    _lista_asesores(subdomain),

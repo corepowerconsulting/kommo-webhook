@@ -287,6 +287,9 @@
                si tienen a la persona real, y ahi el titulo lo dice. -->
           <div class="section-title" id="titulo-por-asesor">Tiempo de respuesta por responsable</div>
           <div class="section-sub" id="sub-por-asesor">Mediana · responsable del lead, no quien contestó</div>
+          <!-- Sin esto la barra se lee al reves: la mas larga es la mas LENTA,
+               y una barra larga y llena parece "mas y mejor". -->
+          <div class="text-xs text-slate-500 mt-1" id="leyenda-objetivo"></div>
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
@@ -411,6 +414,10 @@ let MIN_EXTREMOS = 1;
 // que cambiar de modo no vuelve a pedir datos.
 let TREND_MODO = 'cantidad';
 let TREND_DATOS = null;
+// El objetivo de respuesta, en segundos. Sale de la primera franja configurada
+// ("Ideal"), no de un numero escrito aca: si el cliente cambia el umbral, todo
+// lo que dependa de esto lo sigue solo.
+let OBJETIVO = 0;
 
 // ---------------------------------------------------------------------------
 // Selector multiple con checkboxes. Hoy lo usa "Responsables"; esta escrito
@@ -651,8 +658,17 @@ const hace30 = new Date(); hace30.setDate(hoy.getDate() - 30);
 document.getElementById('hasta').value = hoy.toISOString().split('T')[0];
 document.getElementById('desde').value = hace30.toISOString().split('T')[0];
 
-fpDesde = flatpickr('#desde', { dateFormat: 'Y-m-d', onDayCreate: marcarPrimerDia });
-fpHasta = flatpickr('#hasta', { dateFormat: 'Y-m-d', onDayCreate: marcarPrimerDia });
+// altInput muestra 26/07/2026 y deja el ISO en el input real, que es lo que
+// viaja al servidor y lo que se compara contra FECHA_MINIMA. El formato ISO en
+// pantalla no lo lee nadie de corrido.
+const OPTS_FECHA = {
+  dateFormat: 'Y-m-d',
+  altInput: true, altFormat: 'd/m/Y', altInputClass: 'fecha-in',
+  locale: { firstDayOfWeek: 1 },
+  onDayCreate: marcarPrimerDia,
+};
+fpDesde = flatpickr('#desde', OPTS_FECHA);
+fpHasta = flatpickr('#hasta', OPTS_FECHA);
 
 function fmtSeg(seg) {
   if (!seg || seg <= 0) return '< 1 min';
@@ -1039,6 +1055,12 @@ function renderAsesores(porAsesor, minMuestra) {
     // a convertir unidades mentalmente. Con longitud sobre una escala comun la
     // comparacion es inmediata, que es para lo que sirve un ranking.
     const pct = Math.min(100, Math.round((a.mediana_seg || 0) / escala * 100));
+    // La barra crece con el tiempo, o sea que la mas larga es la PEOR. Toda
+    // azul se leia al reves —barra larga y fuerte parece "mas y mejor"— y el
+    // primero del ranking terminaba con la barra mas chica. El color lo
+    // desambigua: gris el que cumple el objetivo, rojo el que no.
+    const pasado = OBJETIVO && (a.mediana_seg || 0) > OBJETIVO;
+    const colorBarra = a.sin_puesto ? '#cbd5e1' : (pasado ? '#ef4444' : '#94a3b8');
     // Solo llevan puesto los comparables: rankear a alguien con 3 respuestas
     // contra alguien con 300 no compara nada, y 'Sin asignar' no es una
     // persona — si compitiera, "nadie" podria salir primero.
@@ -1055,21 +1077,20 @@ function renderAsesores(porAsesor, minMuestra) {
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5 min-w-0">
           ${rank}
-          <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
           <span class="text-xs text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
           ${aviso}
         </div>
         <div class="text-right flex-shrink-0 pl-3">
-          <div class="text-sm font-black text-blue-600 leading-tight">${fmtSeg(a.mediana_seg)}</div>
-          <div class="text-[11px] text-slate-400 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
+          <div class="text-sm font-black leading-tight" style="color:${pasado && !a.sin_puesto ? '#dc2626' : '#334155'}">${fmtSeg(a.mediana_seg)}</div>
+          <div class="text-[11px] text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
-      <!-- La barra arranca despues del puesto y del icono para que todas
-           empiecen en la misma vertical: si cada una arrancara donde termina su
-           nombre, las longitudes no se podrian comparar. -->
-      <div class="barra-asesor mt-2 ml-[42px]">
-        <div class="barra-asesor-fill" style="width:${pct}%"></div>
+      <!-- La barra arranca despues del puesto para que todas empiecen en la
+           misma vertical: si cada una arrancara donde termina su nombre, las
+           longitudes no se podrian comparar. -->
+      <div class="barra-asesor mt-2 ml-[26px]">
+        <div class="barra-asesor-fill" style="width:${pct}%;background:${colorBarra}"></div>
       </div>
     </div>`;
   }).join('');
@@ -1244,6 +1265,12 @@ async function cargarDatos() {
     // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
     // antes se escondia y desaparecian la mediana y el p90 de esa persona,
     // que es justo lo que uno filtra para ver. Con uno solo, una fila.
+    // Antes de dibujar el ranking: la barra se pinta segun el objetivo.
+    const fr = d.config.franjas || [];
+    OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;
+    document.getElementById('leyenda-objetivo').textContent = OBJETIVO
+      ? `Barra: cuánto tarda · en rojo, por encima de ${fmtSeg(OBJETIVO)}` : '';
+
     const cardPorAsesor = document.getElementById('card-por-asesor');
     if (d.por_asesor && d.por_asesor.length) {
       cardPorAsesor.classList.remove('hidden');
