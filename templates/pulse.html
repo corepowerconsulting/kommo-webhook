@@ -128,7 +128,7 @@
           Solo conversaciones abiertas
         </label>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div class="card border-l-4 !border-l-red-400">
           <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
             <div class="flex items-start gap-3.5">
@@ -154,7 +154,10 @@
               <div>
                 <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
                 <div class="kpi-label">Atendidos hoy</div>
-                <div class="mt-1 text-xs text-slate-500">por una persona</div>
+                <!-- Sin tarjeta aparte para el bot: una linea alcanza. Si no
+                     se dijera, el saludo automatico contaria como atencion y
+                     nadie sabria cuantos de estos siguen esperando. -->
+                <div class="mt-1 text-xs text-slate-500" id="nota-solo-bot"></div>
               </div>
             </div>
             <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -162,25 +165,6 @@
           <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
 
-        <!-- El punto ciego: el saludo del bot deja el ultimo mensaje del lado
-             nuestro, asi que el lead sale de "Sin responder" y entraba en
-             "Atendidos" sin que ninguna persona lo hubiera mirado. -->
-        <div class="card border-l-4 !border-l-amber-400 hidden" id="card-solo-bot">
-          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('solo-bot')">
-            <div class="flex items-start gap-3.5">
-              <div class="icon-chip bg-amber-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>
-              </div>
-              <div>
-                <div class="kpi-num text-amber-600" id="kpi-solo-bot">—</div>
-                <div class="kpi-label">Solo respondió el bot</div>
-                <div class="mt-1 text-xs text-slate-500">esperan a una persona</div>
-              </div>
-            </div>
-            <svg id="chev-solo-bot" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div id="panel-solo-bot" class="hidden mt-4"></div>
-        </div>
       </div>
     </div>
 
@@ -1246,17 +1230,16 @@ async function cargarDatos() {
     document.getElementById('nota-no-respondidos').textContent = d.config.fecha_minima
       ? `desde ${d.config.fecha_minima.split('-').reverse().join('/')}`
       : '';
-    document.getElementById('kpi-trabajados-hoy').textContent = d.trabajados_hoy.length.toLocaleString('es');
-    renderExtraLeads('panel-no-respondidos', d.no_respondidos);
-    renderExtraLeads('panel-trabajados-hoy', d.trabajados_hoy);
-
-    // La tarjeta del bot solo aparece si la cuenta tiene un bot contestando.
-    // En las que no, una tarjeta permanentemente en cero solo ocupa lugar.
+    // El numero grande cuenta TODOS los atendidos hoy, como siempre. Los que
+    // solo recibieron el saludo del bot se aclaran en una linea debajo: son
+    // los que parecen atendidos y siguen esperando a una persona.
     const soloBot = d.atendidos_solo_bot || [];
-    const cardBot = document.getElementById('card-solo-bot');
-    cardBot.classList.toggle('hidden', soloBot.length === 0);
-    document.getElementById('kpi-solo-bot').textContent = soloBot.length.toLocaleString('es');
-    renderExtraLeads('panel-solo-bot', soloBot);
+    const todosHoy = d.trabajados_hoy.concat(soloBot);
+    document.getElementById('kpi-trabajados-hoy').textContent = todosHoy.length.toLocaleString('es');
+    document.getElementById('nota-solo-bot').textContent = soloBot.length
+      ? `${soloBot.length} solo por el bot` : '';
+    renderExtraLeads('panel-no-respondidos', d.no_respondidos);
+    renderExtraLeads('panel-trabajados-hoy', todosHoy);
 
     // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
     // antes se escondia y desaparecian la mediana y el p90 de esa persona,
