@@ -865,6 +865,24 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   const apilado = hayAsesores && !porTiempo;
   const datasets = [];
 
+  // Un dia con pocas respuestas puede dar una mediana de 10h y aplastar todos
+  // los demas contra el piso: la linea queda ilegible salvo ese pico. Se acota
+  // el eje a la escala donde se lee la operacion normal, y los dias que se
+  // pasan se dibujan pegados al techo con un triangulo.
+  //
+  // No se ocultan ni se recorta el dato: el punto sigue estando, se ve que
+  // esta fuera de escala, y el tooltip dice el valor real.
+  //
+  // Se calcula ANTES de las leyendas porque una de ellas lo nombra. Estaba
+  // declarado despues y el dashboard entero moria con "Cannot access 'TOPE'
+  // before initialization": con const no hay hoisting que valga.
+  const todasHoras = tendencia.map(d => (d.mediana_seg || 0) / 3600).concat(
+    porTiempo && hayAsesores
+      ? tendenciaPorAsesor.reduce((a, s) => a.concat(
+          (s.mediana_seg || []).map(x => x === null ? null : x / 3600)), [])
+      : []);
+  const TOPE = topeEje(todasHoras);
+
   document.getElementById('leyenda-barras').textContent = porTiempo
     ? 'Línea por persona: su mediana de ese día'
     : (apilado ? 'Barras: cantidad de respuestas, un color por responsable'
@@ -883,20 +901,6 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   notaTope.classList.toggle('hidden', !TOPE);
   if (TOPE) notaTope.textContent =
     `▲ días fuera de escala (más de ${fmtHoras(TOPE)}) · el valor real está en el detalle`;
-
-  // Un dia con pocas respuestas puede dar una mediana de 10h y aplastar todos
-  // los demas contra el piso: la linea queda ilegible salvo ese pico. Se acota
-  // el eje a la escala donde se lee la operacion normal, y los dias que se
-  // pasan se dibujan pegados al techo con un triangulo.
-  //
-  // No se ocultan ni se recorta el dato: el punto sigue estando, se ve que
-  // esta fuera de escala, y el tooltip dice el valor real.
-  const todasHoras = tendencia.map(d => (d.mediana_seg || 0) / 3600).concat(
-    porTiempo && hayAsesores
-      ? tendenciaPorAsesor.reduce((a, s) => a.concat(
-          (s.mediana_seg || []).map(x => x === null ? null : x / 3600)), [])
-      : []);
-  const TOPE = topeEje(todasHoras);
 
   // 'order' controla que se dibuja encima: Chart.js ordena los datasets por
   // order ascendente y los pinta en orden inverso, asi que el MENOR queda
