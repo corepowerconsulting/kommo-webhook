@@ -3170,6 +3170,13 @@ def _calc_metricas(registros, franjas, tz_offset):
 MIN_MUESTRA_ASESOR = 10
 
 SIN_ASIGNAR = 'Sin asignar'
+OTROS = 'Otros'
+
+# Cuantas personas se dibujan por separado en la tendencia. Core Power llego a
+# siete series apiladas y no se podia seguir ninguna: en barras de 20px el ojo
+# no distingue siete colores. El resto va junto en "Otros", que sigue sumando
+# al total.
+MAX_SERIES_TENDENCIA = 5
 
 def _calc_por_asesor(registros):
     """Ranking de asesores por MEDIANA, no por promedio.
@@ -4119,6 +4126,26 @@ def pulse_data():
         if len(asesor_ids) != 1:
             dias = [dia for dia, _ in dias_ordenados]
             nombres = sorted({n for dia in dias for n in daily_asesor[dia]})
+
+            # Con siete series apiladas no se puede seguir ninguna: el ojo no
+            # distingue siete colores en barras de 20px. Se dejan las que mas
+            # respondieron y el resto se junta en "Otros", que sigue sumando al
+            # total pero no agrega una raya de color mas.
+            if len(nombres) > MAX_SERIES_TENDENCIA:
+                por_volumen = sorted(
+                    nombres,
+                    key=lambda n: -sum(len(daily_asesor[d].get(n, [])) for d in dias))
+                principales = por_volumen[:MAX_SERIES_TENDENCIA]
+                resto = set(por_volumen[MAX_SERIES_TENDENCIA:])
+                for dia in dias:
+                    juntos = [s for n in resto for s in daily_asesor[dia].get(n, [])]
+                    for n in resto:
+                        daily_asesor[dia].pop(n, None)
+                    if juntos:
+                        # Se juntan los SEGUNDOS, no las medianas: promediar
+                        # medianas de personas distintas no da ningun numero.
+                        daily_asesor[dia][OTROS] = juntos
+                nombres = principales + ([OTROS] if any(OTROS in daily_asesor[d] for d in dias) else [])
             PALETA_ASESORES = ['#2563eb', '#16a34a', '#f59e0b', '#0891b2', '#e11d48', '#65a30d', '#0d9488', '#0284c7']
             # Cada serie lleva las dos lecturas del mismo dia:
             #   data       cuantas respondio  -> barras apiladas
@@ -4134,7 +4161,10 @@ def pulse_data():
             tendencia_por_asesor = [
                 {
                     'asesor': nombre,
-                    'color': PALETA_ASESORES[i % len(PALETA_ASESORES)],
+                    # "Otros" en gris: no es una persona, no compite por
+                    # atencion con las que si lo son.
+                    'color': ('#cbd5e1' if nombre == OTROS
+                              else PALETA_ASESORES[i % len(PALETA_ASESORES)]),
                     'data': [len(daily_asesor[dia].get(nombre, [])) for dia in dias],
                     'mediana_seg': [
                         _pctl(daily_asesor[dia][nombre], 50)

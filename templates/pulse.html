@@ -18,7 +18,13 @@
 
     .card { background:#fff; border-radius:18px; padding:24px; border:1px solid #e5e9f0; box-shadow:0 1px 3px rgba(15,23,42,.04); }
     .kpi-num  { font-size:2.4rem; font-weight:900; line-height:1; letter-spacing:-0.03em; }
+    /* Tres tamaños de KPI, uno por nivel de importancia. El grande es la
+       metrica del producto; los chicos son contexto. Con todos iguales el ojo
+       iba al numero rojo mas grande en vez de a la mediana. */
+    .kpi-num-xl { font-size:3.4rem; font-weight:900; line-height:1; letter-spacing:-0.03em; }
+    .kpi-num-sm { font-size:1.7rem; font-weight:800; line-height:1; letter-spacing:-0.02em; }
     .kpi-label{ font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:#64748b; margin-top:6px; }
+    .kpi-label-sm{ font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:#64748b; margin-top:5px; }
     .section-title { font-size:1.05rem; font-weight:700; color:#1e293b; }
     .section-sub   { font-size:0.85rem; color:#64748b; margin-top:2px; }
     .tag { font-size:0.65rem; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:99px; }
@@ -242,11 +248,15 @@
       </div>
     </div>
 
-    <!-- KPIs de tiempo de respuesta: es a lo que viene el dashboard, va primero -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div class="card">
-        <div class="flex items-center gap-2.5 flex-wrap">
-          <span class="kpi-num text-blue-600" id="kpi-promedio">—</span>
+    <!-- KPIs de tiempo de respuesta: es a lo que viene el dashboard, va primero.
+         La mediana ocupa dos tercios y va mas grande; las otras dos son
+         contexto y van al costado, mas chicas. Con los tres del mismo tamaño el
+         38.5% en rojo era lo que mas saltaba de la pantalla, y la metrica del
+         producto es la mediana: el ojo iba al lugar equivocado. -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="card lg:col-span-2 flex flex-col justify-center">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="kpi-num-xl text-blue-600" id="kpi-promedio">—</span>
           <!-- Esta etiqueta es lo unico del dashboard que dice si el numero
                esta BIEN o MAL. Existia hace tiempo, pero a 10px al lado de un
                numero de 38 no la veia nadie. Con .tag-kpi pasa a leerse. -->
@@ -261,15 +271,18 @@
           máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
         </div>
       </div>
-      <div class="card">
-        <div class="kpi-num text-green-600" id="kpi-pct-ideal">—</div>
-        <div class="kpi-label">Respondieron en &lt; 5 min</div>
-        <div class="mt-2 text-sm text-slate-500" id="kpi-sub-ideal"></div>
-      </div>
-      <div class="card">
-        <div class="kpi-num text-red-500" id="kpi-pct-critico">—</div>
-        <div class="kpi-label">Esperaron más de 30 min</div>
-        <div class="mt-2 text-sm text-slate-500" id="kpi-sub-critico"></div>
+      <!-- Las dos secundarias comparten la tercera columna, apiladas. -->
+      <div class="grid grid-cols-2 lg:grid-cols-1 gap-4">
+        <div class="card !p-4">
+          <div class="kpi-num-sm text-green-600" id="kpi-pct-ideal">—</div>
+          <div class="kpi-label-sm">Respondieron en &lt; 5 min</div>
+          <div class="mt-1 text-xs text-slate-500" id="kpi-sub-ideal"></div>
+        </div>
+        <div class="card !p-4">
+          <div class="kpi-num-sm text-red-500" id="kpi-pct-critico">—</div>
+          <div class="kpi-label-sm">Esperaron más de 30 min</div>
+          <div class="mt-1 text-xs text-slate-500" id="kpi-sub-critico"></div>
+        </div>
       </div>
     </div>
 
@@ -345,8 +358,9 @@
                 <svg class="flex-shrink-0" width="20" height="10" viewBox="0 0 20 10" aria-hidden="true"><line x1="1" y1="5" x2="19" y2="5" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/><circle cx="10" cy="5" r="3" fill="#0f172a" stroke="#fff" stroke-width="1.5"/></svg>
                 <span id="leyenda-linea">Línea: tiempo promedio</span>
               </span>
-              <span id="nota-ejes" class="text-xs text-slate-400">Cada eje tiene su propia escala</span>
+              <span id="nota-ejes" class="text-xs text-slate-500">Cada eje tiene su propia escala</span>
             </div>
+            <div id="nota-tope" class="hidden mt-1 text-xs text-slate-500"></div>
           </div>
         </div>
         <div class="flex flex-col items-end gap-2">
@@ -811,6 +825,33 @@ function renderDonut(distribucion) {
   });
 }
 
+// Hasta donde llega el eje de tiempo. Devuelve null cuando no hace falta
+// acotar, o sea cuando no hay ningun dia que se salga de escala.
+//
+// El corte sale del percentil 75 y no del promedio: con cola larga el promedio
+// ya viene arrastrado por el mismo pico que se quiere acotar.
+function topeEje(valores) {
+  const v = valores.filter(x => x !== null && x !== undefined && !isNaN(x))
+                   .sort((a, b) => a - b);
+  if (v.length < 5) return null;          // con pocos dias no hay escala que salvar
+  const p75 = v[Math.floor(v.length * 0.75)];
+  const max = v[v.length - 1];
+  const tope = Math.max(p75 * 2.5, 0.25); // al menos 15 min de rango visible
+  // Solo si el pico de verdad domina: si el maximo entra comodo, no se toca.
+  return max > tope * 1.4 ? tope : null;
+}
+
+// Recorta al tope y marca los puntos que se pasaron, para poder dibujarlos
+// pegados al techo con otra forma.
+function acotar(horas, tope) {
+  if (!tope) return { data: horas, real: horas, fuera: horas.map(() => false) };
+  return {
+    data:  horas.map(v => v === null ? null : Math.min(v, tope)),
+    real:  horas,
+    fuera: horas.map(v => v !== null && v > tope),
+  };
+}
+
 function renderTrend(tendencia, tendenciaPorAsesor) {
   const ctx = document.getElementById('chart-trend').getContext('2d');
   const existing = Chart.getChart('chart-trend');
@@ -836,6 +877,26 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
     : `Línea: tiempo${real} de respuesta (mediana)`;
   document.getElementById('leyenda-barras-caja').classList.toggle('hidden', porTiempo);
   document.getElementById('nota-ejes').classList.toggle('hidden', porTiempo);
+  // Si se acoto el eje hay que decirlo: un punto pegado al techo sin aviso se
+  // lee como el valor del techo, no como "se salio de escala".
+  const notaTope = document.getElementById('nota-tope');
+  notaTope.classList.toggle('hidden', !TOPE);
+  if (TOPE) notaTope.textContent =
+    `▲ días fuera de escala (más de ${fmtHoras(TOPE)}) · el valor real está en el detalle`;
+
+  // Un dia con pocas respuestas puede dar una mediana de 10h y aplastar todos
+  // los demas contra el piso: la linea queda ilegible salvo ese pico. Se acota
+  // el eje a la escala donde se lee la operacion normal, y los dias que se
+  // pasan se dibujan pegados al techo con un triangulo.
+  //
+  // No se ocultan ni se recorta el dato: el punto sigue estando, se ve que
+  // esta fuera de escala, y el tooltip dice el valor real.
+  const todasHoras = tendencia.map(d => (d.mediana_seg || 0) / 3600).concat(
+    porTiempo && hayAsesores
+      ? tendenciaPorAsesor.reduce((a, s) => a.concat(
+          (s.mediana_seg || []).map(x => x === null ? null : x / 3600)), [])
+      : []);
+  const TOPE = topeEje(todasHoras);
 
   // 'order' controla que se dibuja encima: Chart.js ordena los datasets por
   // order ascendente y los pinta en orden inverso, asi que el MENOR queda
@@ -878,10 +939,13 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   // un desempeño, y sin ver el tamaño de la muestra el punto engaña.
   if (porTiempo && hayAsesores) {
     tendenciaPorAsesor.forEach(serie => {
+      const ac = acotar((serie.mediana_seg || []).map(s => s === null ? null : s / 3600), TOPE);
       datasets.push({
         type: 'line',
         label: serie.asesor,
-        data: (serie.mediana_seg || []).map(s => s === null ? null : s / 3600),
+        data: ac.data,
+        real: ac.real,
+        pointStyle: ac.fuera.map(f => f ? 'triangle' : 'circle'),
         muestra: serie.data,
         borderColor: serie.color,
         backgroundColor: serie.color,
@@ -905,10 +969,14 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   // mediana, y esta linea venia dibujando el promedio sobre los mismos datos.
   // Con cola larga la diferencia es de horas, y quien comparaba los dos
   // numeros concluia que uno estaba roto.
+  const acEquipo = acotar(tendencia.map(d => (d.mediana_seg || 0) / 3600), TOPE);
   datasets.push({
     type: 'line',
     label: 'Mediana del equipo',
-    data: tendencia.map(d => d.mediana_seg / 3600),
+    data: acEquipo.data,
+    real: acEquipo.real,
+    pointStyle: acEquipo.fuera.map(f => f ? 'triangle' : 'circle'),
+    pointRadius: acEquipo.fuera.map(f => f ? 7 : 4),
     muestra: tendencia.map(d => d.total),
     borderColor: '#0f172a',
     backgroundColor: '#0f172a',
@@ -964,12 +1032,16 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
               if (ctx.dataset.yAxisID !== 'y1')
                 return ` ${ctx.dataset.label}: ${ctx.parsed.y} respuestas`;
               if (ctx.parsed.y === null) return null;
+              // El valor REAL, no el recortado: el punto puede estar dibujado
+              // pegado al techo, pero el numero que se lee es el que fue.
+              const real = (ctx.dataset.real || [])[ctx.dataIndex];
+              const v = (real === undefined || real === null) ? ctx.parsed.y : real;
               // El tamaño de la muestra va SIEMPRE al lado del tiempo: una
               // mediana de 2 respuestas se lee igual que una de 200 y no vale
               // lo mismo.
               const n = (ctx.dataset.muestra || [])[ctx.dataIndex];
               const suf = n ? ` (${n} ${n === 1 ? 'respuesta' : 'respuestas'})` : '';
-              return ` ${ctx.dataset.label}: ${fmtHoras(ctx.parsed.y)}${suf}`;
+              return ` ${ctx.dataset.label}: ${fmtHoras(v)}${suf}`;
             }
           }
         }
@@ -992,6 +1064,9 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
           grid: { display: porTiempo, color: '#f1f5f9' },
           ticks:{ font:{size:11}, color:'#94a3b8', callback: fmtEje },
           beginAtZero: true,
+          // Con tope, los dias que se pasan quedan dibujados en el techo con
+          // un triangulo en vez de estirar la escala y aplastar al resto.
+          max: TOPE || undefined,
           title: { display: true, color:'#94a3b8', font:{size:10, weight:'600'},
                    text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
