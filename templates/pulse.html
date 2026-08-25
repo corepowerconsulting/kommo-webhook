@@ -11,6 +11,10 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
+    /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
+       cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
+       hay forma de que dos textos queden desparejos por olvidarse de uno. */
+    html { font-size: 17px; }
     * { font-family: 'Inter', sans-serif; }
     .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:#2563eb; text-decoration-thickness:2px; text-underline-offset:2px; font-weight:700; }
     .flatpickr-day.selected, .flatpickr-day.selected:hover { background:#2563eb; border-color:#2563eb; }
@@ -1027,7 +1031,7 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
         legend: {
           display: apilado || (porTiempo && hayAsesores),
           position: 'bottom',
-          labels: { boxWidth: 10, font: { size: 10 }, color: '#64748b',
+          labels: { boxWidth: 10, font: { size: 11 }, color: '#64748b',
                     filter: item => item.text !== 'Mediana del equipo' }
         },
         tooltip: {
@@ -1051,27 +1055,27 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
         }
       },
       scales: {
-        x: { grid:{ display:false }, ticks:{ font:{size:11}, color:'#94a3b8', maxTicksLimit:15 }, stacked: true },
+        x: { grid:{ display:false }, ticks:{ font:{size:12}, color:'#94a3b8', maxTicksLimit:15 }, stacked: true },
         y: {
           display: !porTiempo,
           position: 'left',
           stacked: true,
           grid:{ color:'#f1f5f9' },
-          ticks:{ font:{size:11}, color:'#94a3b8', precision: 0 },
+          ticks:{ font:{size:12}, color:'#94a3b8', precision: 0 },
           beginAtZero: true,
-          title: { display: true, text: 'Respuestas', color:'#94a3b8', font:{size:10, weight:'600'} }
+          title: { display: true, text: 'Respuestas', color:'#94a3b8', font:{size:11, weight:'600'} }
         },
         y1: {
           // En modo tiempo es el unico eje, asi que va a la izquierda con su
           // grilla: queda un grafico de una sola escala y se lee sin traducir.
           position: porTiempo ? 'left' : 'right',
           grid: { display: porTiempo, color: '#f1f5f9' },
-          ticks:{ font:{size:11}, color:'#94a3b8', callback: fmtEje },
+          ticks:{ font:{size:12}, color:'#94a3b8', callback: fmtEje },
           beginAtZero: true,
           // Con tope, los dias que se pasan quedan dibujados en el techo con
           // un triangulo en vez de estirar la escala y aplastar al resto.
           max: TOPE || undefined,
-          title: { display: true, color:'#94a3b8', font:{size:10, weight:'600'},
+          title: { display: true, color:'#94a3b8', font:{size:11, weight:'600'},
                    text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
       }
@@ -1118,7 +1122,7 @@ function renderTabla(containerId, rows, tipo) {
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
              etiqueta es lo unico que la gente ve del calculo. -->
-        <div class="text-[11px] text-slate-400 leading-tight">${
+        <div class="text-[12px] text-slate-400 leading-tight">${
           pocas ? 'una sola respuesta' : `mediana de ${r.respuestas} respuestas`
         }</div>
       </div>
@@ -1160,7 +1164,7 @@ function renderAsesores(porAsesor, minMuestra) {
       ? `<span class="text-xs text-slate-300 w-5 text-right">—</span>`
       : `<span class="text-xs font-bold text-slate-400 w-5 text-right">${++puesto}</span>`;
     const aviso = a.sin_puesto
-      ? `<span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+      ? `<span class="text-[12px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
            ${a.sin_puesto}
          </span>`
       : '';
@@ -1177,7 +1181,7 @@ function renderAsesores(porAsesor, minMuestra) {
         </div>
         <div class="text-right flex-shrink-0 pl-3">
           <div class="text-sm font-black leading-tight" style="color:${pasado && !a.sin_puesto ? '#dc2626' : '#334155'}">${fmtSeg(a.mediana_seg)}</div>
-          <div class="text-[11px] text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
+          <div class="text-[12px] text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
       <!-- La barra arranca despues del puesto y del icono para que todas
