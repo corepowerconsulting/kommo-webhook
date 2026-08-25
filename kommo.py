@@ -3507,20 +3507,55 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     return [_fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente') for r in rows]
 
 def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None,
-                          solo_abiertas=False, sql_embudo='', params_embudo=()):
-    """Leads a los que el asesor le escribió (respuesta o mensaje propio)
-    hoy, dentro del horario laboral configurado."""
+                          solo_abiertas=False, sql_embudo='', params_embudo=(),
+                          corte=None):
+    """Leads que recibieron respuesta hoy, SEPARADOS en dos listas: los que
+    atendio una persona y los que solo contesto el bot.
+
+    Devuelve (por_persona, solo_bot).
+
+    Por que separarlos: el bot saluda a todos los leads nuevos, y ese saludo
+    deja el ultimo mensaje del lado nuestro. O sea que el lead deja de figurar
+    en "Sin responder" y pasa a figurar en "Atendidos hoy" sin que ninguna
+    persona lo haya mirado. Es el punto ciego del tablero: los que PARECEN
+    atendidos y no lo estan.
+
+    Se calcula desde 'mensajes_asesor' y no desde el campo f_ult_msj_asesor,
+    que es lo que se hacia antes. El campo no dice quien escribio: se actualiza
+    igual si contesto el bot, asi que mezclaba los dos en un solo numero.
+
+    Sin 'corte' (cuenta sin salientes capturados) se cae al metodo viejo y todo
+    queda en la lista de personas, que es como se comportaba hasta ahora."""
     inicio, fin = _hoy_rango_ts(tz_offset)
+    autos = list(remitentes_auto_de(subdomain))
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
-        query = '''
-            SELECT lead_id, responsible_user_id, f_ult_msj_asesor, lead_nombre, asesor_nombre
-            FROM leads_estado
-            WHERE subdomain = %s
-              AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
-        '''
-        params = [subdomain, inicio, fin]
+        if corte:
+            # ultimo_de_persona es NULL cuando lo unico que llego hoy fue del
+            # bot: eso es exactamente lo que separa las dos listas.
+            query = '''
+                SELECT le.lead_id, le.responsible_user_id, le.lead_nombre, le.asesor_nombre,
+                       MAX(ma.ts) AS f_ult_msj_asesor,
+                       MAX(ma.ts) FILTER (
+                           WHERE NOT (COALESCE(ma.autor_nombre, '') = ANY(%s))
+                       ) AS ultimo_de_persona
+                  FROM mensajes_asesor ma
+                  JOIN leads_estado le
+                    ON le.subdomain = ma.subdomain AND le.lead_id = ma.lead_id
+                 WHERE ma.subdomain = %s AND ma.ts >= %s AND ma.ts < %s
+            '''
+            params = [autos, subdomain, inicio, fin]
+        else:
+            query = '''
+                SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre,
+                       f_ult_msj_asesor, f_ult_msj_asesor AS ultimo_de_persona
+                  FROM leads_estado
+                 WHERE subdomain = %s
+                   AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
+            '''
+            params = [subdomain, inicio, fin]
+
         if responsible_user_ids:
             query += ' AND responsible_user_id = ANY(%s)'
             params.append(list(responsible_user_ids))
@@ -3529,17 +3564,33 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
         if sql_embudo:
             query += sql_embudo
             params.extend(params_embudo)
-        query += ' ORDER BY f_ult_msj_asesor DESC'
+        if corte:
+            query += (' GROUP BY le.lead_id, le.responsible_user_id, '
+                      'le.lead_nombre, le.asesor_nombre')
+        query += ' ORDER BY 5 DESC'      # por f_ult_msj_asesor
         c.execute(query, params)
         rows = c.fetchall()
     finally:
         conn.close()
-    resultado = []
+
+    por_persona, solo_bot = [], []
     for r in rows:
-        local_dt = _ts_to_local(r['f_ult_msj_asesor'], tz_offset)
-        if h_ini <= local_dt.hour < h_fin:
-            resultado.append(_fmt_lead_estado(r, tz_offset, 'f_ult_msj_asesor'))
-    return resultado
+        # El horario se mide sobre la respuesta que cuenta para esa lista: si
+        # la persona contesto 09:00 y el bot 22:00, el lead se atendio en
+        # horario y no deberia quedar afuera por el mensaje del bot.
+        # Si la columna no viniera, se cae al comportamiento viejo —todo cuenta
+        # como atendido por una persona— en vez de tirar 500. Separar mal es
+        # malo; dejar el tablero sin snapshot es peor.
+        up = r.get('ultimo_de_persona', r['f_ult_msj_asesor'])
+        de_persona = up is not None
+        ts = up if de_persona else r['f_ult_msj_asesor']
+        if not (h_ini <= _ts_to_local(ts, tz_offset).hour < h_fin):
+            continue
+        fila = dict(r)
+        fila['f_ult_msj_asesor'] = ts
+        (por_persona if de_persona else solo_bot).append(
+            _fmt_lead_estado(fila, tz_offset, 'f_ult_msj_asesor'))
+    return por_persona, solo_bot
 
 def _lista_asesores(subdomain):
     conn = get_conn()
@@ -4049,12 +4100,13 @@ def pulse_data():
 
         no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
                                                 piso_captura, sql_embudo, params_embudo)
-        trabajados_hoy  = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, asesor_ids,
-                                                solo_abiertas, sql_embudo, params_embudo)
+        trabajados_hoy, atendidos_solo_bot = _leads_trabajados_hoy(
+            subdomain, tz_offset, h_ini, h_fin, asesor_ids,
+            solo_abiertas, sql_embudo, params_embudo, corte)
         # Estas dos listas salen de leads_estado, que no tiene el nombre del
         # cliente. Sin esto las tarjetas muestran "Sin nombre" aunque el dato
         # este guardado, que es lo que reporto Ana.
-        _completar_nombres(subdomain, no_respondidos, trabajados_hoy)
+        _completar_nombres(subdomain, no_respondidos, trabajados_hoy, atendidos_solo_bot)
 
         return jsonify({
             'config': {
@@ -4114,6 +4166,11 @@ def pulse_data():
             'por_asesor':    _calc_por_asesor(registros),
             'no_respondidos': no_respondidos,
             'trabajados_hoy': trabajados_hoy,
+            # Los que solo recibieron el saludo del bot. Es el punto ciego del
+            # tablero: dejan de figurar en "Sin responder" porque el ultimo
+            # mensaje es nuestro, y figuraban en "Atendidos" sin que ninguna
+            # persona los hubiera mirado.
+            'atendidos_solo_bot': atendidos_solo_bot,
         })
     except Exception as e:
         print(f'❌ PULSE /data procesamiento: {e}')
