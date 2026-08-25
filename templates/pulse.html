@@ -101,7 +101,7 @@
         <div id="nombre-cliente" class="text-xs text-slate-500 font-medium">—</div>
       </div>
     </div>
-    <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 transition">
+    <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-600 transition">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Salir
     </a>
@@ -113,7 +113,7 @@
 
   <div id="loading" class="flex flex-col items-center justify-center py-32 gap-3">
     <div class="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-    <span class="text-slate-400 text-sm">Cargando datos…</span>
+    <span class="text-slate-500 text-sm">Cargando datos…</span>
   </div>
 
   <div id="error-state" class="hidden text-center py-32">
@@ -148,7 +148,7 @@
               <div>
                 <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
                 <div class="kpi-label">Sin responder</div>
-                <div class="mt-1 text-xs text-slate-400" id="nota-no-respondidos"></div>
+                <div class="mt-1 text-xs text-slate-500" id="nota-no-respondidos"></div>
               </div>
             </div>
             <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -185,7 +185,7 @@
       <div class="flex items-center gap-2.5 flex-wrap">
 
         <div class="grupo">
-          <svg class="flex-shrink-0 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <input type="text" id="desde" readonly class="fecha-in"/>
           <span class="text-slate-300 text-sm">→</span>
           <input type="text" id="hasta" readonly class="fecha-in"/>
@@ -201,7 +201,7 @@
             <button type="button" onclick="multiToggle('asesor')" class="multi-btn">
               <span class="grupo-lbl">Responsables</span>
               <span class="truncate font-medium" id="multi-asesor-txt">Todos</span>
-              <svg class="flex-shrink-0 text-slate-400 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-asesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
@@ -213,7 +213,7 @@
             <button type="button" onclick="multiToggle('asesorcampo')" class="multi-btn">
               <span class="grupo-lbl">Asesores</span>
               <span class="truncate font-medium" id="multi-asesorcampo-txt">Todos</span>
-              <svg class="flex-shrink-0 text-slate-400 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-asesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
@@ -225,7 +225,7 @@
             <button type="button" onclick="multiToggle('embudo')" class="multi-btn">
               <span class="grupo-lbl">Embudos</span>
               <span class="truncate font-medium" id="multi-embudo-txt">Todos</span>
-              <svg class="flex-shrink-0 text-slate-400 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-embudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-80 max-h-80 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
@@ -236,7 +236,7 @@
 
       <!-- Horario y dias: contexto, no un control. Va en una linea fina y
            discreta en vez de una segunda fila con su propio separador. -->
-      <div class="mt-3 text-xs text-slate-400">
+      <div class="mt-3 text-xs text-slate-500">
         <span id="horario-txt" class="font-semibold text-slate-500"></span>
         <span class="text-slate-300 mx-1.5">·</span>
         <span id="dias-txt" class="font-semibold text-slate-500"></span>
@@ -267,7 +267,7 @@
           <span id="kpi-badge-prom" class="tag-kpi hidden"></span>
         </div>
         <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
-        <div class="mt-2 text-xs text-slate-400">
+        <div class="mt-2 text-xs text-slate-500">
           p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
           <span class="text-slate-300">·</span>
           prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
@@ -375,7 +375,7 @@
             <button id="btn-trend-cantidad" onclick="cambiarTrend('cantidad')" class="px-3 py-1 rounded-lg text-xs font-semibold transition">Cantidad</button>
             <button id="btn-trend-tiempo"   onclick="cambiarTrend('tiempo')"   class="px-3 py-1 rounded-lg text-xs font-semibold transition">Tiempo</button>
           </div>
-          <span id="trend-rango" class="text-sm text-slate-400"></span>
+          <span id="trend-rango" class="text-sm text-slate-500"></span>
         </div>
       </div>
       <div class="mt-5" style="height:180px">
@@ -471,11 +471,11 @@ function multiCambio(nombre) {
   const txt = document.getElementById(`multi-${nombre}-txt`);
   if (marcados.length === 0) {
     txt.textContent = MULTI[nombre].todos;
-    txt.classList.add('text-slate-400');
+    txt.classList.add('text-slate-500');
   } else {
     const uno = MULTI[nombre].items.find(x => String(x.value) === marcados[0]);
     txt.textContent = marcados.length === 1 && uno ? uno.label : `${marcados.length} seleccionados`;
-    txt.classList.remove('text-slate-400');
+    txt.classList.remove('text-slate-500');
   }
 }
 
@@ -512,7 +512,7 @@ function embudoInit(lista) {
     <div class="border-b border-slate-50 last:border-0">
       <div class="flex items-center gap-1 px-2 py-2 hover:bg-slate-50">
         <button type="button" onclick="embudoAbrir(${e.id})"
-                class="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 flex-shrink-0"
+                class="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-slate-600 flex-shrink-0"
                 title="Ver etapas">
           <svg id="emb-flecha-${e.id}" class="chevron -rotate-90" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -520,7 +520,7 @@ function embudoInit(lista) {
           <input type="checkbox" data-emb="${e.id}" onchange="embudoCambio()"
                  class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
           <span class="text-sm font-semibold text-slate-700 truncate">${e.nombre}</span>
-          <span class="ml-auto text-xs text-slate-400 flex-shrink-0">${e.leads}</span>
+          <span class="ml-auto text-xs text-slate-500 flex-shrink-0">${e.leads}</span>
         </label>
       </div>
       <div id="emb-hijos-${e.id}" class="hidden pb-1">
@@ -565,14 +565,14 @@ function embudoCambio() {
   const total = embMarcados.length + etaMarcadas.length;
   if (total === 0) {
     txt.textContent = 'Todos';
-    txt.classList.add('text-slate-400');
+    txt.classList.add('text-slate-500');
   } else if (embMarcados.length === 1 && etaMarcadas.length === 0) {
     const uno = EMBUDOS.find(e => String(e.id) === embMarcados[0]);
     txt.textContent = uno ? uno.nombre : '1 embudo';
-    txt.classList.remove('text-slate-400');
+    txt.classList.remove('text-slate-500');
   } else {
     txt.textContent = `${total} seleccionados`;
-    txt.classList.remove('text-slate-400');
+    txt.classList.remove('text-slate-500');
   }
 }
 
@@ -746,7 +746,7 @@ function toggleExtra(key) {
 function renderExtraLeads(containerId, leads) {
   const el = document.getElementById(containerId);
   if (!leads || leads.length === 0) {
-    el.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">Sin leads</div>';
+    el.innerHTML = '<div class="text-sm text-slate-500 text-center py-4">Sin leads</div>';
     return;
   }
   el.innerHTML = `<div class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
@@ -783,7 +783,7 @@ function renderDist(distribucion) {
       <div id="leads-${i}" class="hidden px-2 pb-2">
         <div class="bg-slate-50 rounded-xl overflow-hidden">
           ${d.leads.length === 0
-            ? '<div class="text-sm text-slate-400 text-center py-4">Sin leads en este rango</div>'
+            ? '<div class="text-sm text-slate-500 text-center py-4">Sin leads en este rango</div>'
             : `<div class="max-h-60 overflow-y-auto divide-y divide-white">
                 ${d.leads.map(l => `
                   <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
@@ -1055,27 +1055,27 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
         }
       },
       scales: {
-        x: { grid:{ display:false }, ticks:{ font:{size:12}, color:'#94a3b8', maxTicksLimit:15 }, stacked: true },
+        x: { grid:{ display:false }, ticks:{ font:{size:12}, color:'#64748b', maxTicksLimit:15 }, stacked: true },
         y: {
           display: !porTiempo,
           position: 'left',
           stacked: true,
           grid:{ color:'#f1f5f9' },
-          ticks:{ font:{size:12}, color:'#94a3b8', precision: 0 },
+          ticks:{ font:{size:12}, color:'#64748b', precision: 0 },
           beginAtZero: true,
-          title: { display: true, text: 'Respuestas', color:'#94a3b8', font:{size:11, weight:'600'} }
+          title: { display: true, text: 'Respuestas', color:'#64748b', font:{size:11, weight:'600'} }
         },
         y1: {
           // En modo tiempo es el unico eje, asi que va a la izquierda con su
           // grilla: queda un grafico de una sola escala y se lee sin traducir.
           position: porTiempo ? 'left' : 'right',
           grid: { display: porTiempo, color: '#f1f5f9' },
-          ticks:{ font:{size:12}, color:'#94a3b8', callback: fmtEje },
+          ticks:{ font:{size:12}, color:'#64748b', callback: fmtEje },
           beginAtZero: true,
           // Con tope, los dias que se pasan quedan dibujados en el techo con
           // un triangulo en vez de estirar la escala y aplastar al resto.
           max: TOPE || undefined,
-          title: { display: true, color:'#94a3b8', font:{size:11, weight:'600'},
+          title: { display: true, color:'#64748b', font:{size:11, weight:'600'},
                    text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
       }
@@ -1089,11 +1089,11 @@ function renderTabla(containerId, rows, tipo) {
     // "Sin datos" a secas hacia pensar que algo estaba roto. Si el motivo es
     // el minimo de respuestas, se dice.
     el.innerHTML = containerId === 'tabla-extremos' && MIN_EXTREMOS > 1
-      ? `<div class="text-slate-400 text-sm py-6 text-center">
+      ? `<div class="text-slate-500 text-sm py-6 text-center">
            Ninguna conversación del período llegó a ${MIN_EXTREMOS} respuestas medidas.<br>
            <span class="text-xs">Probá ampliando el rango de fechas.</span>
          </div>`
-      : '<div class="text-slate-400 text-sm py-6 text-center">Sin datos</div>';
+      : '<div class="text-slate-500 text-sm py-6 text-center">Sin datos</div>';
     return;
   }
   const colorClass = tipo === 'lento' ? 'text-red-500' : 'text-green-600';
@@ -1111,10 +1111,10 @@ function renderTabla(containerId, rows, tipo) {
     const rank = pocas ? '—' : String(++puesto);
     return `
     <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-2.5 ${pocas ? 'opacity-60' : ''}">
-      <span class="text-xs text-slate-400 w-4 text-right font-bold flex-shrink-0">${rank}</span>
+      <span class="text-xs text-slate-500 w-4 text-right font-bold flex-shrink-0">${rank}</span>
       <div class="min-w-0 flex-1">
         <div class="text-sm font-semibold text-slate-800 truncate">${r.nombre || 'Sin nombre'}</div>
-        <div class="text-xs text-slate-400 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
+        <div class="text-xs text-slate-500 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
       </div>
       <div class="text-right flex-shrink-0 pl-3">
         <div class="text-sm font-black ${colorClass} leading-tight">${r.fmt}</div>
@@ -1122,7 +1122,7 @@ function renderTabla(containerId, rows, tipo) {
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
              etiqueta es lo unico que la gente ve del calculo. -->
-        <div class="text-[12px] text-slate-400 leading-tight">${
+        <div class="text-[12px] text-slate-500 leading-tight">${
           pocas ? 'una sola respuesta' : `mediana de ${r.respuestas} respuestas`
         }</div>
       </div>
@@ -1134,7 +1134,7 @@ function renderTabla(containerId, rows, tipo) {
 function renderAsesores(porAsesor, minMuestra) {
   const el = document.getElementById('tabla-asesores');
   if (!porAsesor || porAsesor.length === 0) {
-    el.innerHTML = '<div class="text-slate-400 text-sm py-6 text-center">Sin datos</div>';
+    el.innerHTML = '<div class="text-slate-500 text-sm py-6 text-center">Sin datos</div>';
     return;
   }
   const min = minMuestra || 10;
@@ -1156,13 +1156,13 @@ function renderAsesores(porAsesor, minMuestra) {
     // primero del ranking terminaba con la barra mas chica. El color lo
     // desambigua: gris el que cumple el objetivo, rojo el que no.
     const pasado = OBJETIVO && (a.mediana_seg || 0) > OBJETIVO;
-    const colorBarra = a.sin_puesto ? '#cbd5e1' : (pasado ? '#ef4444' : '#94a3b8');
+    const colorBarra = a.sin_puesto ? '#cbd5e1' : (pasado ? '#ef4444' : '#64748b');
     // Solo llevan puesto los comparables: rankear a alguien con 3 respuestas
     // contra alguien con 300 no compara nada, y 'Sin asignar' no es una
     // persona — si compitiera, "nadie" podria salir primero.
     const rank = a.sin_puesto
       ? `<span class="text-xs text-slate-300 w-5 text-right">—</span>`
-      : `<span class="text-xs font-bold text-slate-400 w-5 text-right">${++puesto}</span>`;
+      : `<span class="text-xs font-bold text-slate-500 w-5 text-right">${++puesto}</span>`;
     const aviso = a.sin_puesto
       ? `<span class="text-[12px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
            ${a.sin_puesto}
@@ -1438,7 +1438,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (SUBDOMAIN) cargarDatos();
   else {
     document.getElementById('loading').innerHTML =
-      '<div class="text-center py-32 text-slate-400 text-sm">Accede con <code class="bg-slate-100 px-2 py-1 rounded text-slate-600">?subdomain=nombre</code></div>';
+      '<div class="text-center py-32 text-slate-500 text-sm">Accede con <code class="bg-slate-100 px-2 py-1 rounded text-slate-600">?subdomain=nombre</code></div>';
   }
 });
 </script>

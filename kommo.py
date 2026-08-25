@@ -4146,7 +4146,17 @@ def pulse_data():
                         # medianas de personas distintas no da ningun numero.
                         daily_asesor[dia][OTROS] = juntos
                 nombres = principales + ([OTROS] if any(OTROS in daily_asesor[d] for d in dias) else [])
-            PALETA_ASESORES = ['#2563eb', '#16a34a', '#f59e0b', '#0891b2', '#e11d48', '#65a30d', '#0d9488', '#0284c7']
+            # Sin verde ni rojo A PROPOSITO. En esta pantalla esos dos colores
+            # ya significan "bien" y "mal" —son las franjas de la
+            # distribucion—, asi que usarlos tambien para identificar personas
+            # hacia que un asesor pintado de rojo pareciera que atiende mal,
+            # cuando el color ahi no dice nada de su desempeño.
+            #
+            # Los seis estan a mas de 25 de distancia perceptual entre si
+            # (delta E sobre CIELAB) y todos por encima de 3:1 sobre blanco. El
+            # tono solo no alcanza como criterio: dos colores de tonos cercanos
+            # pero distinta claridad se distinguen perfecto, y al reves no.
+            PALETA_ASESORES = ['#2563eb', '#7c3aed', '#0e7490', '#a21caf', '#78350f', '#334155']
             # Cada serie lleva las dos lecturas del mismo dia:
             #   data       cuantas respondio  -> barras apiladas
             #   mediana_seg cuanto tardo      -> una linea por persona
