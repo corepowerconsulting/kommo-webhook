@@ -3798,7 +3798,13 @@ def pulse():
             return f'PULSE no tiene contraseña configurada para "{subdomain}" (falta PULSE_PW_{subdomain.upper()})', 500
         return render_template('pulse_login.html', subdomain=subdomain, error=None)
 
-    return render_template('pulse.html', subdomain=subdomain)
+    # El "hoy" para el rango por defecto sale de la zona de la CUENTA, no del
+    # navegador. Con toISOString() el rango arrancaba en UTC y en El Salvador
+    # (-6) a partir de las 18:00 locales el dashboard ya ofrecia la fecha de
+    # mañana. Ademas la cuenta puede estar en otra zona que quien la mira.
+    tz = PULSE_CONFIG.get(subdomain, {}).get('tz_offset', 0)
+    hoy_cuenta = (datetime.utcnow() + timedelta(hours=tz)).strftime('%Y-%m-%d')
+    return render_template('pulse.html', subdomain=subdomain, hoy_cuenta=hoy_cuenta)
 
 @app.route('/pulse/propuesta')
 def pulse_propuesta():

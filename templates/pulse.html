@@ -652,11 +652,24 @@ function marcarPrimerDia(dObj, dStr, fp, dayElem) {
   }
 }
 
-// Últimos 30 días por defecto
-const hoy = new Date();
-const hace30 = new Date(); hace30.setDate(hoy.getDate() - 30);
-document.getElementById('hasta').value = hoy.toISOString().split('T')[0];
-document.getElementById('desde').value = hace30.toISOString().split('T')[0];
+// Últimos 30 días por defecto.
+//
+// El "hoy" lo calcula el SERVIDOR en la zona horaria de la cuenta, no el
+// navegador. Antes se usaba toISOString(), que pasa a UTC: en El Salvador
+// (-6), a partir de las 18:00 locales el dashboard ya mostraba la fecha de
+// mañana. Y la cuenta puede estar en otra zona que quien la mira.
+const HOY_CUENTA = "{{ hoy_cuenta }}";
+function menosDias(iso, n) {
+  const [a, m, d] = iso.split('-').map(Number);
+  // Date.UTC y getUTC*: aritmetica de calendario pura, sin que la zona del
+  // navegador corra el dia.
+  const t = new Date(Date.UTC(a, m - 1, d));
+  t.setUTCDate(t.getUTCDate() - n);
+  const p = x => String(x).padStart(2, '0');
+  return `${t.getUTCFullYear()}-${p(t.getUTCMonth() + 1)}-${p(t.getUTCDate())}`;
+}
+document.getElementById('hasta').value = HOY_CUENTA;
+document.getElementById('desde').value = menosDias(HOY_CUENTA, 30);
 
 // altInput muestra 26/07/2026 y deja el ISO en el input real, que es lo que
 // viaja al servidor y lo que se compara contra FECHA_MINIMA. El formato ISO en
@@ -1077,6 +1090,8 @@ function renderAsesores(porAsesor, minMuestra) {
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5 min-w-0">
           ${rank}
+          <!-- El icono lo pidio el cliente expresamente. -->
+          <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
           <span class="text-xs text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
           ${aviso}
@@ -1086,10 +1101,10 @@ function renderAsesores(porAsesor, minMuestra) {
           <div class="text-[11px] text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
-      <!-- La barra arranca despues del puesto para que todas empiecen en la
-           misma vertical: si cada una arrancara donde termina su nombre, las
-           longitudes no se podrian comparar. -->
-      <div class="barra-asesor mt-2 ml-[26px]">
+      <!-- La barra arranca despues del puesto y del icono para que todas
+           empiecen en la misma vertical: si cada una arrancara donde termina su
+           nombre, las longitudes no se podrian comparar. -->
+      <div class="barra-asesor mt-2 ml-[42px]">
         <div class="barra-asesor-fill" style="width:${pct}%;background:${colorBarra}"></div>
       </div>
     </div>`;
