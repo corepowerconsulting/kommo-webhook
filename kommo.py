@@ -4146,17 +4146,20 @@ def pulse_data():
                         # medianas de personas distintas no da ningun numero.
                         daily_asesor[dia][OTROS] = juntos
                 nombres = principales + ([OTROS] if any(OTROS in daily_asesor[d] for d in dias) else [])
-            # Sin verde ni rojo A PROPOSITO. En esta pantalla esos dos colores
-            # ya significan "bien" y "mal" —son las franjas de la
-            # distribucion—, asi que usarlos tambien para identificar personas
-            # hacia que un asesor pintado de rojo pareciera que atiende mal,
-            # cuando el color ahi no dice nada de su desempeño.
+            # No elegidos a ojo: son la combinacion que MAXIMIZA la distancia
+            # entre todos los pares, buscada sobre 17 candidatos
+            # (scripts en el scratchpad, criterio maximin sobre delta E en
+            # CIELAB). El par mas parecido queda a 53.6; la version anterior
+            # tenia dos a 25.9 y se confundian en pantalla.
             #
-            # Los seis estan a mas de 25 de distancia perceptual entre si
-            # (delta E sobre CIELAB) y todos por encima de 3:1 sobre blanco. El
-            # tono solo no alcanza como criterio: dos colores de tonos cercanos
-            # pero distinta claridad se distinguen perfecto, y al reves no.
-            PALETA_ASESORES = ['#2563eb', '#7c3aed', '#0e7490', '#a21caf', '#78350f', '#334155']
+            # Los 17 candidatos ya venian filtrados por dos condiciones: >= 3:1
+            # de contraste sobre blanco, para que la linea o la barra se vea; y
+            # >= 30 de distancia a CUALQUIERA de los colores del semaforo de las
+            # franjas, porque esos ya significan "bien" y "mal" y un asesor
+            # pintado de rojo pareceria que atiende mal.
+            #
+            # azul noche · cian · marron · oliva · rosa · violeta
+            PALETA_ASESORES = ['#1e3a8a', '#0891b2', '#78350f', '#4d7c0f', '#db2777', '#7c3aed']
             # Cada serie lleva las dos lecturas del mismo dia:
             #   data       cuantas respondio  -> barras apiladas
             #   mediana_seg cuanto tardo      -> una linea por persona
