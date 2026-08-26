@@ -3501,31 +3501,61 @@ def _embudos_con_leads(cursor, subdomain):
 
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None,
-                          sql_embudo='', params_embudo=()):
-    """Leads cuyo último mensaje en la conversación es del cliente y el
-    asesor no ha respondido después. No depende del rango de fechas del
-    filtro: es el estado pendiente ahora mismo.
+                          sql_embudo='', params_embudo=(), corte=None):
+    """Leads cuyo último mensaje es del cliente: nadie contestó después.
 
-    desde_ts acota a partir de cuándo se conectó el webhook para este
-    cliente. De los mensajes anteriores no recibimos nada, asi que no
-    podemos saber si fueron respondidos: solo tenemos el valor que tenia
-    el campo custom al conectarnos. Sin ese piso el contador arrastraba
-    conversaciones muertas de hace un anio (medido en corepowerconsulting:
-    173 de 291 tenian mas de 3 meses) y el numero dejaba de ser accionable."""
+    Se calcula con los MENSAJES y desde el corte, no con los campos de fecha
+    de Kommo. Los campos tenían tres problemas, y los tres inflaban el número:
+
+      - 'f_ult_msj_asesor IS NULL' no quiere decir que nadie contestó, quiere
+        decir que el campo está vacío. De ahí salían los 1.556 falsos
+        positivos de Cámara China.
+      - vienen redondeados al minuto: cliente 10:30:50 y asesor 10:30:20 dan
+        los dos '10:30' y la comparación falla.
+      - se desactualizan. En el lead 23798351 el campo decía 11:20 y los
+        mensajes reales del asesor eran de 16:52, 17:04 y 17:08.
+
+    El precio es que el número solo cubre desde el corte: antes de esa fecha
+    Kommo no nos mandaba los salientes y no hay con qué reemplazar el campo.
+    Se prefiere un número más chico y cierto a uno grande que nadie puede
+    usar; la fecha se muestra en la tarjeta.
+
+    Cuenta como respuesta CUALQUIER saliente, incluido el del bot: la tarjeta
+    dice "sin responder", y el bot respondió. Que ese saludo no sea atención
+    de verdad es otra pregunta, y se mide aparte.
+
+    Sin corte —cuenta sin salientes capturados— se cae al método viejo."""
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
-        query = '''
-            SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre, asesor_nombre
-            FROM leads_estado
-            WHERE subdomain = %s
-              AND f_ult_msj_cliente IS NOT NULL
-              AND (f_ult_msj_asesor IS NULL OR f_ult_msj_cliente > f_ult_msj_asesor)
-        '''
-        params = [subdomain]
-        if desde_ts is not None:
-            query += ' AND f_ult_msj_cliente >= %s'
-            params.append(desde_ts)
+        if corte:
+            query = '''
+                SELECT le.lead_id, le.responsible_user_id, le.lead_nombre,
+                       le.asesor_nombre, cli.ultimo AS f_ult_msj_cliente
+                  FROM leads_estado le
+                  JOIN (SELECT lead_id, MAX(ts) AS ultimo FROM mensajes_cliente
+                         WHERE subdomain = %s AND ts >= %s GROUP BY lead_id) cli
+                    ON cli.lead_id = le.lead_id
+             LEFT JOIN (SELECT lead_id, MAX(ts) AS ultimo FROM mensajes_asesor
+                         WHERE subdomain = %s AND lead_id IS NOT NULL
+                         GROUP BY lead_id) asr
+                    ON asr.lead_id = le.lead_id
+                 WHERE le.subdomain = %s
+                   AND (asr.ultimo IS NULL OR cli.ultimo > asr.ultimo)
+            '''
+            params = [subdomain, corte, subdomain, subdomain]
+        else:
+            query = '''
+                SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre, asesor_nombre
+                FROM leads_estado
+                WHERE subdomain = %s
+                  AND f_ult_msj_cliente IS NOT NULL
+                  AND (f_ult_msj_asesor IS NULL OR f_ult_msj_cliente > f_ult_msj_asesor)
+            '''
+            params = [subdomain]
+            if desde_ts is not None:
+                query += ' AND f_ult_msj_cliente >= %s'
+                params.append(desde_ts)
         if responsible_user_ids:
             query += ' AND responsible_user_id = ANY(%s)'
             params.append(list(responsible_user_ids))
@@ -4193,7 +4223,7 @@ def pulse_data():
         piso_captura = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
         no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
-                                                piso_captura, sql_embudo, params_embudo)
+                                                piso_captura, sql_embudo, params_embudo, corte)
         trabajados_hoy, atendidos_solo_bot = _leads_trabajados_hoy(
             subdomain, tz_offset, h_ini, h_fin, asesor_ids,
             solo_abiertas, sql_embudo, params_embudo, corte)

@@ -1343,11 +1343,13 @@ async function cargarDatos() {
 
     // Leads accionables
     document.getElementById('kpi-no-respondidos').textContent = d.no_respondidos.length.toLocaleString('es');
-    // Antes de conectar el webhook no recibimos los mensajes, asi que no se
+    // "Sin responder" se calcula con los mensajes, que arrancan en el corte.
+    // Antes de esa fecha Kommo no nos mandaba los salientes, asi que no se
     // puede saber si esas conversaciones fueron respondidas. Se aclara para
-    // que no parezca que faltan leads.
-    document.getElementById('nota-no-respondidos').textContent = d.config.fecha_minima
-      ? `desde ${d.config.fecha_minima.split('-').reverse().join('/')}`
+    // que el numero no parezca incompleto sin motivo.
+    const desdeCuando = (d.config.medicion || {}).corte_fecha || d.config.fecha_minima;
+    document.getElementById('nota-no-respondidos').textContent = desdeCuando
+      ? `desde ${desdeCuando.split('-').reverse().join('/')}`
       : '';
     // El numero grande cuenta TODOS los atendidos hoy, como siempre. Los que
     // solo recibieron el saludo del bot se aclaran en una linea debajo: son
