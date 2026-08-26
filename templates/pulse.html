@@ -407,6 +407,45 @@
       </div>
     </div>
 
+    <!-- Distribución.
+         Va ANTES del ranking por asesor: primero cuanto tarda la cuenta
+         entera y como se reparte, despues quien. El ranking se lee mucho
+         mejor sabiendo si el problema es de todos o de algunos. -->
+    <div class="card">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="icon-chip bg-slate-100">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        </div>
+        <div>
+          <div class="section-title" id="titulo-distribucion">Distribución</div>
+          <div class="section-sub" id="sub-distribucion">Clic en una franja para ver los leads</div>
+        </div>
+      </div>
+      <div class="flex flex-col lg:flex-row gap-8 items-start">
+
+        <!-- La dona: cuanto pesa cada franja sobre el total. El total va en el
+             centro, que es para lo que existe el agujero, y es el denominador
+             de los cuatro porcentajes de la derecha.
+             En rem y no en px para que crezca con el resto del dashboard. -->
+        <div class="flex-shrink-0 flex flex-col items-center w-full lg:w-auto">
+          <div class="relative mx-auto" style="width:11.8rem;height:11.8rem">
+            <canvas id="chart-dist"></canvas>
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div class="t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
+              <div class="t-chico text-slate-500">respuestas</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Las barras, al lado. Las cuatro franjas ESTAN ordenadas —0-5,
+             5-15, 15-30, +30 min— y en la dona ese orden no se ve porque un
+             circulo no tiene principio ni fin. Las barras comparten linea de
+             base y escala, asi que ahi si se comparan de un vistazo.
+             Van DENTRO de la fila que se puede abrir para ver los leads. -->
+        <div class="flex-1 w-full min-w-0 divide-y divide-slate-50" id="legend-dist"></div>
+      </div>
+    </div>
+
     <!-- Por asesor -->
     <div class="card" id="card-por-asesor">
       <div class="flex items-center gap-3 mb-5">
@@ -427,36 +466,6 @@
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
-    </div>
-
-    <!-- Distribución -->
-    <div class="card">
-      <div class="flex items-center gap-3 mb-5">
-        <div class="icon-chip bg-slate-100">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="10"/></svg>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="section-title" id="titulo-distribucion">Distribución</div>
-          <div class="section-sub" id="sub-distribucion">Clic en una franja para ver los leads</div>
-        </div>
-        <!-- El total vivia en el centro de la dona. Sin dona sigue haciendo
-             falta: es el denominador de los cuatro porcentajes. -->
-        <div class="text-right flex-shrink-0">
-          <div class="t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
-          <div class="t-micro text-slate-500">respuestas</div>
-        </div>
-      </div>
-
-      <!-- Barras horizontales en vez de la dona.
-           Las cuatro franjas ESTAN ORDENADAS —0-5, 5-15, 15-30, +30 min— y un
-           circulo no tiene principio ni fin, asi que la dona rompia lo unico
-           que importa de estos datos. Ademas obligaba a comparar angulos, que
-           es lo que peor hace el ojo, y repetia los mismos numeros que ya
-           estaban en la lista de al lado.
-           Las barras van DENTRO de la fila que ya se podia abrir: comparten
-           linea de base y escala, se comparan de un vistazo, y el grafico y la
-           lista dejan de ser dos elementos que dicen lo mismo. -->
-      <div class="w-full divide-y divide-slate-50" id="legend-dist"></div>
     </div>
 
     <!-- Tendencia -->
@@ -915,6 +924,37 @@ function renderDist(distribucion) {
       </div>
     </div>
   `).join('');
+}
+
+function renderDonut(distribucion) {
+  const ctx = document.getElementById('chart-dist').getContext('2d');
+  const existing = Chart.getChart('chart-dist');
+  if (existing) existing.destroy();
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: distribucion.map(d => d.label),
+      datasets: [{
+        data: distribucion.map(d => d.count || 0.001),
+        // Una franja en cero igual ocupa un hilo de arco, en gris: sin eso la
+        // dona se dibuja con tres colores y parece que esa franja no existe.
+        backgroundColor: distribucion.map(d => d.count > 0 ? d.color : COLOR.linea),
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      cutout: '74%',
+      plugins: {
+        // La leyenda es la lista de la derecha, con sus cuadraditos de color.
+        // Repetirla alrededor de la dona serian los mismos cuatro nombres dos
+        // veces en la misma tarjeta.
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${distribucion[ctx.dataIndex].count} (${distribucion[ctx.dataIndex].pct}%)` } }
+      },
+      animation: { duration: 600 }
+    }
+  });
 }
 
 // Hasta donde llega el eje de tiempo. Devuelve null cuando no hace falta
@@ -1594,6 +1634,7 @@ async function cargarDatos() {
 
     // Distribución
     document.getElementById('donut-total').textContent = d.metricas.total.toLocaleString('es');
+    renderDonut(dist);
     renderDist(dist);
 
     // Tendencia
