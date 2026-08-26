@@ -134,7 +134,11 @@
           <div class="section-sub">Estado de ahora mismo · no cambia con el filtro de fechas</div>
         </div>
         <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
-          <input type="checkbox" id="chk-solo-abiertas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
+          <!-- Marcado por defecto: lo que el cliente dejo ABIERTO es lo que le
+               debe respuesta. Un lead ganado o perdido hace meses no es un
+               pendiente de atencion, y sin este filtro los arrastraba a todos.
+               En Camara China son 34.906 leads cerrados de 44.387. -->
+          <input type="checkbox" id="chk-solo-abiertas" checked onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
           Solo conversaciones abiertas
         </label>
       </div>
@@ -350,36 +354,32 @@
           </div>
           <div>
             <div class="section-title">Tendencia diaria</div>
-            <!-- Leyenda de verdad y no una linea de texto gris: el grafico
-                 tiene dos series con dos ejes de escalas distintas, y en la
-                 reunion no se entendia cual era cual. -->
-            <div class="flex items-center gap-x-4 gap-y-1 mt-1 flex-wrap">
-              <span class="flex items-center gap-1.5 text-xs text-slate-500">
-                <span id="leyenda-barras-caja" class="inline-block w-4 h-3 rounded-sm border flex-shrink-0" style="background:#2563eb33;border-color:#2563eb"></span>
-                <span id="leyenda-barras">Barras: cantidad de respuestas</span>
-              </span>
-              <span class="flex items-center gap-1.5 text-xs text-slate-500">
-                <svg class="flex-shrink-0" width="20" height="10" viewBox="0 0 20 10" aria-hidden="true"><line x1="1" y1="5" x2="19" y2="5" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/><circle cx="10" cy="5" r="3" fill="#0f172a" stroke="#fff" stroke-width="1.5"/></svg>
-                <span id="leyenda-linea">Línea: tiempo promedio</span>
-              </span>
-              <span id="nota-ejes" class="text-xs text-slate-500">Cada eje tiene su propia escala</span>
-            </div>
+            <!-- Dos paneles en vez de dos escalas en un dibujo. Antes las
+                 barras y la linea usaban ejes distintos y donde se cruzaban
+                 parecia que significaba algo: no significaba nada, era un
+                 artefacto de como habia quedado escalado cada eje. -->
+            <div class="section-sub" id="leyenda-linea">Arriba el tiempo · abajo el volumen</div>
             <div id="nota-tope" class="hidden mt-1 text-xs text-slate-500"></div>
           </div>
         </div>
         <div class="flex flex-col items-end gap-2">
-          <!-- Cantidad: cuantas respondio cada uno. Tiempo: cuanto tardo.
-               Son dos preguntas distintas y no entran en el mismo dibujo: las
-               cantidades se apilan, las medianas no se pueden sumar. -->
+          <!-- El interruptor decide donde se abre el detalle por persona:
+               como lineas de tiempo arriba, o como barras apiladas abajo. -->
           <div class="inline-flex bg-slate-100 rounded-xl p-1">
-            <button id="btn-trend-cantidad" onclick="cambiarTrend('cantidad')" class="px-3 py-1 rounded-lg text-xs font-semibold transition">Cantidad</button>
-            <button id="btn-trend-tiempo"   onclick="cambiarTrend('tiempo')"   class="px-3 py-1 rounded-lg text-xs font-semibold transition">Tiempo</button>
+            <button id="btn-trend-cantidad" onclick="cambiarTrend('cantidad')" class="px-3 py-1 rounded-lg text-xs font-semibold transition">Por volumen</button>
+            <button id="btn-trend-tiempo"   onclick="cambiarTrend('tiempo')"   class="px-3 py-1 rounded-lg text-xs font-semibold transition">Por tiempo</button>
           </div>
           <span id="trend-rango" class="text-sm text-slate-500"></span>
         </div>
       </div>
-      <div class="mt-5" style="height:180px">
+      <!-- Panel de arriba: el tiempo, que es lo que se viene a mirar. -->
+      <div class="mt-5" style="height:175px">
         <canvas id="chart-trend"></canvas>
+      </div>
+      <!-- Panel de abajo: el volumen, como apoyo. Comparte el eje de dias con
+           el de arriba, asi que se lee en vertical sin traducir nada. -->
+      <div class="mt-1" style="height:95px">
+        <canvas id="chart-trend-vol"></canvas>
       </div>
     </div>
 
@@ -702,7 +702,11 @@ fpDesde = flatpickr('#desde', OPTS_FECHA);
 fpHasta = flatpickr('#hasta', OPTS_FECHA);
 
 function fmtSeg(seg) {
-  if (!seg || seg <= 0) return '< 1 min';
+  // Decia "< 1 min" y solo salia con CERO segundos: cualquier otro valor
+  // menor a un minuto ya mostraba los segundos ("54s"). Osea que "< 1 min"
+  // convivia con "54s" y parecian dos formas de decir lo mismo cuando no lo
+  // eran: uno era instantaneo y el otro casi un minuto.
+  if (!seg || seg <= 0) return '< 1s';
   if (seg < 60) return `${seg}s`;
   if (seg < 3600) {
     const m = Math.floor(seg / 60), s = seg % 60;
@@ -856,16 +860,46 @@ function acotar(horas, tope) {
   };
 }
 
+// Linea punteada con el objetivo de respuesta. Es lo que convierte cada punto
+// en una respuesta a "¿cumplimos ese dia?" en vez de un numero suelto.
+const lineaObjetivo = {
+  id: 'lineaObjetivo',
+  afterDatasetsDraw(chart, args, opts) {
+    const h = opts && opts.horas;
+    if (!h) return;
+    const y = chart.scales.y.getPixelForValue(h);
+    const { left, right, top, bottom } = chart.chartArea;
+    if (!isFinite(y) || y < top || y > bottom) return;
+    const c = chart.ctx;
+    c.save();
+    c.setLineDash([5, 4]); c.strokeStyle = '#16a34a'; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(left, y); c.lineTo(right, y); c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = '#16a34a'; c.font = '700 11px Inter, sans-serif';
+    c.textAlign = 'left';
+    c.fillText('objetivo ' + fmtSeg(OBJETIVO), left + 4, y - 4);
+    c.restore();
+  }
+};
+
 function renderTrend(tendencia, tendenciaPorAsesor) {
-  const ctx = document.getElementById('chart-trend').getContext('2d');
-  const existing = Chart.getChart('chart-trend');
-  if (existing) existing.destroy();
+  // Dos paneles que comparten el eje de dias: arriba el tiempo, abajo el
+  // volumen. Antes era un solo dibujo con dos escalas distintas, y donde se
+  // cruzaban la barra y la linea parecia que significaba algo — no significaba
+  // nada, era un artefacto de como habia quedado escalado cada eje.
+  for (const id of ['chart-trend', 'chart-trend-vol']) {
+    const c = Chart.getChart(id);
+    if (c) c.destroy();
+  }
+  const ctx    = document.getElementById('chart-trend').getContext('2d');
+  const ctxVol = document.getElementById('chart-trend-vol').getContext('2d');
 
   const labels = tendencia.map(d => { const [,m,dia]=d.fecha.split('-'); return `${dia}/${m}`; });
   const hayAsesores = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
   const porTiempo = TREND_MODO === 'tiempo';
-  // Las barras apiladas solo tienen sentido contando. En modo tiempo se
-  // dibujan lineas: sumar la mediana de dos personas no da ningun numero.
+  // El detalle por persona se abre en UN panel o en el otro: como lineas de
+  // tiempo arriba, o como barras apiladas abajo. Las medianas no se apilan
+  // —sumar la de dos personas no da ningun numero— y las cantidades si.
   const apilado = hayAsesores && !porTiempo;
   const datasets = [];
 
@@ -887,18 +921,12 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
       : []);
   const TOPE = topeEje(todasHoras);
 
-  document.getElementById('leyenda-barras').textContent = porTiempo
-    ? 'Línea por persona: su mediana de ese día'
-    : (apilado ? 'Barras: cantidad de respuestas, un color por responsable'
-               : 'Barras: cantidad de respuestas');
   // 'tiempo real' cuando se miran los mensajes de fuera de horario: ahi el
   // reloj no salta las horas no laborables y el numero es otro.
   const real = (typeof MODO !== 'undefined' && MODO === 'fuera_horario') ? ' real' : '';
   document.getElementById('leyenda-linea').textContent = porTiempo
-    ? `Línea negra: mediana${real} de todo el equipo`
-    : `Línea: tiempo${real} de respuesta (mediana)`;
-  document.getElementById('leyenda-barras-caja').classList.toggle('hidden', porTiempo);
-  document.getElementById('nota-ejes').classList.toggle('hidden', porTiempo);
+    ? `Arriba: mediana${real} de cada persona · abajo el volumen total`
+    : `Arriba: mediana${real} del equipo · abajo el volumen por persona`;
   // Si se acoto el eje hay que decirlo: un punto pegado al techo sin aviso se
   // lee como el valor del techo, no como "se salio de escala".
   const notaTope = document.getElementById('nota-tope');
@@ -906,38 +934,19 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   if (TOPE) notaTope.textContent =
     `▲ días fuera de escala (más de ${fmtHoras(TOPE)}) · el valor real está en el detalle`;
 
-  // 'order' controla que se dibuja encima: Chart.js ordena los datasets por
-  // order ascendente y los pinta en orden inverso, asi que el MENOR queda
-  // arriba. La linea va en 1 y las barras en 2 para que no la tapen.
-  if (apilado) {
-    tendenciaPorAsesor.forEach(serie => {
-      datasets.push({
-        type: 'bar',
-        label: serie.asesor,
-        data: serie.data,
-        backgroundColor: serie.color,
-        borderRadius: 3,
-        borderSkipped: false,
-        stack: 'respuestas',
-        yAxisID: 'y',
-        order: 2,
-      });
-    });
-  } else if (!porTiempo) {
-    datasets.push({
-      type: 'bar',
-      label: 'Respuestas',
-      data: tendencia.map(d => d.total),
-      backgroundColor: '#2563eb33',
-      borderColor: '#2563eb',
-      borderWidth: 1.5,
-      borderRadius: 6,
-      borderSkipped: false,
-      stack: 'respuestas',
-      yAxisID: 'y',
-      order: 2,
-    });
-  }
+  // El panel de abajo: volumen. Apilado por persona cuando el detalle esta
+  // ahi, gris liso cuando el detalle esta arriba como lineas de tiempo.
+  const barras = apilado
+    ? tendenciaPorAsesor.map(serie => ({
+        label: serie.asesor, data: serie.data,
+        backgroundColor: serie.color, borderRadius: 3,
+        borderSkipped: false, stack: 'respuestas',
+      }))
+    : [{
+        label: 'Respuestas', data: tendencia.map(d => d.total),
+        backgroundColor: '#cbd5e1', borderRadius: 3,
+        borderSkipped: false, stack: 'respuestas',
+      }];
 
   // Una linea por persona con SU mediana de cada dia. Es lo que permite
   // comparar un dia contra otro por asesor, que antes no se podia: las barras
@@ -967,7 +976,6 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
         // Sin esto la linea uniria dos dias salteando uno sin respuestas, y
         // dibujaria una pendiente que nunca existio.
         spanGaps: false,
-        yAxisID: 'y1',
         order: 2,
       });
     });
@@ -998,7 +1006,6 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
     // Recta y no curva: la curva inventa valores entre dos dias que no existen.
     tension: 0,
     fill: false,
-    yAxisID: 'y1',
     order: 1,
   });
 
@@ -1006,30 +1013,35 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   // por tick —"45m" arriba de "2h"— y eso rompe la proporcion visual, que es
   // lo unico que un eje aporta: dos marcas separadas por la misma distancia
   // parecian valer lo mismo y no valian.
-  const valoresY1 = datasets
-    .filter(ds => ds.yAxisID === 'y1')
+  // UNA sola unidad para todo el eje. El callback anterior decidia por tick
+  // —"45m" arriba de "2h"— y eso rompe la proporcion visual, que es lo unico
+  // que un eje aporta: dos marcas a la misma distancia parecian valer lo mismo
+  // y no valian.
+  const valores = datasets
     .reduce((acc, ds) => acc.concat(ds.data), [])
     .filter(v => v !== null && v !== undefined);
-  const maxY1 = valoresY1.length ? Math.max.apply(null, valoresY1) : 0;
-  const ejeEnMinutos = maxY1 < 1.5;      // hasta 1h30 se lee mejor en minutos
+  const maxY = valores.length ? Math.max.apply(null, valores) : 0;
+  const ejeEnMinutos = maxY < 1.5;      // hasta 1h30 se lee mejor en minutos
   const fmtEje = v => ejeEnMinutos
     ? Math.round(v * 60) + ' min'
     : (Math.round(v * 10) / 10) + ' h';
 
+  // --- Panel de arriba: el tiempo -------------------------------------------
   new Chart(ctx, {
-    type: 'bar',
+    type: 'line',
     data: { labels, datasets },
+    plugins: [lineaObjetivo],
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       // Con 'index' + intersect:false alcanza con pasar el mouse por la
-      // columna del dia para ver TODOS los valores, incluido el tiempo
-      // promedio. Antes habia que acertarle al punto de la linea, y si una
-      // barra alta lo tapaba no habia forma de leer ese dia.
+      // columna del dia. Antes habia que acertarle al punto de la linea.
       interaction: { mode: 'index', intersect: false },
       plugins: {
+        // El objetivo solo si entra en la escala; si no, seria una linea
+        // pegada al piso que no dice nada.
+        lineaObjetivo: { horas: OBJETIVO ? OBJETIVO / 3600 : 0 },
         legend: {
-          display: apilado || (porTiempo && hayAsesores),
+          display: porTiempo && hayAsesores,
           position: 'bottom',
           labels: { boxWidth: 10, font: { size: 11 }, color: '#64748b',
                     filter: item => item.text !== 'Mediana del equipo' }
@@ -1037,8 +1049,6 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
         tooltip: {
           callbacks: {
             label: ctx => {
-              if (ctx.dataset.yAxisID !== 'y1')
-                return ` ${ctx.dataset.label}: ${ctx.parsed.y} respuestas`;
               if (ctx.parsed.y === null) return null;
               // El valor REAL, no el recortado: el punto puede estar dibujado
               // pegado al techo, pero el numero que se lee es el que fue.
@@ -1055,29 +1065,41 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
         }
       },
       scales: {
-        x: { grid:{ display:false }, ticks:{ font:{size:12}, color:'#64748b', maxTicksLimit:15 }, stacked: true },
+        // Los dias se rotulan una sola vez, en el panel de abajo: repetirlos
+        // en los dos duplica ruido y roba altura al dibujo.
+        x: { grid: { display: false }, ticks: { display: false } },
         y: {
-          display: !porTiempo,
-          position: 'left',
-          stacked: true,
-          grid:{ color:'#f1f5f9' },
-          ticks:{ font:{size:12}, color:'#64748b', precision: 0 },
           beginAtZero: true,
-          title: { display: true, text: 'Respuestas', color:'#64748b', font:{size:11, weight:'600'} }
-        },
-        y1: {
-          // En modo tiempo es el unico eje, asi que va a la izquierda con su
-          // grilla: queda un grafico de una sola escala y se lee sin traducir.
-          position: porTiempo ? 'left' : 'right',
-          grid: { display: porTiempo, color: '#f1f5f9' },
-          ticks:{ font:{size:12}, color:'#64748b', callback: fmtEje },
-          beginAtZero: true,
-          // Con tope, los dias que se pasan quedan dibujados en el techo con
-          // un triangulo en vez de estirar la escala y aplastar al resto.
+          grid: { color: '#f1f5f9' },
+          ticks: { font: { size: 12 }, color: '#64748b', callback: fmtEje },
+          // Con tope, los dias que se pasan quedan en el techo con un
+          // triangulo en vez de estirar la escala y aplastar al resto.
           max: TOPE || undefined,
-          title: { display: true, color:'#64748b', font:{size:11, weight:'600'},
+          title: { display: true, color: '#64748b', font: { size: 11, weight: '600' },
                    text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
+      }
+    }
+  });
+
+  // --- Panel de abajo: el volumen -------------------------------------------
+  new Chart(ctxVol, {
+    type: 'bar',
+    data: { labels, datasets: barras },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y} respuestas` } }
+      },
+      scales: {
+        x: { grid: { display: false }, stacked: true,
+             ticks: { font: { size: 12 }, color: '#64748b', maxTicksLimit: 15 } },
+        y: { beginAtZero: true, stacked: true, grid: { display: false },
+             ticks: { font: { size: 11 }, color: '#94a3b8', precision: 0, maxTicksLimit: 3 },
+             title: { display: true, text: 'Respuestas', color: '#64748b',
+                      font: { size: 11, weight: '600' } } }
       }
     }
   });

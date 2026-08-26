@@ -3194,23 +3194,42 @@ def _calc_por_asesor(registros):
         saber cuanto y que tan rapido responde el bot es informacion util. Pero
         no compiten: el Salesbot contesta en 4 segundos y encabezaria el
         ranking todos los meses, empujando a las personas hacia abajo como si
-        atendieran peor que una maquina que solo saluda."""
+        atendieran peor que una maquina que solo saluda.
+      - los CANALES: 'whatsappWZ', 'WhatsApp Business', 'WhatsApp Lite'. Son
+        personas contestando desde la app o desde una integracion, o sea
+        atencion real, pero Kommo no sabe QUIEN apreto enviar y registra el
+        canal. En Core Power son el 54% de los mensajes. No pueden competir en
+        un ranking de personas porque no son una persona."""
     # El campo custom "Asesor" manda sobre el responsable cuando esta cargado.
     # En las cuentas que comparten un usuario de Kommo entre varias personas,
     # el responsable no identifica a nadie: el trabajo de tres asesores aparece
     # bajo un solo nombre y el ranking no dice nada. Cuando el campo no viene,
     # se cae al responsable y la cuenta se comporta como siempre.
     grupos = defaultdict(list)
-    bots = set()
+    bots, canales, personas = set(), set(), set()
     for r in registros:
         nombre = asesor_de_registro(r) or SIN_ASIGNAR
         grupos[nombre].append(r['efectivo_seg'])
         if r.get('respondio_auto'):
             bots.add(nombre)
+        elif r.get('respondio_user_id') == 0:
+            canales.add(nombre)
+        else:
+            personas.add(nombre)
+
+    # Un nombre es un CANAL si nunca vino de un usuario identificado. Si al
+    # menos una vez llego con user_id propio, es una persona y se lo trata
+    # como tal.
+    canales -= personas
 
     def sin_puesto(nombre, segs):
         if nombre in bots:
             return 'automático'
+        # Es atencion real de una persona, pero Kommo no sabe cual: contestaron
+        # desde la app o desde una integracion (Wazzup, WhatsApp Business). No
+        # puede competir en un ranking de personas porque no es una.
+        if nombre in canales:
+            return 'sin identificar'
         if nombre == SIN_ASIGNAR:
             return 'sin responsable'
         if len(segs) < MIN_MUESTRA_ASESOR:
@@ -3346,6 +3365,11 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
             # asesor_de_registro para armar el ranking.
             'respondio_nombre':    t['autor'],
             'respondio_auto':      t['auto'],
+            # user_id 0 sin ser bot = contesto una PERSONA pero por fuera de
+            # Kommo, desde la app o una integracion como Wazzup. Kommo no sabe
+            # quien apreto enviar y registra el canal. Es atencion real, pero
+            # no se puede atribuir a nadie, y el ranking tiene que decirlo.
+            'respondio_user_id':   t['user_id'],
         })
     return registros
 
