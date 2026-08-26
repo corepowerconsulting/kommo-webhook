@@ -466,8 +466,13 @@
          38.5% en rojo era lo que mas saltaba de la pantalla, y la metrica del
          producto es la mediana: el ojo iba al lugar equivocado. -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div class="card lg:col-span-2 flex flex-col justify-center">
-        <div class="flex items-center gap-3 flex-wrap">
+      <!-- Centrado, no pegado a la izquierda. Esta tarjeta tiene UN dato y
+           ocupa dos tercios del ancho: alineado a la izquierda dejaba medio
+           recuadro vacio a la derecha y el numero no se leia como el centro de
+           la pantalla, que es lo que es. Las tres lineas —cifra, etiqueta y
+           los tres percentiles— comparten eje vertical. -->
+      <div class="card lg:col-span-2 flex flex-col justify-center items-center text-center">
+        <div class="flex items-center justify-center gap-3 flex-wrap">
           <!-- En tinta, no en azul. Un numero azul al lado de una etiqueta
                roja dice dos cosas distintas sobre el mismo dato, y el veredicto
                lo da la etiqueta. -->
