@@ -135,7 +135,28 @@
        Reemplaza a la barra de mediana, que codificaba tres cosas a la vez y
        ademas dibujaba justo donde nadie se diferencia. */
     .tira-franjas      { display:flex; height:9px; background:var(--carril); border-radius:99px; overflow:hidden; }
-    .tira-franjas > div { transition:width .3s; }
+    .tira-franjas > span { transition:width .3s, filter .15s; cursor:default; }
+    /* Que el tramo bajo el mouse se separe del resto. La dona lo hace
+       corriendo el arco hacia afuera; aca no hay lugar para eso, asi que se
+       aclara. Sin ninguna señal no se sabe cual de los cuatro se esta
+       leyendo. */
+    .tira-franjas:hover > span { filter:saturate(.45) opacity(.55); }
+    .tira-franjas > span:hover { filter:none; }
+
+    /* Cuadrito de datos al pasar el mouse, con el mismo aspecto que el de los
+       graficos: Chart.js dibuja el suyo dentro del canvas y no se puede
+       reusar, asi que la tira necesita el propio. El title= del navegador no
+       servia —tarda medio segundo, lo pinta el sistema operativo y no combina
+       con nada. */
+    .tip {
+      position:fixed; z-index:60; pointer-events:none;
+      background:rgba(15,23,42,.92); color:#fff;
+      padding:6px 10px; border-radius:8px;
+      font-size:var(--t-micro); line-height:1.45; white-space:nowrap;
+      box-shadow:0 4px 14px rgba(15,23,42,.28);
+      display:flex; align-items:center; gap:7px;
+    }
+    .tip-punto { width:9px; height:9px; border-radius:3px; flex-shrink:0; }
     .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
     .franja-row:hover { background:var(--carril); }
     .chevron { transition:transform .2s; }
@@ -602,6 +623,10 @@
 
 <footer class="text-center py-8 t-micro text-slate-300">PULSE · Core Power Consulting</footer>
 
+<!-- Uno solo para toda la pagina: se mueve y se rellena, no se crea uno por
+     tramo. Arranca oculto. -->
+<div id="tip" class="tip hidden"></div>
+
 <script>
 const SUBDOMAIN = "{{ subdomain }}";
 const DIAS_LABEL = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -944,6 +969,66 @@ function fmtHoras(h) {
 function fmtPct(pct, count) {
   return (count > 0 && pct === 0) ? '<1%' : pct + '%';
 }
+
+// --- El cuadrito que sigue al mouse -----------------------------------------
+// Delegado en el documento y no un listener por tramo: la tabla se redibuja
+// entera en cada carga y en cada refresco del snapshot, asi que colgar
+// listeners de cada <span> los iria acumulando.
+(function () {
+  let tip = null;
+  const dame = () => (tip = tip || document.getElementById('tip'));
+
+  function ubicar(e) {
+    const t = dame();
+    if (!t) return;
+    // Arriba y a la derecha del cursor. Contra el borde derecho se pasa al
+    // otro lado, si no el cuadrito queda cortado justo cuando la franja mas
+    // te interesa —la critica— es la que esta mas a la derecha.
+    const margen = 14;
+    const ancho = t.offsetWidth || 160;
+    const x = (e.clientX + margen + ancho > window.innerWidth)
+      ? e.clientX - margen - ancho
+      : e.clientX + margen;
+    t.style.left = `${Math.max(4, x)}px`;
+    t.style.top  = `${Math.max(4, e.clientY - 34)}px`;
+  }
+
+  document.addEventListener('mouseover', e => {
+    const el = e.target && e.target.closest && e.target.closest('[data-tip]');
+    const t = dame();
+    if (!el || !t) return;
+    t.innerHTML = '';
+    const punto = document.createElement('span');
+    punto.className = 'tip-punto';
+    punto.style.background = el.dataset.tipColor || '#fff';
+    const texto = document.createElement('span');
+    // textContent y no innerHTML: lo que venga en el atributo se muestra como
+    // texto, nunca se interpreta.
+    texto.textContent = `${el.dataset.tipLabel || ''} · ${el.dataset.tipDetalle || ''}`;
+    t.appendChild(punto);
+    t.appendChild(texto);
+    t.classList.remove('hidden');
+    ubicar(e);
+  });
+
+  document.addEventListener('mousemove', e => {
+    const t = dame();
+    if (t && !t.classList.contains('hidden')) ubicar(e);
+  });
+
+  document.addEventListener('mouseout', e => {
+    const el = e.target && e.target.closest && e.target.closest('[data-tip]');
+    const t = dame();
+    if (el && t) t.classList.add('hidden');
+  });
+
+  // Al scrollear el mouse no se mueve pero la tira si: el cuadrito quedaria
+  // flotando sobre otra cosa.
+  window.addEventListener('scroll', () => {
+    const t = dame();
+    if (t) t.classList.add('hidden');
+  }, { passive: true });
+})();
 
 function tagClass(tag) {
   return { 'Ideal':'tag-green', 'Bueno':'tag-amber', 'Regular':'tag-orange', 'Crítico':'tag-red' }[tag] || 'tag-amber';
@@ -1575,8 +1660,14 @@ function renderAsesores(porAsesor, minMuestra) {
     //
     // Los tramos en cero no dibujan nada pero tampoco desaparecen de la
     // cuenta: que alguien NO tenga criticos es justo lo que hay que ver.
+    // Los datos del cuadrito viajan en atributos y el texto se arma con
+    // textContent, no concatenando HTML: el nombre de la franja sale de la
+    // config pero el patron se copia, y algun dia va a llevar un dato del
+    // cliente.
     const tira = (a.distribucion || []).map(f => f.pct > 0
-      ? `<div style="width:${f.pct}%;background:${f.color}" title="${f.tag}: ${f.count} (${f.pct}%)"></div>`
+      ? `<span style="width:${f.pct}%;background:${f.color}"
+               data-tip="1" data-tip-label="${f.label}" data-tip-color="${f.color}"
+               data-tip-detalle="${f.count} ${f.count === 1 ? 'respuesta' : 'respuestas'} · ${fmtPct(f.pct, f.count)}"></span>`
       : '').join('');
 
     // El ultimo tramo es el critico. Se escribe al lado de la tira porque un
@@ -1608,7 +1699,7 @@ function renderAsesores(porAsesor, minMuestra) {
           <!-- El icono lo pidio el cliente expresamente. -->
           <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span class="t-chico font-semibold text-slate-700 truncate">${a.asesor}</span>
-          <span class="t-micro text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
+          <span class="t-micro text-slate-500 whitespace-nowrap">${a.total} ${a.total === 1 ? 'respuesta' : 'respuestas'}</span>
           ${aviso}
         </div>
         <div class="text-right flex-shrink-0 pl-3">
