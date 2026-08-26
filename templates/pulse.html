@@ -482,7 +482,6 @@
                  parecia que significaba algo: no significaba nada, era un
                  artefacto de como habia quedado escalado cada eje. -->
             <div class="section-sub" id="leyenda-linea">Arriba el tiempo · abajo el volumen</div>
-            <div id="nota-tope" class="hidden mt-1 t-micro text-slate-500"></div>
           </div>
         </div>
         <span id="trend-rango" class="t-chico text-slate-500 mt-1"></span>
@@ -1069,13 +1068,6 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
   document.getElementById('leyenda-linea').textContent = porTiempo
     ? `Arriba: mediana${real} de cada persona elegida · abajo el volumen`
     : `Arriba: mediana${real} del equipo · abajo el volumen por persona`;
-  // Si se acoto el eje hay que decirlo: un punto pegado al techo sin aviso se
-  // lee como el valor del techo, no como "se salio de escala".
-  const notaTope = document.getElementById('nota-tope');
-  notaTope.classList.toggle('hidden', !TOPE);
-  if (TOPE) notaTope.textContent =
-    `▲ días fuera de escala (más de ${fmtHoras(TOPE)}) · el valor real está en el detalle`;
-
   // El panel de abajo: volumen. Apilado por persona cuando el detalle esta
   // ahi, gris liso cuando el detalle esta arriba como lineas de tiempo.
   const barras = apilado
@@ -1104,6 +1096,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
         label: serie.asesor,
         data: ac.data,
         real: ac.real,
+        fuera: ac.fuera,
         // El punto fuera de escala manda sobre la forma de la serie: que se
         // vea que ese dia se salio del grafico importa mas que de quien es.
         pointStyle: ac.fuera.map(f => f ? 'triangle' : PUNTO_SERIE[i % PUNTO_SERIE.length]),
@@ -1141,6 +1134,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
     label: 'Mediana del equipo',
     data: acEquipo.data,
     real: acEquipo.real,
+    fuera: acEquipo.fuera,
     pointStyle: acEquipo.fuera.map(f => f ? 'triangle' : 'circle'),
     pointRadius: acEquipo.fuera.map(f => f ? 7 : 4),
     muestra: tendencia.map(d => d.total),
@@ -1213,7 +1207,14 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
               // lo mismo.
               const n = (ctx.dataset.muestra || [])[ctx.dataIndex];
               const suf = n ? ` (${n} ${n === 1 ? 'respuesta' : 'respuestas'})` : '';
-              return ` ${ctx.dataset.label}: ${fmtHoras(v)}${suf}`;
+              // El aviso de "fuera de escala" se movio del encabezado de la
+              // tarjeta a aca. Un punto pegado al techo sin nada que lo diga
+              // se lee como el valor del techo; puesto al lado del numero
+              // real solo aparece en el dia que hace falta, en vez de ser un
+              // renglon fijo debajo del titulo.
+              const tocaTecho = (ctx.dataset.fuera || [])[ctx.dataIndex];
+              const aviso = tocaTecho ? ' · fuera de escala' : '';
+              return ` ${ctx.dataset.label}: ${fmtHoras(v)}${suf}${aviso}`;
             }
           }
         }
