@@ -2545,6 +2545,94 @@ def health_atencion():
 
     return jsonify(salida)
 
+@app.route('/health/remitentes')
+@token_requerido
+def health_remitentes():
+    """Quien manda los mensajes salientes de una cuenta, y como los trata el
+    ranking.
+
+    Existe porque la pregunta "¿este nombre lo capturamos?" ya aparecio tres
+    veces y los dos endpoints que la respondian —conversacion y salientes—
+    escanean el TEXTO CRUDO de la tabla de eventos, sin indice: en la cuenta
+    mas grande son 130.000 filas en siete dias y el pedido se cuelga. Este lee
+    mensajes_asesor, que ya esta indexada por (subdomain, lead_id, ts).
+
+    Devuelve la clasificacion con las MISMAS reglas que el ranking, no con una
+    copia: si manana cambia sin_puesto, esto cambia solo.
+
+    Con &lead_id= se acota a un lead, que es el caso de "abri esta conversacion
+    en Kommo y quiero saber que vimos nosotros"."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if not subdomain:
+        return jsonify({'error': 'falta ?subdomain='}), 400
+    lead_id = request.args.get('lead_id', '').strip()
+
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        sql = ('SELECT autor_nombre, user_id, author_type, origin, '
+               '       COUNT(*) AS mensajes, '
+               '       COUNT(DISTINCT lead_id) AS leads, '
+               '       MIN(ts) AS desde, MAX(ts) AS hasta '
+               '  FROM mensajes_asesor WHERE subdomain = %s')
+        params = [subdomain]
+        if lead_id:
+            sql += ' AND lead_id = %s'
+            params.append(lead_id)
+        sql += (' GROUP BY autor_nombre, user_id, author_type, origin'
+                ' ORDER BY mensajes DESC LIMIT 60')
+        c.execute(sql, params)
+        filas = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+
+    tz = PULSE_CONFIG.get(subdomain, {}).get('tz_offset', 0)
+    # Un nombre es CANAL solo si nunca aparecio con un user_id propio. Si al
+    # menos una vez llego identificado, es una persona: es la misma regla que
+    # usa _calc_por_asesor y por eso se calcula sobre todas las filas antes de
+    # clasificar cada una.
+    con_user_id = {f['autor_nombre'] for f in filas if f['user_id']}
+
+    def como_lo_ve_el_ranking(f):
+        nombre = f['autor_nombre']
+        if nombre in REMITENTES_AUTOMATICOS:
+            return 'automático · no compite'
+        if not f['user_id'] and nombre not in con_user_id:
+            return 'sin identificar · persona, pero Kommo no sabe cual'
+        return 'compite en el ranking'
+
+    salida = []
+    for f in filas:
+        nombre = f['autor_nombre']
+        propio = nombre_asesor(f['user_id']) if f['user_id'] else None
+        salida.append({
+            'nombre_en_el_mensaje': nombre,
+            'user_id': f['user_id'],
+            # Como sale en pantalla: nuestra lista manda sobre el nombre del
+            # mensaje cuando el user_id se conoce.
+            'nombre_en_el_tablero': nombre_de_remitente(f['user_id'], nombre),
+            'en_pulse_config': bool(propio and not propio.startswith('Usuario ')),
+            'author_type': f['author_type'],
+            'origin': f['origin'],
+            'mensajes': f['mensajes'],
+            'leads': f['leads'],
+            'primero': _ts_to_local(f['desde'], tz).strftime('%d/%m/%Y %H:%M'),
+            'ultimo':  _ts_to_local(f['hasta'], tz).strftime('%d/%m/%Y %H:%M'),
+            'lo_trata_como': como_lo_ve_el_ranking(f),
+        })
+
+    return jsonify({
+        'subdomain': subdomain,
+        'lead_id': lead_id or 'todos',
+        'como_leerlo': ('user_id 0 y nunca identificado = canal o integracion: '
+                        'es atencion real de una persona, pero Kommo registra '
+                        'el canal y no quien apreto enviar. '
+                        'en_pulse_config false = el nombre no esta en nuestra '
+                        'lista, asi que se muestra tal cual lo manda Kommo.'),
+        'remitentes': salida,
+        'sin_capturar': (not salida),
+    })
+
 @app.route('/health/conversacion')
 @token_requerido
 def health_conversacion():
