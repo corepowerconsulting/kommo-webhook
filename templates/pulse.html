@@ -143,8 +143,17 @@
     /* Barra de una franja de la distribucion. El carril gris marca el 100%,
        asi que cada franja se lee contra el total sin tener que comparar el
        largo de una barra con el de otra. */
-    .barra-franja      { height:9px; background:var(--carril); border-radius:99px; overflow:hidden; }
-    .barra-franja-fill { height:100%; border-radius:99px; transition:width .3s; }
+    /* display:block porque estos dos son <span>: van dentro del boton que abre
+       la franja, y el contenido de un boton tiene que ser texto. */
+    .barra-franja      { display:block; height:9px; background:var(--carril); border-radius:99px; overflow:hidden; }
+    .barra-franja-fill { display:block; height:100%; border-radius:99px; transition:width .3s; }
+
+    /* Ahora que las tarjetas del snapshot y las filas de franja son botones se
+       pueden enfocar con Tab, asi que tiene que verse CUAL esta enfocado. El
+       anillo del navegador funciona, pero no combina con el resto. */
+    button:focus-visible {
+      outline:2px solid var(--foco); outline-offset:2px; border-radius:10px;
+    }
 
     .field-label { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); display:block; }
     .control {
@@ -179,6 +188,46 @@
       padding:5px 9px; font-size:var(--t-chico); color:var(--texto); transition:.15s;
     }
     .multi-btn:hover { border-color:var(--otros); }
+
+    /* --- Menos movimiento para quien lo pidio -----------------------------
+       El sistema operativo tiene un ajuste para eso y hasta ahora lo
+       ignorabamos: el punto de "en vivo" late SIN PARAR, y para alguien con
+       sensibilidad vestibular o trastorno de atencion eso no es un detalle.
+       No se apaga nada, se acorta a un parpadeo: los estados finales quedan
+       igual, solo desaparece el recorrido. */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    /* --- Impresion --------------------------------------------------------
+       Ana exporta a PDF para pasarle numeros al cliente. Sin esto salia la
+       barra de filtros, los botones y las flechitas —controles que en papel
+       no hacen nada— y, peor, los navegadores NO imprimen fondos por defecto:
+       las cuatro franjas salian todas blancas. En este tablero el color no es
+       decoracion, es el dato. */
+    @media print {
+      @page { margin: 12mm; }
+      html { font-size: 12pt; }
+      body { background: #fff; }
+      /* Que los colores lleguen al papel. Es lo unico imprescindible de todo
+         este bloque: sin esto la distribucion y el reparto por asesor salen
+         en blanco y no dicen nada. */
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      /* Fuera lo que solo sirve en pantalla. */
+      .no-imprimir, .chevron, .btn-primary, .multi-panel { display: none !important; }
+      /* Una tarjeta partida entre dos hojas no se puede leer. */
+      .card { break-inside: avoid; box-shadow: none !important; border-color: var(--otros) !important; }
+      /* El encabezado pegajoso, en papel, se imprimiria en cada hoja. */
+      header { position: static !important; }
+      /* Los paneles desplegables se imprimen si estan abiertos; los cerrados
+         no se fuerzan, porque quien imprime eligio que ver. */
+      a { text-decoration: none; color: inherit; }
+    }
   </style>
   <script>
     /* La paleta tambien para el JS: los graficos y el HTML que se arma a mano
@@ -198,11 +247,15 @@
         </svg>
       </div>
       <div class="leading-tight">
-        <div class="t-base font-extrabold text-slate-900 tracking-tight">PULSE</div>
+        <!-- El h1 de la pagina. Era un div: la pagina no tenia NINGUN
+             encabezado, asi que para un lector de pantalla no habia titulo ni
+             secciones, solo 143 divs seguidos. Tailwind resetea el tamaño de
+             h1-h6, asi que con la misma clase se ve igual que antes. -->
+        <h1 class="t-base font-extrabold text-slate-900 tracking-tight">PULSE</h1>
         <div id="nombre-cliente" class="t-micro text-slate-500 font-normal">—</div>
       </div>
     </div>
-    <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="flex items-center gap-1.5 t-chico text-slate-500 hover:text-slate-600 transition">
+    <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="no-imprimir flex items-center gap-1.5 t-chico text-slate-500 hover:text-slate-600 transition">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Salir
     </a>
@@ -232,7 +285,7 @@
       <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
         <div>
           <div class="flex items-center gap-2 flex-wrap">
-            <div class="section-title">Snapshot actual</div>
+            <h2 class="section-title">Snapshot actual</h2>
             <!-- Se refresca solo cada minuto y medio. Decirlo importa: sin
                  esto, un numero quieto se lee como un numero viejo y la gente
                  recarga la pagina por las dudas. -->
@@ -261,36 +314,46 @@
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div class="card border-l-4 !border-l-red-400">
-          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
-            <div class="flex items-start gap-3.5">
-              <div class="icon-chip bg-red-50">
+          <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
+               con Tab ni se activa con Enter: quien no usa mouse no podia abrir
+               esta lista. Cambia solo el elemento; los estilos son los mismos.
+               Adentro van <span> y no <div> porque el contenido de un boton
+               tiene que ser texto: con div el HTML es invalido. Las clases de
+               flex funcionan igual sobre span. -->
+          <button type="button" class="w-full text-left flex items-start justify-between"
+                  aria-expanded="false" aria-controls="panel-no-respondidos"
+                  onclick="toggleExtra('no-respondidos')">
+            <span class="flex items-start gap-3.5">
+              <span class="icon-chip bg-red-50">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              </div>
-              <div>
+              </span>
+              <span>
                 <!-- La cifra en tinta: el borde izquierdo rojo y el icono ya
                      dicen que esta tarjeta es la de alerta. Pintar tambien el
                      numero no agregaba nada, porque nunca dejaba de ser rojo. -->
-                <div class="kpi-num" id="kpi-no-respondidos">—</div>
-                <div class="kpi-label">Sin responder</div>
-              </div>
-            </div>
+                <span class="kpi-num block" id="kpi-no-respondidos">—</span>
+                <span class="kpi-label block">Sin responder</span>
+              </span>
+            </span>
             <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
+          </button>
           <div id="panel-no-respondidos" class="hidden mt-4"></div>
         </div>
         <div class="card border-l-4 !border-l-blue-400">
-          <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
-            <div class="flex items-start gap-3.5">
-              <div class="icon-chip bg-blue-50">
+          <button type="button" class="w-full text-left flex items-start justify-between"
+                  aria-expanded="false" aria-controls="panel-trabajados-hoy"
+                  onclick="toggleExtra('trabajados-hoy')">
+            <span class="flex items-start gap-3.5">
+              <span class="icon-chip bg-blue-50">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--marca)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              </div>
-              <div>
-                <div class="kpi-num" id="kpi-trabajados-hoy">—</div>
-                <div class="kpi-label">Atendidos hoy</div>
-              </div>
-            </div>
+              </span>
+              <span>
+                <span class="kpi-num block" id="kpi-trabajados-hoy">—</span>
+                <span class="kpi-label block">Atendidos hoy</span>
+              </span>
+            </span>
             <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
+          </button>
           <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
 
@@ -300,7 +363,7 @@
     <!-- Barra de filtros en UNA linea, con cada grupo en su subrecuadro:
          periodo / vista / personas. Las etiquetas van adentro del recuadro y
          no encima, que es lo que hacia que la barra ocupara dos alturas. -->
-    <div class="card !p-4">
+    <div class="card !p-4 no-imprimir">
       <div class="flex items-center gap-2.5 flex-wrap">
 
         <div class="grupo">
@@ -427,7 +490,7 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
         </div>
         <div>
-          <div class="section-title" id="titulo-distribucion">Distribución</div>
+          <h2 class="section-title" id="titulo-distribucion">Distribución</h2>
           <div class="section-sub" id="sub-distribucion">Clic en una franja para ver los leads</div>
         </div>
       </div>
@@ -468,7 +531,7 @@
                siempre es quien contesto: Kommo no manda los mensajes
                salientes. Pero las cuentas que cargan el campo custom "Asesor"
                si tienen a la persona real, y ahi el titulo lo dice. -->
-          <div class="section-title" id="titulo-por-asesor">Tiempo de respuesta por responsable</div>
+          <h2 class="section-title" id="titulo-por-asesor">Tiempo de respuesta por responsable</h2>
           <div class="section-sub" id="sub-por-asesor">Mediana · responsable del lead, no quien contestó</div>
           <!-- Sin esto la barra se lee al reves: la mas larga es la mas LENTA,
                y una barra larga y llena parece "mas y mejor". -->
@@ -486,7 +549,7 @@
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
           </div>
           <div>
-            <div class="section-title">Tendencia diaria</div>
+            <h2 class="section-title">Tendencia diaria</h2>
             <!-- Dos paneles en vez de dos escalas en un dibujo. Antes las
                  barras y la linea usaban ejes distintos y donde se cruzaban
                  parecia que significaba algo: no significaba nada, era un
@@ -520,7 +583,7 @@
         <div class="flex items-center gap-2">
           <span id="punto-extremos" class="w-2 h-2 rounded-full bg-red-400"></span>
           <div>
-            <div class="section-title" id="titulo-extremos">Conversaciones más lentas del período</div>
+            <h2 class="section-title" id="titulo-extremos">Conversaciones más lentas del período</h2>
             <div class="section-sub" id="sub-extremos">Ya respondidas · no son pendientes</div>
           </div>
         </div>
@@ -554,6 +617,15 @@ const RAIZ_PX = (() => {
 })();
 const FUENTE_EJE  = Math.round(RAIZ_PX * 0.68);   // numeros de los ejes
 const FUENTE_MINI = Math.round(RAIZ_PX * 0.62);   // leyenda y titulos de eje
+
+// Chart.js anima sobre canvas, donde el CSS no llega: la regla de
+// prefers-reduced-motion no lo alcanza y hay que preguntarle a mano. Sin
+// esto, quien pidio menos movimiento igual veia los graficos dibujarse.
+const MENOS_MOVIMIENTO = (() => {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch (e) { return false; }
+})();
+const ANIM = MENOS_MOVIMIENTO ? 0 : 600;
 
 let distData = [];
 let CRM_URL = null;
@@ -860,11 +932,20 @@ function getBadgeTag(seg, franjas) {
   return franjas[franjas.length - 1];
 }
 
+// El boton que abre un panel tiene que DECIR si esta abierto, no solo girar
+// una flechita: quien navega con lector de pantalla no ve la flecha. La
+// flecha se queda igual, es la señal para quien si la ve.
+function _avisarAbierto(panel, abierto) {
+  const boton = document.querySelector(`[aria-controls="${panel.id}"]`);
+  if (boton) boton.setAttribute('aria-expanded', String(abierto));
+}
+
 function toggleLeads(idx) {
   const panel = document.getElementById(`leads-${idx}`);
   const chevron = document.getElementById(`chev-${idx}`);
   const hidden = panel.classList.toggle('hidden');
   chevron.style.transform = hidden ? '' : 'rotate(180deg)';
+  _avisarAbierto(panel, !hidden);
 }
 
 function toggleExtra(key) {
@@ -872,6 +953,7 @@ function toggleExtra(key) {
   const chevron = document.getElementById(`chev-${key}`);
   const hidden = panel.classList.toggle('hidden');
   chevron.style.transform = hidden ? '' : 'rotate(180deg)';
+  _avisarAbierto(panel, !hidden);
 }
 
 function renderExtraLeads(containerId, leads) {
@@ -899,24 +981,25 @@ function renderDist(distribucion) {
   const el = document.getElementById('legend-dist');
   el.innerHTML = distribucion.map((d, i) => `
     <div>
-      <div class="franja-row flex items-center gap-3 px-2 py-3" onclick="toggleLeads(${i})">
+      <button type="button" class="franja-row w-full text-left flex items-center gap-3 px-2 py-3"
+              aria-expanded="false" aria-controls="leads-${i}" onclick="toggleLeads(${i})">
         <!-- Ancho fijo para que las cuatro barras arranquen en la misma
              vertical: si cada una empieza donde termina su etiqueta, dejan de
              ser comparables. -->
-        <div class="flex items-center gap-2.5 flex-shrink-0" style="width:12.6rem">
+        <span class="flex items-center gap-2.5 flex-shrink-0" style="width:12.6rem">
           <span class="w-3 h-3 rounded flex-shrink-0" style="background:${d.color}"></span>
           <span class="t-chico font-semibold text-slate-700">${d.label}</span>
           <span class="tag ${tagClass(d.tag)}">${d.tag}</span>
-        </div>
+        </span>
         <!-- El carril gris es el 100%: cada franja se lee contra el total sin
              tener que compararla con las otras tres. -->
-        <div class="barra-franja flex-1 min-w-0 hidden sm:block">
-          <div class="barra-franja-fill" style="width:${d.pct}%;background:${d.color}"></div>
-        </div>
+        <span class="barra-franja flex-1 min-w-0 hidden sm:block">
+          <span class="barra-franja-fill" style="width:${d.pct}%;background:${d.color}"></span>
+        </span>
         <span class="t-chico font-semibold text-slate-800 w-14 text-right flex-shrink-0">${d.count}</span>
         <span class="t-chico text-slate-500 w-14 text-right flex-shrink-0">${d.pct}%</span>
         <svg id="chev-${i}" class="chevron flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tenue)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
+      </button>
       <div id="leads-${i}" class="hidden px-2 pb-2">
         <div class="bg-slate-50 rounded-xl overflow-hidden">
           ${d.leads.length === 0
@@ -966,7 +1049,7 @@ function renderDonut(distribucion) {
         legend: { display: false },
         tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${distribucion[ctx.dataIndex].count} (${distribucion[ctx.dataIndex].pct}%)` } }
       },
-      animation: { duration: 600 }
+      animation: { duration: ANIM }
     }
   });
 }
