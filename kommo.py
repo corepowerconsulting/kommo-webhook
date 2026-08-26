@@ -14,6 +14,11 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
 from pulse_config import PULSE_CONFIG, ASESORES, REMITENTES_AUTOMATICOS
+# Todos los colores salen de paleta.py, con el porque de cada eleccion escrito
+# ahi. Se importan con alias porque en este archivo OTROS ya es una etiqueta de
+# texto y ASESORES ya es la lista de personas.
+import paleta
+from paleta import ASESORES as PALETA_ASESORES, OTROS as COLOR_OTROS
 
 # Nombres de embudos y etapas, bajados de la API con scripts/bajar_embudos.py.
 # El webhook manda numeros (pipeline_id 7008155, status_id 74938892) y los
@@ -3873,7 +3878,10 @@ def pulse():
     # mañana. Ademas la cuenta puede estar en otra zona que quien la mira.
     tz = PULSE_CONFIG.get(subdomain, {}).get('tz_offset', 0)
     hoy_cuenta = (datetime.utcnow() + timedelta(hours=tz)).strftime('%Y-%m-%d')
-    return render_template('pulse.html', subdomain=subdomain, hoy_cuenta=hoy_cuenta)
+    # La paleta baja del backend en vez de estar escrita a mano en el CSS: asi
+    # un color se cambia en un solo lugar y cambia en los tres lados.
+    return render_template('pulse.html', subdomain=subdomain, hoy_cuenta=hoy_cuenta,
+                           paleta_css=paleta.para_css(), paleta_js=paleta.para_js())
 
 @app.route('/pulse/propuesta')
 def pulse_propuesta():
@@ -4265,20 +4273,7 @@ def pulse_data():
                         # medianas de personas distintas no da ningun numero.
                         daily_asesor[dia][OTROS] = juntos
                 nombres = principales + ([OTROS] if any(OTROS in daily_asesor[d] for d in dias) else [])
-            # No elegidos a ojo: son la combinacion que MAXIMIZA la distancia
-            # entre todos los pares, buscada sobre 17 candidatos
-            # (scripts en el scratchpad, criterio maximin sobre delta E en
-            # CIELAB). El par mas parecido queda a 53.6; la version anterior
-            # tenia dos a 25.9 y se confundian en pantalla.
-            #
-            # Los 17 candidatos ya venian filtrados por dos condiciones: >= 3:1
-            # de contraste sobre blanco, para que la linea o la barra se vea; y
-            # >= 30 de distancia a CUALQUIERA de los colores del semaforo de las
-            # franjas, porque esos ya significan "bien" y "mal" y un asesor
-            # pintado de rojo pareceria que atiende mal.
-            #
-            # azul noche · cian · marron · oliva · rosa · violeta
-            PALETA_ASESORES = ['#1e3a8a', '#0891b2', '#78350f', '#4d7c0f', '#db2777', '#7c3aed']
+            # Los colores —y el porque de cada uno— viven en paleta.py.
             # Cada serie lleva las dos lecturas del mismo dia:
             #   data       cuantas respondio  -> barras apiladas
             #   mediana_seg cuanto tardo      -> una linea por persona
@@ -4295,7 +4290,7 @@ def pulse_data():
                     'asesor': nombre,
                     # "Otros" en gris: no es una persona, no compite por
                     # atencion con las que si lo son.
-                    'color': ('#cbd5e1' if nombre == OTROS
+                    'color': (COLOR_OTROS if nombre == OTROS
                               else PALETA_ASESORES[i % len(PALETA_ASESORES)]),
                     'data': [len(daily_asesor[dia].get(nombre, [])) for dia in dias],
                     'mediana_seg': [

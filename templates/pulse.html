@@ -11,6 +11,34 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
+    :root {
+      /* --- Colores: bajan de paleta.py, no se escriben aca --------------
+         Un color se cambia en ese archivo y cambia en el CSS, en el JS y en
+         los graficos del backend. Antes estaba en tres lados y dos veces se
+         eligio uno a ojo que despues hubo que corregir. */
+{{ paleta_css }}
+
+      /* --- Escala tipografica: seis tamaños ----------------------------
+         Habia trece, y cuatro de ellos (0.65 0.66 0.68 0.70) caian dentro de
+         un pixel: nadie los distingue, pero cada uno era una decision mas que
+         tomar al escribir markup nuevo. Seis escalones, cada uno claramente
+         mas grande que el anterior, y elegir deja de tener grises. */
+      --t-micro:    0.70rem;   /* etiquetas en mayuscula, tags, rangos */
+      --t-chico:    0.85rem;   /* secundario, controles, filas de tabla */
+      --t-base:     1.00rem;   /* texto normal */
+      --t-titulo:   1.25rem;   /* titulo de tarjeta */
+      --t-cifra:    2.00rem;   /* numeros de apoyo */
+      --t-cifra-xl: 3.20rem;   /* el numero del producto, uno por pantalla */
+
+      /* --- Pesos: tres -------------------------------------------------
+         Habia seis (400 500 600 700 800 900). Entre 600 y 700 en Inter hay
+         una diferencia que no se ve a 14px, asi que eran decisiones sin
+         efecto. Normal para leer, medio para destacar, fuerte para cifras. */
+      --p-normal: 400;
+      --p-medio:  600;
+      --p-fuerte: 800;
+    }
+
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
        hay forma de que dos textos queden desparejos por olvidarse de uno. */
@@ -24,74 +52,111 @@
        Se aplica a todo el dashboard porque casi no hay parrafos: son etiquetas
        cortas y numeros, que es justo donde las tabulares ganan. */
     body { font-variant-numeric: tabular-nums lining-nums; }
-    .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:#2563eb; text-decoration-thickness:2px; text-underline-offset:2px; font-weight:700; }
-    .flatpickr-day.selected, .flatpickr-day.selected:hover { background:#2563eb; border-color:#2563eb; }
-    .flatpickr-day.today { border-color:#2563eb; }
+    /* --- Los utilitarios de Tailwind que llevan significado -------------
+       Apuntan a la paleta para que "el azul de la marca" o "el rojo de
+       alerta" tengan un solo valor y no dos parecidos. El prefijo body sube
+       la especificidad: Tailwind inyecta su hoja despues de esta y si no,
+       ganaria la suya.
+       Los grises de fondo y borde (bg-slate-50/100, border-slate-200) NO se
+       redefinen: los valores de Tailwind ya son exactamente los de la
+       paleta, asi que no son una segunda fuente. */
+    body .text-slate-900, body .text-slate-800 { color: var(--tinta); }
+    body .text-slate-700, body .text-slate-600 { color: var(--texto); }
+    body .text-slate-500 { color: var(--apagado); }
+    body .text-slate-400 { color: var(--tenue); }
+    body .text-slate-300 { color: var(--otros); }
+    body .text-blue-600  { color: var(--marca); }
+    body .bg-blue-600    { background: var(--marca); }
+    body .text-green-600 { color: var(--ok); }
+    body .text-red-500   { color: var(--alerta); }
 
-    .card { background:#fff; border-radius:18px; padding:24px; border:1px solid #e5e9f0; box-shadow:0 1px 3px rgba(15,23,42,.04); }
-    .kpi-num  { font-size:2.4rem; font-weight:900; line-height:1; letter-spacing:-0.03em; }
-    /* Tres tamaños de KPI, uno por nivel de importancia. El grande es la
-       metrica del producto; los chicos son contexto. Con todos iguales el ojo
-       iba al numero rojo mas grande en vez de a la mediana. */
-    .kpi-num-xl { font-size:3.4rem; font-weight:900; line-height:1; letter-spacing:-0.03em; }
-    .kpi-num-sm { font-size:1.7rem; font-weight:800; line-height:1; letter-spacing:-0.02em; }
-    .kpi-label{ font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:#64748b; margin-top:6px; }
-    .kpi-label-sm{ font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:#64748b; margin-top:5px; }
-    .section-title { font-size:1.05rem; font-weight:700; color:#1e293b; }
-    .section-sub   { font-size:0.85rem; color:#64748b; margin-top:2px; }
-    .tag { font-size:0.65rem; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:99px; }
+    /* Tamaños de la escala como clases, para reemplazar text-xs / text-sm /
+       text-2xl de Tailwind, que traen su propia escala paralela. */
+    .t-micro  { font-size: var(--t-micro); }
+    .t-chico  { font-size: var(--t-chico); }
+    .t-base   { font-size: var(--t-base); }
+    .t-titulo { font-size: var(--t-titulo); }
+    .t-cifra  { font-size: var(--t-cifra); }
+
+    .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:var(--marca); text-decoration-thickness:2px; text-underline-offset:2px; font-weight:var(--p-medio); }
+    .flatpickr-day.selected, .flatpickr-day.selected:hover { background:var(--marca); border-color:var(--marca); }
+    .flatpickr-day.today { border-color:var(--marca); }
+
+    .card { background:#fff; border-radius:18px; padding:24px; border:1px solid var(--linea); box-shadow:0 1px 3px rgba(15,23,42,.04); }
+    /* Dos tamaños de cifra, uno por nivel de importancia. El grande es la
+       metrica del producto y hay uno solo por pantalla; el otro es contexto.
+       Con todos iguales el ojo iba al numero rojo mas grande en vez de a la
+       mediana. */
+    .kpi-num-xl { font-size:var(--t-cifra-xl); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.03em; }
+    .kpi-num    { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; }
+    .kpi-num-sm { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; }
+    .kpi-label{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--apagado); margin-top:6px; }
+    .kpi-label-sm{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.05em; color:var(--apagado); margin-top:5px; }
+    .section-title { font-size:var(--t-titulo); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.01em; }
+    .section-sub   { font-size:var(--t-chico); color:var(--apagado); margin-top:2px; }
+    .tag { font-size:var(--t-micro); font-weight:var(--p-medio); letter-spacing:.05em; padding:2px 8px; border-radius:99px; }
     /* Version grande de .tag para el veredicto del numero principal. */
-    .tag-kpi { font-size:0.9rem; font-weight:800; letter-spacing:.02em; padding:5px 14px; border-radius:99px; }
-    .tag-green  { background:#dcfce7; color:#166534; }
-    .tag-amber  { background:#fef3c7; color:#92400e; }
-    .tag-orange { background:#ffedd5; color:#9a3412; }
-    .tag-red    { background:#fee2e2; color:#991b1b; }
-    .row-hover:hover { background:#f8fafc; border-radius:10px; }
+    .tag-kpi { font-size:var(--t-base); font-weight:var(--p-fuerte); letter-spacing:.02em; padding:5px 14px; border-radius:99px; }
+    .tag-green  { background:var(--franja-0-fondo); color:var(--franja-0-texto); }
+    .tag-amber  { background:var(--franja-1-fondo); color:var(--franja-1-texto); }
+    .tag-orange { background:var(--franja-2-fondo); color:var(--franja-2-texto); }
+    .tag-red    { background:var(--franja-3-fondo); color:var(--franja-3-texto); }
+    .row-hover:hover { background:var(--fondo-suave); border-radius:10px; }
     /* Barra del ranking por asesor. El ojo compara longitudes mucho mejor que
        numeros con unidades distintas: "12m" contra "1h 05m" obliga a convertir
        de cabeza, dos barras no. Todas arrancan en la misma vertical y comparten
        escala, que es lo unico que hace comparable una barra. */
-    .barra-asesor      { height:5px; background:#f1f5f9; border-radius:99px; overflow:hidden; }
-    .barra-asesor-fill { height:100%; background:#2563eb; border-radius:99px; transition:width .3s; }
+    .barra-asesor      { height:5px; background:var(--carril); border-radius:99px; overflow:hidden; }
+    .barra-asesor-fill { height:100%; background:var(--marca); border-radius:99px; transition:width .3s; }
     .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
-    .franja-row:hover { background:#f1f5f9; }
+    .franja-row:hover { background:var(--carril); }
     .chevron { transition:transform .2s; }
     .leads-panel { transition:all .2s; }
+    /* Barra de una franja de la distribucion. El carril gris marca el 100%,
+       asi que cada franja se lee contra el total sin tener que comparar el
+       largo de una barra con el de otra. */
+    .barra-franja      { height:9px; background:var(--carril); border-radius:99px; overflow:hidden; }
+    .barra-franja-fill { height:100%; border-radius:99px; transition:width .3s; }
 
-    .field-label { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; display:block; }
+    .field-label { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); display:block; }
     .control {
-      border:1px solid #e2e8f0; border-radius:10px; padding:9px 12px; font-size:0.875rem;
-      color:#334155; background:#f8fafc; transition:.15s; line-height:1.2;
+      border:1px solid var(--linea); border-radius:10px; padding:9px 12px; font-size:var(--t-chico);
+      color:var(--texto); background:var(--fondo-suave); transition:.15s; line-height:1.2;
     }
-    .control:focus { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.15); border-color:#60a5fa; background:#fff; }
+    .control:focus { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.15); border-color:var(--foco); background:#fff; }
     .btn-primary {
-      background:#2563eb; color:#fff; padding:9px 22px; border-radius:10px; font-size:0.875rem;
-      font-weight:600; transition:.15s; box-shadow:0 1px 2px rgba(37,99,235,.35); white-space:nowrap;
+      background:var(--marca); color:#fff; padding:9px 22px; border-radius:10px; font-size:var(--t-chico);
+      font-weight:var(--p-medio); transition:.15s; box-shadow:0 1px 2px rgba(37,99,235,.35); white-space:nowrap;
     }
-    .btn-primary:hover { background:#1d4ed8; }
+    .btn-primary:hover { background:var(--marca-oscura); }
     .icon-chip { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     /* Subrecuadros de la barra de filtros. Agrupan visualmente lo que va
        junto —periodo, vista, personas— para que la linea no se lea como seis
        controles sueltos puestos en fila. */
     .grupo {
       display:flex; align-items:center; gap:6px;
-      background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:5px 8px;
+      background:var(--fondo-suave); border:1px solid var(--linea); border-radius:12px; padding:5px 8px;
     }
-    .grupo-lbl { font-size:0.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; white-space:nowrap; }
+    .grupo-lbl { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); white-space:nowrap; }
     /* Input de fecha sin caja propia: la caja es el subrecuadro que lo contiene. */
     .fecha-in {
       background:transparent; border:0; padding:2px 0; width:88px; cursor:pointer;
-      font-size:0.85rem; font-weight:600; color:#334155;
+      font-size:var(--t-chico); font-weight:var(--p-medio); color:var(--texto);
     }
     .fecha-in:focus { outline:none; }
     /* Boton de selector multiple, compacto para que entre en la linea. */
     .multi-btn {
       display:flex; align-items:center; gap:6px; max-width:190px;
-      background:#fff; border:1px solid #e2e8f0; border-radius:9px;
-      padding:5px 9px; font-size:0.83rem; color:#334155; transition:.15s;
+      background:#fff; border:1px solid var(--linea); border-radius:9px;
+      padding:5px 9px; font-size:var(--t-chico); color:var(--texto); transition:.15s;
     }
-    .multi-btn:hover { border-color:#cbd5e1; }
+    .multi-btn:hover { border-color:var(--otros); }
   </style>
+  <script>
+    /* La paleta tambien para el JS: los graficos y el HTML que se arma a mano
+       leen de aca en vez de repetir hex sueltos. Misma fuente que el CSS. */
+    const COLOR = {{ paleta_js | tojson }};
+  </script>
 </head>
 <body class="bg-slate-50 min-h-screen">
 
@@ -105,11 +170,11 @@
         </svg>
       </div>
       <div class="leading-tight">
-        <div class="text-base font-black text-slate-900 tracking-tight">PULSE</div>
-        <div id="nombre-cliente" class="text-xs text-slate-500 font-medium">—</div>
+        <div class="t-base font-extrabold text-slate-900 tracking-tight">PULSE</div>
+        <div id="nombre-cliente" class="t-micro text-slate-500 font-normal">—</div>
       </div>
     </div>
-    <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-600 transition">
+    <a href="{{ url_for('pulse_logout', subdomain=subdomain) }}" class="flex items-center gap-1.5 t-chico text-slate-500 hover:text-slate-600 transition">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Salir
     </a>
@@ -121,12 +186,12 @@
 
   <div id="loading" class="flex flex-col items-center justify-center py-32 gap-3">
     <div class="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-    <span class="text-slate-500 text-sm">Cargando datos…</span>
+    <span class="text-slate-500 t-chico">Cargando datos…</span>
   </div>
 
   <div id="error-state" class="hidden text-center py-32">
-    <div class="text-4xl mb-4">⚠️</div>
-    <div id="error-msg" class="text-slate-500 text-sm"></div>
+    <div class="t-cifra mb-4">⚠️</div>
+    <div id="error-msg" class="text-slate-500 t-chico"></div>
   </div>
 
   <div id="content" class="hidden space-y-6">
@@ -143,14 +208,14 @@
             <!-- Se refresca solo cada minuto y medio. Decirlo importa: sin
                  esto, un numero quieto se lee como un numero viejo y la gente
                  recarga la pagina por las dudas. -->
-            <span class="flex items-center gap-2 text-sm font-medium text-slate-600">
+            <span class="flex items-center gap-2 t-chico font-normal text-slate-600">
               <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
               <span id="frescura">en vivo</span>
             </span>
           </div>
           <div class="section-sub">Estado de ahora mismo</div>
         </div>
-        <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
+        <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
           <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
                dejo abierto es lo que le debe respuesta; un lead ganado o
                perdido hace meses no es un pendiente de atencion. Asi que el
@@ -167,14 +232,14 @@
           <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('no-respondidos')">
             <div class="flex items-start gap-3.5">
               <div class="icon-chip bg-red-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </div>
               <div>
                 <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
                 <div class="kpi-label">Sin responder</div>
               </div>
             </div>
-            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
           <div id="panel-no-respondidos" class="hidden mt-4"></div>
         </div>
@@ -182,14 +247,14 @@
           <div class="flex items-start justify-between cursor-pointer" onclick="toggleExtra('trabajados-hoy')">
             <div class="flex items-start gap-3.5">
               <div class="icon-chip bg-blue-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--marca)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
               <div>
                 <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
                 <div class="kpi-label">Atendidos hoy</div>
               </div>
             </div>
-            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
           <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
@@ -206,20 +271,20 @@
         <div class="grupo">
           <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <input type="text" id="desde" readonly class="fecha-in"/>
-          <span class="text-slate-300 text-sm">→</span>
+          <span class="text-slate-300 t-chico">→</span>
           <input type="text" id="hasta" readonly class="fecha-in"/>
         </div>
 
         <div class="grupo !p-1 !gap-0">
-          <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg text-sm font-semibold transition whitespace-nowrap">Horario laboral</button>
-          <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-lg text-sm font-semibold transition whitespace-nowrap">Fuera de horario</button>
+          <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Horario laboral</button>
+          <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Fuera de horario</button>
         </div>
 
         <div class="grupo">
           <div class="multi-wrap relative">
             <button type="button" onclick="multiToggle('asesor')" class="multi-btn">
               <span class="grupo-lbl">Responsables</span>
-              <span class="truncate font-medium" id="multi-asesor-txt">Todos</span>
+              <span class="truncate font-normal" id="multi-asesor-txt">Todos</span>
               <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-asesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
@@ -231,7 +296,7 @@
           <div class="multi-wrap relative hidden" id="filtro-asesor-campo">
             <button type="button" onclick="multiToggle('asesorcampo')" class="multi-btn">
               <span class="grupo-lbl">Asesores</span>
-              <span class="truncate font-medium" id="multi-asesorcampo-txt">Todos</span>
+              <span class="truncate font-normal" id="multi-asesorcampo-txt">Todos</span>
               <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-asesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
@@ -243,7 +308,7 @@
           <div class="multi-wrap relative hidden" id="filtro-embudo">
             <button type="button" onclick="multiToggle('embudo')" class="multi-btn">
               <span class="grupo-lbl">Embudos</span>
-              <span class="truncate font-medium" id="multi-embudo-txt">Todos</span>
+              <span class="truncate font-normal" id="multi-embudo-txt">Todos</span>
               <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="multi-embudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-80 max-h-80 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
@@ -255,7 +320,7 @@
 
       <!-- Horario y dias: contexto, no un control. Va en una linea fina y
            discreta en vez de una segunda fila con su propio separador. -->
-      <div class="mt-3 text-xs text-slate-500">
+      <div class="mt-3 t-micro text-slate-500">
         <span id="horario-txt" class="font-semibold text-slate-500"></span>
         <span class="text-slate-300 mx-1.5">·</span>
         <span id="dias-txt" class="font-semibold text-slate-500"></span>
@@ -266,8 +331,8 @@
          numeros salen de una muestra parcial y hay que decirlo. -->
     <div id="aviso-cobertura" class="hidden card !py-3 !px-4 border-l-4 !border-l-amber-400 bg-amber-50/40">
       <div class="flex items-start gap-2.5">
-        <svg class="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <div class="text-sm text-amber-900" id="texto-cobertura"></div>
+        <svg class="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--apagado)" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div class="t-chico text-amber-900" id="texto-cobertura"></div>
       </div>
     </div>
 
@@ -286,7 +351,7 @@
           <span id="kpi-badge-prom" class="tag-kpi hidden"></span>
         </div>
         <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
-        <div class="mt-2 text-xs text-slate-500">
+        <div class="mt-2 t-micro text-slate-500">
           p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
           <span class="text-slate-300">·</span>
           prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
@@ -299,12 +364,12 @@
         <div class="card !p-4">
           <div class="kpi-num-sm text-green-600" id="kpi-pct-ideal">—</div>
           <div class="kpi-label-sm">Respondieron en &lt; 5 min</div>
-          <div class="mt-1 text-xs text-slate-500" id="kpi-sub-ideal"></div>
+          <div class="mt-1 t-micro text-slate-500" id="kpi-sub-ideal"></div>
         </div>
         <div class="card !p-4">
           <div class="kpi-num-sm text-red-500" id="kpi-pct-critico">—</div>
           <div class="kpi-label-sm">Esperaron más de 30 min</div>
-          <div class="mt-1 text-xs text-slate-500" id="kpi-sub-critico"></div>
+          <div class="mt-1 t-micro text-slate-500" id="kpi-sub-critico"></div>
         </div>
       </div>
     </div>
@@ -313,7 +378,7 @@
     <div class="card" id="card-por-asesor">
       <div class="flex items-center gap-3 mb-5">
         <div class="icon-chip bg-slate-100">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <div>
           <!-- El titulo cambia segun la cuenta y por eso se arma en JS.
@@ -325,7 +390,7 @@
           <div class="section-sub" id="sub-por-asesor">Mediana · responsable del lead, no quien contestó</div>
           <!-- Sin esto la barra se lee al reves: la mas larga es la mas LENTA,
                y una barra larga y llena parece "mas y mejor". -->
-          <div class="text-xs text-slate-500 mt-1" id="leyenda-objetivo"></div>
+          <div class="t-micro text-slate-500 mt-1" id="leyenda-objetivo"></div>
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
@@ -335,29 +400,30 @@
     <div class="card">
       <div class="flex items-center gap-3 mb-5">
         <div class="icon-chip bg-slate-100">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="10"/></svg>
         </div>
-        <div>
+        <div class="flex-1 min-w-0">
           <div class="section-title" id="titulo-distribucion">Distribución</div>
           <div class="section-sub" id="sub-distribucion">Clic en una franja para ver los leads</div>
         </div>
-      </div>
-      <div class="flex flex-col lg:flex-row gap-8 items-start">
-
-        <!-- Donut -->
-        <div class="flex-shrink-0 flex flex-col items-center w-full lg:w-auto">
-          <div class="relative mx-auto" style="width:200px;height:200px">
-            <canvas id="chart-dist"></canvas>
-            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <div class="text-2xl font-black text-slate-800" id="donut-total">—</div>
-              <div class="text-sm text-slate-500 font-medium">respuestas</div>
-            </div>
-          </div>
+        <!-- El total vivia en el centro de la dona. Sin dona sigue haciendo
+             falta: es el denominador de los cuatro porcentajes. -->
+        <div class="text-right flex-shrink-0">
+          <div class="t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
+          <div class="t-micro text-slate-500">respuestas</div>
         </div>
-
-        <!-- Legend expandible -->
-        <div class="flex-1 w-full divide-y divide-slate-50" id="legend-dist"></div>
       </div>
+
+      <!-- Barras horizontales en vez de la dona.
+           Las cuatro franjas ESTAN ORDENADAS —0-5, 5-15, 15-30, +30 min— y un
+           circulo no tiene principio ni fin, asi que la dona rompia lo unico
+           que importa de estos datos. Ademas obligaba a comparar angulos, que
+           es lo que peor hace el ojo, y repetia los mismos numeros que ya
+           estaban en la lista de al lado.
+           Las barras van DENTRO de la fila que ya se podia abrir: comparten
+           linea de base y escala, se comparan de un vistazo, y el grafico y la
+           lista dejan de ser dos elementos que dicen lo mismo. -->
+      <div class="w-full divide-y divide-slate-50" id="legend-dist"></div>
     </div>
 
     <!-- Tendencia -->
@@ -365,7 +431,7 @@
       <div class="flex items-start justify-between mb-1">
         <div class="flex items-center gap-3">
           <div class="icon-chip bg-slate-100">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
           </div>
           <div>
             <div class="section-title">Tendencia diaria</div>
@@ -374,10 +440,10 @@
                  parecia que significaba algo: no significaba nada, era un
                  artefacto de como habia quedado escalado cada eje. -->
             <div class="section-sub" id="leyenda-linea">Arriba el tiempo · abajo el volumen</div>
-            <div id="nota-tope" class="hidden mt-1 text-xs text-slate-500"></div>
+            <div id="nota-tope" class="hidden mt-1 t-micro text-slate-500"></div>
           </div>
         </div>
-        <span id="trend-rango" class="text-sm text-slate-500 mt-1"></span>
+        <span id="trend-rango" class="t-chico text-slate-500 mt-1"></span>
       </div>
       <!-- Panel de arriba: el tiempo, que es lo que se viene a mirar. -->
       <div class="mt-5" style="height:175px">
@@ -406,8 +472,8 @@
           </div>
         </div>
         <div class="inline-flex bg-slate-100 rounded-xl p-1">
-          <button id="btn-lentos"  onclick="cambiarExtremos('lentos')"  class="px-3.5 py-1.5 rounded-lg text-sm font-semibold transition">Más lentos</button>
-          <button id="btn-rapidos" onclick="cambiarExtremos('rapidos')" class="px-3.5 py-1.5 rounded-lg text-sm font-semibold transition">Más rápidos</button>
+          <button id="btn-lentos"  onclick="cambiarExtremos('lentos')"  class="px-3.5 py-1.5 rounded-lg t-chico font-semibold transition">Más lentos</button>
+          <button id="btn-rapidos" onclick="cambiarExtremos('rapidos')" class="px-3.5 py-1.5 rounded-lg t-chico font-semibold transition">Más rápidos</button>
         </div>
       </div>
       <div id="tabla-extremos"></div>
@@ -416,7 +482,7 @@
   </div>
 </main>
 
-<footer class="text-center py-8 text-xs text-slate-300">PULSE · Core Power Consulting</footer>
+<footer class="text-center py-8 t-micro text-slate-300">PULSE · Core Power Consulting</footer>
 
 <script>
 const SUBDOMAIN = "{{ subdomain }}";
@@ -453,7 +519,7 @@ const MULTI = {};
 function multiInit(nombre, items, textoTodos) {
   MULTI[nombre] = { items: items, sel: new Set(), todos: textoTodos };
   document.getElementById(`multi-${nombre}-panel`).innerHTML = items.map(it => `
-    <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm text-slate-700">
+    <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer t-chico text-slate-700">
       <input type="checkbox" value="${it.value}" onchange="multiCambio('${nombre}')"
              class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
       <span class="truncate">${it.label}</span>
@@ -523,8 +589,8 @@ function embudoInit(lista) {
         <label class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
           <input type="checkbox" data-emb="${e.id}" onchange="embudoCambio()"
                  class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
-          <span class="text-sm font-semibold text-slate-700 truncate">${e.nombre}</span>
-          <span class="ml-auto text-xs text-slate-500 flex-shrink-0">${e.leads}</span>
+          <span class="t-chico font-semibold text-slate-700 truncate">${e.nombre}</span>
+          <span class="ml-auto t-micro text-slate-500 flex-shrink-0">${e.leads}</span>
         </label>
       </div>
       <div id="emb-hijos-${e.id}" class="hidden pb-1">
@@ -532,8 +598,8 @@ function embudoInit(lista) {
           <label class="flex items-center gap-2 pl-9 pr-3 py-1.5 hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" data-etapa="${et.clave}" data-padre="${e.id}" onchange="embudoCambio()"
                    class="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
-            <span class="text-xs text-slate-600 truncate">${et.nombre}</span>
-            <span class="ml-auto text-xs text-slate-300 flex-shrink-0">${et.leads}</span>
+            <span class="t-micro text-slate-600 truncate">${et.nombre}</span>
+            <span class="ml-auto t-micro text-slate-300 flex-shrink-0">${et.leads}</span>
           </label>`).join('')}
       </div>
     </div>`).join('');
@@ -614,8 +680,8 @@ const TOP_N_EXTREMOS = 5;
 
 function renderExtremos() {
   const esLento = EXTREMOS === 'lentos';
-  const activo   = 'px-3.5 py-1.5 rounded-lg text-sm font-semibold transition bg-white text-blue-600 shadow-sm';
-  const inactivo = 'px-3.5 py-1.5 rounded-lg text-sm font-semibold transition text-slate-500 hover:text-slate-700';
+  const activo   = 'px-3.5 py-1.5 rounded-lg t-chico font-semibold transition bg-white text-blue-600 shadow-sm';
+  const inactivo = 'px-3.5 py-1.5 rounded-lg t-chico font-semibold transition text-slate-500 hover:text-slate-700';
   document.getElementById('btn-lentos').className  = esLento ? activo : inactivo;
   document.getElementById('btn-rapidos').className = esLento ? inactivo : activo;
   document.getElementById('punto-extremos').className =
@@ -639,8 +705,8 @@ function cambiarModo(modo) {
 }
 
 function actualizarBotonesModo() {
-  const activo   = 'px-4 py-2 rounded-lg text-sm font-semibold transition bg-white text-blue-600 shadow-sm';
-  const inactivo = 'px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-500 hover:text-slate-700';
+  const activo   = 'px-4 py-2 rounded-lg t-chico font-semibold transition bg-white text-blue-600 shadow-sm';
+  const inactivo = 'px-4 py-2 rounded-lg t-chico font-semibold transition text-slate-500 hover:text-slate-700';
   document.getElementById('btn-modo-laboral').className = MODO === 'laboral' ? activo : inactivo;
   document.getElementById('btn-modo-fuera').className   = MODO === 'fuera_horario' ? activo : inactivo;
 }
@@ -738,18 +804,18 @@ function toggleExtra(key) {
 function renderExtraLeads(containerId, leads) {
   const el = document.getElementById(containerId);
   if (!leads || leads.length === 0) {
-    el.innerHTML = '<div class="text-sm text-slate-500 text-center py-4">Sin leads</div>';
+    el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
     return;
   }
   el.innerHTML = `<div class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
     ${leads.map(l => `
       <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
         <div class="min-w-0 flex-1">
-          <div class="text-sm font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
-          <div class="text-xs font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
-          <div class="text-xs text-slate-500 mt-0.5 truncate">${l.asesor || ''}</div>
+          <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
+          <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
+          <div class="t-micro text-slate-500 mt-0.5 truncate">${l.asesor || ''}</div>
         </div>
-        <span class="text-xs text-slate-500 flex-shrink-0">${l.fecha}</span>
+        <span class="t-micro text-slate-500 flex-shrink-0">${l.fecha}</span>
       </a>
     `).join('')}
   </div>`;
@@ -760,31 +826,37 @@ function renderDist(distribucion) {
   const el = document.getElementById('legend-dist');
   el.innerHTML = distribucion.map((d, i) => `
     <div>
-      <div class="franja-row flex items-center justify-between px-2 py-3" onclick="toggleLeads(${i})">
-        <div class="flex items-center gap-2.5">
+      <div class="franja-row flex items-center gap-3 px-2 py-3" onclick="toggleLeads(${i})">
+        <!-- Ancho fijo para que las cuatro barras arranquen en la misma
+             vertical: si cada una empieza donde termina su etiqueta, dejan de
+             ser comparables. -->
+        <div class="flex items-center gap-2.5 flex-shrink-0" style="width:215px">
           <span class="w-3 h-3 rounded flex-shrink-0" style="background:${d.color}"></span>
-          <span class="text-sm font-semibold text-slate-700">${d.label}</span>
+          <span class="t-chico font-semibold text-slate-700">${d.label}</span>
           <span class="tag ${tagClass(d.tag)}">${d.tag}</span>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="text-sm font-bold text-slate-800">${d.count}</span>
-          <span class="text-sm text-slate-500 w-12 text-right">${d.pct}%</span>
-          <svg id="chev-${i}" class="chevron flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <!-- El carril gris es el 100%: cada franja se lee contra el total sin
+             tener que compararla con las otras tres. -->
+        <div class="barra-franja flex-1 min-w-0 hidden sm:block">
+          <div class="barra-franja-fill" style="width:${d.pct}%;background:${d.color}"></div>
         </div>
+        <span class="t-chico font-semibold text-slate-800 w-14 text-right flex-shrink-0">${d.count}</span>
+        <span class="t-chico text-slate-500 w-14 text-right flex-shrink-0">${d.pct}%</span>
+        <svg id="chev-${i}" class="chevron flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tenue)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div id="leads-${i}" class="hidden px-2 pb-2">
         <div class="bg-slate-50 rounded-xl overflow-hidden">
           ${d.leads.length === 0
-            ? '<div class="text-sm text-slate-500 text-center py-4">Sin leads en este rango</div>'
+            ? '<div class="t-chico text-slate-500 text-center py-4">Sin leads en este rango</div>'
             : `<div class="max-h-60 overflow-y-auto divide-y divide-white">
                 ${d.leads.map(l => `
                   <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
                     <div class="min-w-0 flex-1">
-                      <div class="text-sm font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
-                      <div class="text-xs font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
-                      <div class="text-xs text-slate-500 mt-0.5 truncate">${l.asesor || ''}${l.asesor ? ' · ' : ''}${l.fecha}</div>
+                      <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
+                      <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
+                      <div class="t-micro text-slate-500 mt-0.5 truncate">${l.asesor || ''}${l.asesor ? ' · ' : ''}${l.fecha}</div>
                     </div>
-                    <span class="text-sm font-bold text-slate-700 flex-shrink-0">${l.fmt}</span>
+                    <span class="t-chico font-semibold text-slate-700 flex-shrink-0">${l.fmt}</span>
                   </a>
                 `).join('')}
               </div>`
@@ -793,32 +865,6 @@ function renderDist(distribucion) {
       </div>
     </div>
   `).join('');
-}
-
-function renderDonut(distribucion) {
-  const ctx = document.getElementById('chart-dist').getContext('2d');
-  const existing = Chart.getChart('chart-dist');
-  if (existing) existing.destroy();
-  new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: distribucion.map(d => d.label),
-      datasets: [{
-        data: distribucion.map(d => d.count || 0.001),
-        backgroundColor: distribucion.map(d => d.count > 0 ? d.color : '#e2e8f0'),
-        borderWidth: 0,
-        hoverOffset: 6,
-      }]
-    },
-    options: {
-      cutout: '74%',
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${distribucion[ctx.dataIndex].count} (${distribucion[ctx.dataIndex].pct}%)` } }
-      },
-      animation: { duration: 600 }
-    }
-  });
 }
 
 // Hasta donde llega el eje de tiempo. Devuelve null cuando no hace falta
@@ -869,10 +915,10 @@ const lineaObjetivo = {
     if (!isFinite(y) || y < top || y > bottom) return;
     const c = chart.ctx;
     c.save();
-    c.setLineDash([5, 4]); c.strokeStyle = '#16a34a'; c.lineWidth = 1.5;
+    c.setLineDash([5, 4]); c.strokeStyle = COLOR.ok; c.lineWidth = 1.5;
     c.beginPath(); c.moveTo(left, y); c.lineTo(right, y); c.stroke();
     c.setLineDash([]);
-    c.fillStyle = '#16a34a'; c.font = '700 11px Inter, sans-serif';
+    c.fillStyle = COLOR.ok; c.font = '600 11px Inter, sans-serif';
     c.textAlign = 'left';
     c.fillText('objetivo ' + fmtSeg(OBJETIVO), left + 4, y - 4);
     c.restore();
@@ -950,7 +996,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
       }))
     : [{
         label: 'Respuestas', data: tendencia.map(d => d.total),
-        backgroundColor: '#cbd5e1', borderRadius: 3,
+        backgroundColor: COLOR.otros, borderRadius: 3,
         borderSkipped: false, stack: 'respuestas',
       }];
 
@@ -1008,13 +1054,13 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
     pointStyle: acEquipo.fuera.map(f => f ? 'triangle' : 'circle'),
     pointRadius: acEquipo.fuera.map(f => f ? 7 : 4),
     muestra: tendencia.map(d => d.total),
-    borderColor: '#0f172a',
-    backgroundColor: '#0f172a',
+    borderColor: COLOR.tinta,
+    backgroundColor: COLOR.tinta,
     borderWidth: porTiempo ? 3 : 2.5,
     borderDash: porTiempo && hayAsesores ? [5, 3] : [],
     pointRadius: 4,
     pointHoverRadius: 6,
-    pointBackgroundColor: '#0f172a',
+    pointBackgroundColor: COLOR.tinta,
     pointBorderColor: '#fff',
     pointBorderWidth: 2,
     // Recta y no curva: la curva inventa valores entre dos dias que no existen.
@@ -1057,7 +1103,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
         legend: {
           display: porTiempo && hayAsesores,
           position: 'bottom',
-          labels: { boxWidth: 10, font: { size: 11 }, color: '#64748b',
+          labels: { boxWidth: 10, font: { size: 11 }, color: COLOR.apagado,
                     // La leyenda dibuja el punto de cada serie, no un
                     // cuadradito: asi muestra la forma ademas del color, que
                     // es la segunda señal que se acaba de agregar.
@@ -1088,12 +1134,12 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
         x: { grid: { display: false }, ticks: { display: false } },
         y: {
           beginAtZero: true,
-          grid: { color: '#f1f5f9' },
-          ticks: { font: { size: 12 }, color: '#64748b', callback: fmtEje },
+          grid: { color: COLOR.carril },
+          ticks: { font: { size: 12 }, color: COLOR.apagado, callback: fmtEje },
           // Con tope, los dias que se pasan quedan en el techo con un
           // triangulo en vez de estirar la escala y aplastar al resto.
           max: TOPE || undefined,
-          title: { display: true, color: '#64748b', font: { size: 11, weight: '600' },
+          title: { display: true, color: COLOR.apagado, font: { size: 11, weight: '600' },
                    text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
       }
@@ -1113,10 +1159,10 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
       },
       scales: {
         x: { grid: { display: false }, stacked: true,
-             ticks: { font: { size: 12 }, color: '#64748b', maxTicksLimit: 15 } },
+             ticks: { font: { size: 12 }, color: COLOR.apagado, maxTicksLimit: 15 } },
         y: { beginAtZero: true, stacked: true, grid: { display: false },
-             ticks: { font: { size: 11 }, color: '#94a3b8', precision: 0, maxTicksLimit: 3 },
-             title: { display: true, text: 'Respuestas', color: '#64748b',
+             ticks: { font: { size: 11 }, color: COLOR.tenue, precision: 0, maxTicksLimit: 3 },
+             title: { display: true, text: 'Respuestas', color: COLOR.apagado,
                       font: { size: 11, weight: '600' } } }
       }
     }
@@ -1129,11 +1175,11 @@ function renderTabla(containerId, rows, tipo) {
     // "Sin datos" a secas hacia pensar que algo estaba roto. Si el motivo es
     // el minimo de respuestas, se dice.
     el.innerHTML = containerId === 'tabla-extremos' && MIN_EXTREMOS > 1
-      ? `<div class="text-slate-500 text-sm py-6 text-center">
+      ? `<div class="text-slate-500 t-chico py-6 text-center">
            Ninguna conversación del período llegó a ${MIN_EXTREMOS} respuestas medidas.<br>
-           <span class="text-xs">Probá ampliando el rango de fechas.</span>
+           <span class="t-micro">Probá ampliando el rango de fechas.</span>
          </div>`
-      : '<div class="text-slate-500 text-sm py-6 text-center">Sin datos</div>';
+      : '<div class="text-slate-500 t-chico py-6 text-center">Sin datos</div>';
     return;
   }
   const colorClass = tipo === 'lento' ? 'text-red-500' : 'text-green-600';
@@ -1151,13 +1197,13 @@ function renderTabla(containerId, rows, tipo) {
     const rank = pocas ? '—' : String(++puesto);
     return `
     <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-2.5 ${pocas ? 'opacity-60' : ''}">
-      <span class="text-xs text-slate-500 w-4 text-right font-bold flex-shrink-0">${rank}</span>
+      <span class="t-micro text-slate-500 w-4 text-right font-semibold flex-shrink-0">${rank}</span>
       <div class="min-w-0 flex-1">
-        <div class="text-sm font-semibold text-slate-800 truncate">${r.nombre || 'Sin nombre'}</div>
-        <div class="text-xs text-slate-500 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
+        <div class="t-chico font-semibold text-slate-800 truncate">${r.nombre || 'Sin nombre'}</div>
+        <div class="t-micro text-slate-500 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
       </div>
       <div class="text-right flex-shrink-0 pl-3">
-        <div class="text-sm font-black ${colorClass} leading-tight">${r.fmt}</div>
+        <div class="t-chico font-extrabold ${colorClass} leading-tight">${r.fmt}</div>
         <!-- Dice "mediana" porque es la mediana. Decia "prom." de cuando el
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
@@ -1174,7 +1220,7 @@ function renderTabla(containerId, rows, tipo) {
 function renderAsesores(porAsesor, minMuestra) {
   const el = document.getElementById('tabla-asesores');
   if (!porAsesor || porAsesor.length === 0) {
-    el.innerHTML = '<div class="text-slate-500 text-sm py-6 text-center">Sin datos</div>';
+    el.innerHTML = '<div class="text-slate-500 t-chico py-6 text-center">Sin datos</div>';
     return;
   }
   const min = minMuestra || 10;
@@ -1196,13 +1242,13 @@ function renderAsesores(porAsesor, minMuestra) {
     // primero del ranking terminaba con la barra mas chica. El color lo
     // desambigua: gris el que cumple el objetivo, rojo el que no.
     const pasado = OBJETIVO && (a.mediana_seg || 0) > OBJETIVO;
-    const colorBarra = a.sin_puesto ? '#cbd5e1' : (pasado ? '#ef4444' : '#64748b');
+    const colorBarra = a.sin_puesto ? COLOR.otros : (pasado ? COLOR.alerta : COLOR.apagado);
     // Solo llevan puesto los comparables: rankear a alguien con 3 respuestas
     // contra alguien con 300 no compara nada, y 'Sin asignar' no es una
     // persona — si compitiera, "nadie" podria salir primero.
     const rank = a.sin_puesto
-      ? `<span class="text-xs text-slate-300 w-5 text-right">—</span>`
-      : `<span class="text-xs font-bold text-slate-500 w-5 text-right">${++puesto}</span>`;
+      ? `<span class="t-micro text-slate-300 w-5 text-right">—</span>`
+      : `<span class="t-micro font-semibold text-slate-500 w-5 text-right">${++puesto}</span>`;
     const aviso = a.sin_puesto
       ? `<span class="text-[12px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
            ${a.sin_puesto}
@@ -1215,12 +1261,12 @@ function renderAsesores(porAsesor, minMuestra) {
           ${rank}
           <!-- El icono lo pidio el cliente expresamente. -->
           <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span class="text-sm font-semibold text-slate-700 truncate">${a.asesor}</span>
-          <span class="text-xs text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
+          <span class="t-chico font-semibold text-slate-700 truncate">${a.asesor}</span>
+          <span class="t-micro text-slate-500 whitespace-nowrap">${a.total} respuestas</span>
           ${aviso}
         </div>
         <div class="text-right flex-shrink-0 pl-3">
-          <div class="text-sm font-black leading-tight" style="color:${pasado && !a.sin_puesto ? '#dc2626' : '#334155'}">${fmtSeg(a.mediana_seg)}</div>
+          <div class="t-chico font-extrabold leading-tight" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
           <div class="text-[12px] text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
@@ -1492,7 +1538,6 @@ async function cargarDatos() {
 
     // Distribución
     document.getElementById('donut-total').textContent = d.metricas.total.toLocaleString('es');
-    renderDonut(dist);
     renderDist(dist);
 
     // Tendencia
@@ -1531,7 +1576,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (SUBDOMAIN) cargarDatos();
   else {
     document.getElementById('loading').innerHTML =
-      '<div class="text-center py-32 text-slate-500 text-sm">Accede con <code class="bg-slate-100 px-2 py-1 rounded text-slate-600">?subdomain=nombre</code></div>';
+      '<div class="text-center py-32 text-slate-500 t-chico">Accede con <code class="bg-slate-100 px-2 py-1 rounded text-slate-600">?subdomain=nombre</code></div>';
   }
 });
 </script>

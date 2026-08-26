@@ -1,3 +1,5 @@
+from paleta import FRANJAS
+
 # Los user_id de Kommo son unicos entre cuentas, no por cuenta: de los 13 ids
 # vistos en los 4 subdominios, el unico que se repite es 6767570, y se repite
 # porque es realmente la misma persona (el soporte de la consultora, que tiene
@@ -126,10 +128,10 @@ PULSE_CONFIG = {
         'horario': (5, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
-            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
-            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#eab308', 'tag': 'Bueno'},
-            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
-            {'label': '+30 min',     'max_seg': None,  'color': '#dc2626', 'tag': 'Crítico'},
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
         ]
     },
     'autonica': {
@@ -141,10 +143,10 @@ PULSE_CONFIG = {
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4, 5],
         'franjas': [
-            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
-            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#eab308', 'tag': 'Bueno'},
-            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
-            {'label': '+30 min',     'max_seg': None,  'color': '#dc2626', 'tag': 'Crítico'},
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
         ]
     },
     'tucoytico': {
@@ -157,10 +159,10 @@ PULSE_CONFIG = {
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4, 5],
         'franjas': [
-            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
-            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#eab308', 'tag': 'Bueno'},
-            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
-            {'label': '+30 min',     'max_seg': None,  'color': '#dc2626', 'tag': 'Crítico'},
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
         ]
     },
     'ventasdirectas': {
@@ -173,10 +175,10 @@ PULSE_CONFIG = {
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
-            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
-            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#eab308', 'tag': 'Bueno'},
-            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
-            {'label': '+30 min',     'max_seg': None,  'color': '#dc2626', 'tag': 'Crítico'},
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
         ]
     },
 
@@ -231,10 +233,10 @@ PULSE_CONFIG = {
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
-            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
-            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#eab308', 'tag': 'Bueno'},
-            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
-            {'label': '+30 min',     'max_seg': None,  'color': '#dc2626', 'tag': 'Crítico'},
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
         ]
     },
     'lizondrohomes': {
@@ -250,10 +252,10 @@ PULSE_CONFIG = {
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
-            {'label': '0 – 5 min',   'max_seg': 300,  'color': '#22c55e', 'tag': 'Ideal'},
-            {'label': '5 – 15 min',  'max_seg': 900,  'color': '#eab308', 'tag': 'Bueno'},
-            {'label': '15 – 30 min', 'max_seg': 1800, 'color': '#f97316', 'tag': 'Regular'},
-            {'label': '+30 min',     'max_seg': None,  'color': '#dc2626', 'tag': 'Crítico'},
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
         ]
     },
 }
