@@ -1075,21 +1075,36 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
   // reloj no salta las horas no laborables y el numero es otro.
   const real = (typeof MODO !== 'undefined' && MODO === 'fuera_horario') ? ' real' : '';
   document.getElementById('leyenda-linea').textContent = porTiempo
-    ? `Arriba: mediana${real} de cada persona elegida · abajo el volumen`
-    : `Arriba: mediana${real} del equipo · abajo el volumen por persona`;
-  // El panel de abajo: volumen. Apilado por persona cuando el detalle esta
-  // ahi, gris liso cuando el detalle esta arriba como lineas de tiempo.
-  const barras = apilado
-    ? tendenciaPorAsesor.map(serie => ({
-        label: serie.asesor, data: serie.data,
-        backgroundColor: serie.color, borderRadius: 3,
-        borderSkipped: false, stack: 'respuestas',
-      }))
-    : [{
-        label: 'Respuestas', data: tendencia.map(d => d.total),
-        backgroundColor: COLOR.otros, borderRadius: 3,
-        borderSkipped: false, stack: 'respuestas',
-      }];
+    ? `Arriba: mediana${real} de cada persona elegida · abajo las respuestas del día`
+    // Cuando hay reparto por persona se avisa que esta en el tooltip: dejo de
+    // estar a la vista al sacar las barras apiladas, y sin decirlo nadie lo
+    // busca ahi.
+    : `Arriba: mediana${real} del equipo · abajo las respuestas del día${apilado ? ' (pasá el mouse para ver quién)' : ''}`;
+  // El panel de abajo: volumen, SIEMPRE en un solo gris.
+  //
+  // Antes se apilaba por persona: hasta seis colores en barras de 20px y sin
+  // ninguna leyenda —la de arriba solo aparece cuando hay dos o mas personas
+  // elegidas, que es justo el caso en que este panel NO se apilaba—. O sea que
+  // el unico modo de saber de quien era cada franja era pasar el mouse por
+  // encima. Seis colores que hay que ir a consultar uno por uno no se leen: se
+  // ignoran.
+  //
+  // Y el panel no esta para eso. Su trabajo es decir cuantas respuestas
+  // sostienen la mediana de arriba ese dia, o sea si el pico es real o es un
+  // dia flojo. Eso es un TOTAL. El reparto por persona ya esta en el ranking,
+  // con nombres, numeros y ahora el grosor de la barra.
+  //
+  // El detalle no se pierde: se mueve al tooltip, en texto ordenado de mayor a
+  // menor. Escrito no necesita clave de colores.
+  const barras = [{
+    label: 'Respuestas', data: tendencia.map(d => d.total),
+    backgroundColor: COLOR.otros, borderRadius: 3,
+    borderSkipped: false, stack: 'respuestas',
+  }];
+
+  // Quien respondio cada dia, para el tooltip del panel de abajo. Solo cuando
+  // el reparto existe y no se esta mirando gente puntual.
+  const desglose = apilado ? tendenciaPorAsesor : null;
 
   // Una linea por persona con SU mediana de cada dia. Es lo que permite
   // comparar un dia contra otro por asesor, que antes no se podia: las barras
@@ -1295,7 +1310,23 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y} respuestas` } }
+        tooltip: {
+          callbacks: {
+            label: c => ` ${c.parsed.y} respuestas`,
+            // El reparto por persona, que antes eran seis colores apilados
+            // sin leyenda. En texto y ordenado de mayor a menor se lee de una
+            // y no hace falta ninguna clave de colores.
+            afterBody: items => {
+              if (!desglose || !items.length) return [];
+              const i = items[0].dataIndex;
+              return desglose
+                .map(s => ({ n: s.asesor, v: (s.data || [])[i] || 0 }))
+                .filter(s => s.v > 0)
+                .sort((a, b) => b.v - a.v)
+                .map(s => `${s.n}: ${s.v}`);
+            }
+          }
+        }
       },
       scales: {
         x: { grid: { display: false }, stacked: true,
