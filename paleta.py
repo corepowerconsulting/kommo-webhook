@@ -81,8 +81,13 @@ def para_css():
     ]
     # Las etiquetas van indexadas para que se lea que son las cuatro franjas
     # en orden y no cuatro colores sueltos que casualmente son verde a rojo.
-    for i, (f, t) in enumerate(zip(FRANJAS_FONDO, FRANJAS_TEXTO)):
-        pares += [(f'franja-{i}-fondo', f), (f'franja-{i}-texto', t)]
+    #
+    # Van los tres tonos de cada una: el pleno para bordes y barras, el fondo
+    # claro para pintar una tarjeta entera, y el texto oscuro para escribir
+    # encima de ese fondo.
+    for i, (pleno, f, t) in enumerate(zip(FRANJAS, FRANJAS_FONDO, FRANJAS_TEXTO)):
+        pares += [(f'franja-{i}', pleno),
+                  (f'franja-{i}-fondo', f), (f'franja-{i}-texto', t)]
     return '\n'.join(f'      --{n}: {v};' for n, v in pares)
 
 

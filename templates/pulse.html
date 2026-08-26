@@ -42,15 +42,15 @@
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
        hay forma de que dos textos queden desparejos por olvidarse de uno. */
-       Va en 24px, o sea 1.5 veces el 16 de un navegador. Arranco en 16 y fue
-       subiendo —17, 19, 21, 24— siempre por lo mismo: en la pantalla real se
-       leia chico. Como TODO el dashboard esta en rem —los seis tamaños de la
+       Va en 27px, o sea 1.7 veces el 16 de un navegador. Arranco en 16 y fue
+       subiendo —17, 19, 21, 24, 27— siempre por lo mismo: en la pantalla real
+       se leia chico. Como TODO el dashboard esta en rem —los seis tamaños de la
        escala, los pesos, los paddings y anchos de Tailwind, la altura de los
        graficos y hasta el tamaño de fuente que se le pasa a Chart.js— la
        jerarquia queda intacta: crece todo en la misma proporcion y ninguna
        cosa se acerca a otra.
        Subirlo de nuevo es cambiar este numero y nada mas. */
-    html { font-size: 24px; }
+    html { font-size: 27px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
@@ -126,6 +126,29 @@
     .tag-amber  { background:var(--franja-1-fondo); color:var(--franja-1-texto); }
     .tag-orange { background:var(--franja-2-fondo); color:var(--franja-2-texto); }
     .tag-red    { background:var(--franja-3-fondo); color:var(--franja-3-texto); }
+
+    /* --- La tarjeta de la mediana, pintada segun en que franja cae ---------
+       No contradice la regla de "las cifras van en tinta": esa regla es contra
+       el color que NO cambia nunca. Este cambia con el dato —verde si la
+       mediana esta bajo 5 min, rojo si pasa de 30— o sea que es informacion,
+       que es justamente para lo que se reserva el color.
+       Fondo claro y texto oscuro de la misma familia, igual que las etiquetas:
+       el color pleno detras de una cifra de 86px no se puede leer. El borde
+       izquierdo si va pleno, que es donde el color se ve sin estorbar.
+       Y transicion: al cambiar el filtro de fechas la tarjeta pasa de un color
+       a otro, y el salto seco parece un error de dibujo. */
+    .kpi-franja { border-left:4px solid transparent; transition:background .3s, border-color .3s, color .3s; }
+    .kpi-f0 { background:var(--franja-0-fondo); border-left-color:var(--franja-0); color:var(--franja-0-texto); }
+    .kpi-f1 { background:var(--franja-1-fondo); border-left-color:var(--franja-1); color:var(--franja-1-texto); }
+    .kpi-f2 { background:var(--franja-2-fondo); border-left-color:var(--franja-2); color:var(--franja-2-texto); }
+    .kpi-f3 { background:var(--franja-3-fondo); border-left-color:var(--franja-3); color:var(--franja-3-texto); }
+    /* La cifra y el rotulo heredan ese color; sin esto la cifra sigue en tinta
+       sobre un fondo de color y el veredicto se pierde. */
+    .kpi-franja .kpi-num-xl, .kpi-franja .kpi-label { color:inherit; }
+    .kpi-franja .kpi-label { opacity:.75; }
+    /* Sobre la tarjeta pintada, la etiqueta pasa a fondo blanco: con el mismo
+       tono claro del fondo desaparecia dentro de el. */
+    .kpi-franja .tag-kpi { background:#fff; color:inherit; }
     .row-hover:hover { background:var(--fondo-suave); border-radius:10px; }
     /* Barra del ranking por asesor. El ojo compara longitudes mucho mejor que
        numeros con unidades distintas: "12m" contra "1h 05m" obliga a convertir
@@ -471,7 +494,7 @@
            recuadro vacio a la derecha y el numero no se leia como el centro de
            la pantalla, que es lo que es. Las tres lineas —cifra, etiqueta y
            los tres percentiles— comparten eje vertical. -->
-      <div class="card lg:col-span-2 flex flex-col justify-center items-center text-center">
+      <div id="card-mediana" class="card kpi-franja lg:col-span-2 flex flex-col justify-center items-center text-center">
         <div class="flex items-center justify-center gap-3 flex-wrap">
           <!-- En tinta, no en azul. Un numero azul al lado de una etiqueta
                roja dice dos cosas distintas sobre el mismo dato, y el veredicto
@@ -493,14 +516,17 @@
       </div>
       <!-- Las dos secundarias comparten la tercera columna, apiladas. -->
       <div class="grid grid-cols-2 lg:grid-cols-1 gap-4">
-        <div class="card !p-4">
+        <!-- Centradas igual que la grande: con la principal centrada y estas
+             dos a la izquierda, las tres tarjetas de la misma fila no
+             compartian eje y la banda se leia torcida. -->
+        <div class="card !p-4 flex flex-col justify-center items-center text-center">
           <!-- Sin verde. Un 4% en verde decia "bien" cuando es justo lo
                contrario, porque el color no miraba el numero. -->
           <div class="kpi-num-sm" id="kpi-pct-ideal">—</div>
           <div class="kpi-label-sm">Respondieron en &lt; 5 min</div>
           <div class="mt-1 t-micro text-slate-500" id="kpi-sub-ideal"></div>
         </div>
-        <div class="card !p-4">
+        <div class="card !p-4 flex flex-col justify-center items-center text-center">
           <!-- Este SI se pinta, pero solo cuando hay de que preocuparse: si
                esta franja pesa mas que la de menos de 5 minutos. La regla no
                necesita un umbral nuevo, sale de los mismos datos. -->
@@ -1980,11 +2006,20 @@ async function cargarDatos() {
     document.getElementById('kpi-maximo').textContent    = fmtSeg(d.metricas.maximo_seg);
 
     const badge = getBadgeTag(d.metricas.mediana_seg, d.config.franjas);
+    // La tarjeta entera se pinta con la franja en la que cae la mediana. El
+    // indice es el de la franja, no el nombre: si el cliente renombra "Bueno"
+    // a "Aceptable", el color sigue funcionando.
+    const cardMed = document.getElementById('card-mediana');
+    cardMed.classList.remove('kpi-f0', 'kpi-f1', 'kpi-f2', 'kpi-f3');
     if (badge && d.metricas.total > 0) {
       const el = document.getElementById('kpi-badge-prom');
       el.textContent = badge.tag;
       el.className = `tag-kpi ${tagClass(badge.tag)}`;
       el.classList.remove('hidden');
+      // Sin datos NO se pinta: una tarjeta verde con un guion adentro diria
+      // que todo va bien cuando en realidad no se midio nada.
+      const i = (d.config.franjas || []).indexOf(badge);
+      if (i >= 0) cardMed.classList.add(`kpi-f${i}`);
     }
 
     const dist = d.metricas.distribucion;
