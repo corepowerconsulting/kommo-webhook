@@ -86,10 +86,23 @@
     /* Dos tamaños de cifra, uno por nivel de importancia. El grande es la
        metrica del producto y hay uno solo por pantalla; el otro es contexto.
        Con todos iguales el ojo iba al numero rojo mas grande en vez de a la
-       mediana. */
-    .kpi-num-xl { font-size:var(--t-cifra-xl); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.03em; }
-    .kpi-num    { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; }
-    .kpi-num-sm { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; }
+       mediana.
+
+       Y TODAS en tinta. Antes las cinco cifras de la primera pantalla estaban
+       pintadas —rojo, azul, azul, verde, rojo— y ninguna cambiaba de color
+       segun el dato: el "Sin responder" era rojo diga 3 o diga 300, y el
+       "% < 5 min" verde fuera 90% o fuera 4%. Con todo pintado el color no
+       avisa nada, es decoracion.
+       La cifra grande ademas no pierde peso al despintarse: gana. La tinta da
+       17.85:1 contra blanco y el azul 5.17:1, o sea 3.5 veces mas contraste.
+       El color queda libre para lo unico que deberia hacer, que es marcar la
+       excepcion (.kpi-alerta), y para el borde y el icono de cada tarjeta,
+       que marcan la CATEGORIA y no el valor. */
+    .kpi-num-xl { font-size:var(--t-cifra-xl); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.03em; color:var(--tinta); }
+    .kpi-num    { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; color:var(--tinta); }
+    .kpi-num-sm { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; color:var(--tinta); }
+    /* La excepcion. Se pone por JS y solo cuando el dato la justifica. */
+    .kpi-num-xl.kpi-alerta, .kpi-num.kpi-alerta, .kpi-num-sm.kpi-alerta { color:var(--alerta); }
     .kpi-label{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--apagado); margin-top:6px; }
     .kpi-label-sm{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.05em; color:var(--apagado); margin-top:5px; }
     .section-title { font-size:var(--t-titulo); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.01em; }
@@ -235,7 +248,10 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </div>
               <div>
-                <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
+                <!-- La cifra en tinta: el borde izquierdo rojo y el icono ya
+                     dicen que esta tarjeta es la de alerta. Pintar tambien el
+                     numero no agregaba nada, porque nunca dejaba de ser rojo. -->
+                <div class="kpi-num" id="kpi-no-respondidos">—</div>
                 <div class="kpi-label">Sin responder</div>
               </div>
             </div>
@@ -250,7 +266,7 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--marca)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
               <div>
-                <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
+                <div class="kpi-num" id="kpi-trabajados-hoy">—</div>
                 <div class="kpi-label">Atendidos hoy</div>
               </div>
             </div>
@@ -344,7 +360,10 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div class="card lg:col-span-2 flex flex-col justify-center">
         <div class="flex items-center gap-3 flex-wrap">
-          <span class="kpi-num-xl text-blue-600" id="kpi-promedio">—</span>
+          <!-- En tinta, no en azul. Un numero azul al lado de una etiqueta
+               roja dice dos cosas distintas sobre el mismo dato, y el veredicto
+               lo da la etiqueta. -->
+          <span class="kpi-num-xl" id="kpi-promedio">—</span>
           <!-- Esta etiqueta es lo unico del dashboard que dice si el numero
                esta BIEN o MAL. Existia hace tiempo, pero a 10px al lado de un
                numero de 38 no la veia nadie. Con .tag-kpi pasa a leerse. -->
@@ -362,12 +381,17 @@
       <!-- Las dos secundarias comparten la tercera columna, apiladas. -->
       <div class="grid grid-cols-2 lg:grid-cols-1 gap-4">
         <div class="card !p-4">
-          <div class="kpi-num-sm text-green-600" id="kpi-pct-ideal">—</div>
+          <!-- Sin verde. Un 4% en verde decia "bien" cuando es justo lo
+               contrario, porque el color no miraba el numero. -->
+          <div class="kpi-num-sm" id="kpi-pct-ideal">—</div>
           <div class="kpi-label-sm">Respondieron en &lt; 5 min</div>
           <div class="mt-1 t-micro text-slate-500" id="kpi-sub-ideal"></div>
         </div>
         <div class="card !p-4">
-          <div class="kpi-num-sm text-red-500" id="kpi-pct-critico">—</div>
+          <!-- Este SI se pinta, pero solo cuando hay de que preocuparse: si
+               esta franja pesa mas que la de menos de 5 minutos. La regla no
+               necesita un umbral nuevo, sale de los mismos datos. -->
+          <div class="kpi-num-sm" id="kpi-pct-critico">—</div>
           <div class="kpi-label-sm">Esperaron más de 30 min</div>
           <div class="mt-1 t-micro text-slate-500" id="kpi-sub-critico"></div>
         </div>
@@ -1533,7 +1557,13 @@ async function cargarDatos() {
 
     document.getElementById('kpi-pct-ideal').textContent    = ideal.pct + '%';
     document.getElementById('kpi-sub-ideal').textContent    = `${ideal.count} respuestas < 5 min`;
-    document.getElementById('kpi-pct-critico').textContent  = critico.pct + '%';
+
+    // El unico color que queda en las cifras, y solo cuando el dato lo pide:
+    // mas gente esperando +30 min que atendida en menos de 5. Es un estado
+    // que se explica solo y no necesita un umbral nuevo en la config.
+    const critEl = document.getElementById('kpi-pct-critico');
+    critEl.textContent = critico.pct + '%';
+    critEl.classList.toggle('kpi-alerta', critico.pct > ideal.pct);
     document.getElementById('kpi-sub-critico').textContent  = `${critico.count} esperaron +30 min`;
 
     // Distribución
