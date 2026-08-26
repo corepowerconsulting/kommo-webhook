@@ -16,6 +16,14 @@
        hay forma de que dos textos queden desparejos por olvidarse de uno. */
     html { font-size: 17px; }
     * { font-family: 'Inter', sans-serif; }
+    /* Cifras tabulares: todos los digitos con el mismo ancho.
+       Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
+       menos que un 8. Eso desalinea las columnas de numeros del ranking y de
+       la distribucion, y ademas hace SALTAR el numero del snapshot cuando se
+       refresca solo y pasa de 106 a 98.
+       Se aplica a todo el dashboard porque casi no hay parrafos: son etiquetas
+       cortas y numeros, que es justo donde las tabulares ganan. */
+    body { font-variant-numeric: tabular-nums lining-nums; }
     .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:#2563eb; text-decoration-thickness:2px; text-underline-offset:2px; font-weight:700; }
     .flatpickr-day.selected, .flatpickr-day.selected:hover { background:#2563eb; border-color:#2563eb; }
     .flatpickr-day.today { border-color:#2563eb; }
@@ -840,6 +848,15 @@ function acotar(horas, tope) {
   };
 }
 
+// Segunda señal, ademas del color, para las lineas por asesor. Van en el mismo
+// orden que PALETA_ASESORES del backend, asi que la serie 1 siempre es linea
+// llena con circulos, la 2 guion largo con cuadrados, etc.
+//
+// La primera queda sin guiones a proposito: es la que mas respondio, y una
+// linea llena se lee antes que una punteada.
+const GUION_SERIE = [[], [7, 3], [2, 3], [11, 3, 2, 3], [1, 3], [7, 3, 1, 3]];
+const PUNTO_SERIE = ['circle', 'rect', 'triangle', 'rectRot', 'star', 'crossRot'];
+
 // Linea punteada con el objetivo de respuesta. Es lo que convierte cada punto
 // en una respuesta a "¿cumplimos ese dia?" en vez de un numero suelto.
 const lineaObjetivo = {
@@ -944,17 +961,25 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
   // 'n' viaja al costado para el tooltip. Una mediana de dos respuestas no es
   // un desempeño, y sin ver el tamaño de la muestra el punto engaña.
   if (porTiempo && hayAsesores) {
-    tendenciaPorAsesor.forEach(serie => {
+    tendenciaPorAsesor.forEach((serie, i) => {
       const ac = acotar((serie.mediana_seg || []).map(s => s === null ? null : s / 3600), TOPE);
       datasets.push({
         type: 'line',
         label: serie.asesor,
         data: ac.data,
         real: ac.real,
-        pointStyle: ac.fuera.map(f => f ? 'triangle' : 'circle'),
+        // El punto fuera de escala manda sobre la forma de la serie: que se
+        // vea que ese dia se salio del grafico importa mas que de quien es.
+        pointStyle: ac.fuera.map(f => f ? 'triangle' : PUNTO_SERIE[i % PUNTO_SERIE.length]),
         muestra: serie.data,
         borderColor: serie.color,
         backgroundColor: serie.color,
+        // Guiones y forma de punto distintos por serie: sin esto el color es
+        // lo UNICO que las separa. Medido: en escala de grises el par mas
+        // parecido de la paleta queda a 2.4 de distancia, o sea que impreso
+        // en blanco y negro —o para quien no distingue color— dos asesores se
+        // ven identicos. Con el patron se siguen separando.
+        borderDash: GUION_SERIE[i % GUION_SERIE.length],
         borderWidth: 2,
         pointRadius: 3,
         pointHoverRadius: 5,
@@ -1033,6 +1058,10 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
           display: porTiempo && hayAsesores,
           position: 'bottom',
           labels: { boxWidth: 10, font: { size: 11 }, color: '#64748b',
+                    // La leyenda dibuja el punto de cada serie, no un
+                    // cuadradito: asi muestra la forma ademas del color, que
+                    // es la segunda señal que se acaba de agregar.
+                    usePointStyle: true,
                     filter: item => item.text !== 'Mediana del equipo' }
         },
         tooltip: {
