@@ -42,12 +42,14 @@
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
        hay forma de que dos textos queden desparejos por olvidarse de uno. */
-       Va en 19px. Arranco en 16, subio a 17 y ahora a 19 porque en pantalla
-       real se seguia leyendo chico. Como TODO el dashboard esta en rem —los
-       seis tamaños de la escala, los pesos, y hasta los paddings y anchos de
-       Tailwind— la jerarquia queda intacta: crece todo en la misma
-       proporcion, ninguna cosa se acerca a otra. */
-    html { font-size: 19px; }
+       Va en 21px. Arranco en 16 y fue subiendo —17, 19, 21— siempre por lo
+       mismo: en la pantalla real se leia chico. Como TODO el dashboard esta en
+       rem —los seis tamaños de la escala, los pesos, los paddings y anchos de
+       Tailwind, la altura de los graficos y hasta el tamaño de fuente que se
+       le pasa a Chart.js— la jerarquia queda intacta: crece todo en la misma
+       proporcion y ninguna cosa se acerca a otra.
+       Subirlo de nuevo es cambiar este numero y nada mas. */
+    html { font-size: 21px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
@@ -134,7 +136,9 @@
        contra el mismo tramo de la fila de al lado.
        Reemplaza a la barra de mediana, que codificaba tres cosas a la vez y
        ademas dibujaba justo donde nadie se diferencia. */
-    .tira-franjas      { display:flex; height:9px; background:var(--carril); border-radius:99px; overflow:hidden; }
+    /* Las barras tambien en rem: son graficos, pero si el texto crece y ellas
+       no, quedan como un hilo al lado de las cifras. */
+    .tira-franjas      { display:flex; height:0.48rem; background:var(--carril); border-radius:99px; overflow:hidden; }
     .tira-franjas > span { transition:width .3s, filter .15s; cursor:default; }
     /* Que el tramo bajo el mouse se separe del resto. La dona lo hace
        corriendo el arco hacia afuera; aca no hay lugar para eso, asi que se
@@ -156,7 +160,7 @@
       box-shadow:0 4px 14px rgba(15,23,42,.28);
       display:flex; align-items:center; gap:7px;
     }
-    .tip-punto { width:9px; height:9px; border-radius:3px; flex-shrink:0; }
+    .tip-punto { width:0.48rem; height:0.48rem; border-radius:3px; flex-shrink:0; }
     .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
     .franja-row:hover { background:var(--carril); }
     .chevron { transition:transform .2s; }
@@ -166,7 +170,7 @@
        largo de una barra con el de otra. */
     /* display:block porque estos dos son <span>: van dentro del boton que abre
        la franja, y el contenido de un boton tiene que ser texto. */
-    .barra-franja      { display:block; height:9px; background:var(--carril); border-radius:99px; overflow:hidden; }
+    .barra-franja      { display:block; height:0.48rem; background:var(--carril); border-radius:99px; overflow:hidden; }
     .barra-franja-fill { display:block; height:100%; border-radius:99px; transition:width .3s; }
 
     /* Ahora que las tarjetas del snapshot y las filas de franja son botones se
@@ -989,8 +993,12 @@ function fmtPct(pct, count) {
     const x = (e.clientX + margen + ancho > window.innerWidth)
       ? e.clientX - margen - ancho
       : e.clientX + margen;
+    // El alto sale del cuadrito, no de un 34 fijo: la letra del dashboard se
+    // fue subiendo tres veces y un offset clavado lo dejaria montado sobre el
+    // cursor.
+    const alto = t.offsetHeight || 32;
     t.style.left = `${Math.max(4, x)}px`;
-    t.style.top  = `${Math.max(4, e.clientY - 34)}px`;
+    t.style.top  = `${Math.max(4, e.clientY - alto - 12)}px`;
   }
 
   document.addEventListener('mouseover', e => {
