@@ -128,8 +128,14 @@
        numeros con unidades distintas: "12m" contra "1h 05m" obliga a convertir
        de cabeza, dos barras no. Todas arrancan en la misma vertical y comparten
        escala, que es lo unico que hace comparable una barra. */
-    .barra-asesor      { height:5px; background:var(--carril); border-radius:99px; overflow:hidden; }
-    .barra-asesor-fill { height:100%; background:var(--marca); border-radius:99px; transition:width .3s; }
+    /* Como se repartieron las respuestas de una persona entre las cuatro
+       franjas. Siempre suma 100%, asi que la escala es la misma en todas las
+       filas por definicion y no hay nada que explicar: se compara un tramo
+       contra el mismo tramo de la fila de al lado.
+       Reemplaza a la barra de mediana, que codificaba tres cosas a la vez y
+       ademas dibujaba justo donde nadie se diferencia. */
+    .tira-franjas      { display:flex; height:9px; background:var(--carril); border-radius:99px; overflow:hidden; }
+    .tira-franjas > div { transition:width .3s; }
     .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
     .franja-row:hover { background:var(--carril); }
     .chevron { transition:transform .2s; }
@@ -1431,42 +1437,52 @@ function renderAsesores(porAsesor, minMuestra) {
   }
   const min = minMuestra || 10;
 
-  // Escala comun para las barras. Sale de los que SI compiten: si la tomara de
-  // todos, un 'Sin asignar' con una mediana enorme aplastaria a las personas
-  // contra el margen izquierdo y no se distinguiria ninguna.
-  const conPuesto = porAsesor.filter(a => !a.sin_puesto);
-  const escala = Math.max(1, ...(conPuesto.length ? conPuesto : porAsesor).map(a => a.mediana_seg || 0));
-
-  // Cuantas respuestas sostienen cada barra. Hasta ahora estaba escrito al
-  // lado del nombre pero no se VEIA: alguien con 12 respuestas dibujaba la
-  // misma barra que alguien con 300, y el ranking los ponia a competir como
-  // si valieran lo mismo. El minimo de muestra deja fuera a los de menos de
-  // 10, pero entre 12 y 300 hay la misma diferencia de confianza y no se
-  // notaba.
+  // La barra de mediana se reemplazo por el reparto en franjas. Tres razones:
   //
-  // Va en el GROSOR y no en el largo: el largo ya significa cuanto tarda, y
-  // dos cosas en el mismo canal no se pueden leer por separado. Grosor es
-  // "cuanto peso tiene este dato", que es justo lo que hay que saber para
-  // creerle al puesto.
+  // 1. Codificaba TRES cosas —largo el tiempo, rojo el objetivo, grosor la
+  //    muestra— y por eso necesitaba un renglon de leyenda. Una barra que
+  //    necesita instrucciones no se lee sola.
   //
-  // Con raiz cuadrada y no proporcional: entre 12 y 300 la proporcion directa
-  // deja al chico en un hilo invisible, y la idea es que se vea DELGADO, no
-  // que desaparezca. El piso de 3px lo garantiza.
-  const maxTotal = Math.max(1, ...porAsesor.map(a => a.total || 0));
-  const grosorDe = total => 3 + Math.round(6 * Math.sqrt((total || 0) / maxTotal));
-
+  // 2. Se leia al reves: la mas larga era la PEOR, y el primero del ranking
+  //    terminaba con la barra mas corta.
+  //
+  // 3. Y sobre todo: dibujaba la mediana, que es justo donde nadie se
+  //    diferencia. Medido sobre Core Power, las cuatro personas van de 15 a 22
+  //    min —siete minutos— mientras los cuatro p90 estan entre 8.6 y 10.6
+  //    HORAS. La barra ordenaba por los siete minutos y no mostraba las nueve
+  //    horas.
+  //
+  // El reparto en franjas muestra la cola, no la esconde, y no necesita
+  // leyenda: son los mismos cuatro colores del grafico de dos tarjetas arriba.
+  // Ademas se juzga solo — "8% critico" con el total al lado avisa cuando son
+  // una o dos conversaciones, cosa que una mediana nunca hace.
   let puesto = 0;
   el.innerHTML = porAsesor.map(a => {
-    // La barra es el cambio: comparar "12m" contra "1h 05m" como texto obliga
-    // a convertir unidades mentalmente. Con longitud sobre una escala comun la
-    // comparacion es inmediata, que es para lo que sirve un ranking.
-    const pct = Math.min(100, Math.round((a.mediana_seg || 0) / escala * 100));
-    // La barra crece con el tiempo, o sea que la mas larga es la PEOR. Toda
-    // azul se leia al reves —barra larga y fuerte parece "mas y mejor"— y el
-    // primero del ranking terminaba con la barra mas chica. El color lo
-    // desambigua: gris el que cumple el objetivo, rojo el que no.
+    // La mediana sigue en rojo cuando pasa el objetivo: es el veredicto de esa
+    // cifra y no depende de la tira.
     const pasado = OBJETIVO && (a.mediana_seg || 0) > OBJETIVO;
-    const colorBarra = a.sin_puesto ? COLOR.otros : (pasado ? COLOR.alerta : COLOR.apagado);
+
+    // La tira: 100% de las respuestas de esta persona, repartidas en las
+    // cuatro franjas y en ese orden. Es una escala compartida por definicion
+    // —siempre suma 100— asi que las personas se comparan de una fila a otra
+    // sin ninguna escala que explicar.
+    //
+    // Los tramos en cero no dibujan nada pero tampoco desaparecen de la
+    // cuenta: que alguien NO tenga criticos es justo lo que hay que ver.
+    const tira = (a.distribucion || []).map(f => f.pct > 0
+      ? `<div style="width:${f.pct}%;background:${f.color}" title="${f.tag}: ${f.count} (${f.pct}%)"></div>`
+      : '').join('');
+
+    // El ultimo tramo es el critico. Se escribe al lado de la tira porque un
+    // tramo chico contra el borde derecho no se mide a ojo, y ese numero es el
+    // que dice si esta persona necesita ayuda.
+    const critico = (a.distribucion || [])[(a.distribucion || []).length - 1];
+    const criticoTxt = critico && critico.count > 0
+      ? `<div class="t-micro text-slate-500 mt-1 ml-[42px]">
+           <span class="font-semibold" style="color:${critico.color}">${critico.pct}%</span>
+           ${critico.tag.toLowerCase()} · ${critico.count} de ${a.total}
+         </div>`
+      : '';
     // Solo llevan puesto los comparables: rankear a alguien con 3 respuestas
     // contra alguien con 300 no compara nada, y 'Sin asignar' no es una
     // persona — si compitiera, "nadie" podria salir primero.
@@ -1494,12 +1510,14 @@ function renderAsesores(porAsesor, minMuestra) {
           <div class="text-[12px] text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
-      <!-- La barra arranca despues del puesto y del icono para que todas
+      <!-- La tira arranca despues del puesto y del icono para que todas
            empiecen en la misma vertical: si cada una arrancara donde termina su
-           nombre, las longitudes no se podrian comparar. -->
-      <div class="barra-asesor mt-2 ml-[42px]" style="height:${grosorDe(a.total)}px">
-        <div class="barra-asesor-fill" style="width:${pct}%;background:${colorBarra}"></div>
-      </div>
+           nombre, no se podrian comparar los tramos entre filas. -->
+      <div class="tira-franjas mt-2 ml-[42px]">${tira}</div>
+      <!-- El porcentaje critico, escrito. La tira lo muestra pero un tramo
+           chico contra el borde derecho es dificil de medir a ojo, y ese
+           numero es el que decide si esta persona necesita ayuda. -->
+      ${criticoTxt}
     </div>`;
   }).join('');
 }
@@ -1725,10 +1743,12 @@ async function cargarDatos() {
     const fr = d.config.franjas || [];
     FRANJAS = fr;
     OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;
-    // La barra codifica tres cosas y ninguna se adivina sola: hay que decirlo.
+    // La tira no necesita leyenda de colores —son los mismos cuatro de la
+    // tarjeta de arriba— pero si hay que decir QUE reparte, porque a simple
+    // vista podria ser cualquier cosa.
     document.getElementById('leyenda-objetivo').textContent = OBJETIVO
-      ? `Barra: largo, cuánto tarda · rojo, por encima de ${fmtSeg(OBJETIVO)} · grosor, cuántas respuestas la sostienen`
-      : 'Barra: largo, cuánto tarda · grosor, cuántas respuestas la sostienen';
+      ? `La tira reparte las respuestas de cada uno entre las cuatro franjas · en rojo, mediana por encima de ${fmtSeg(OBJETIVO)}`
+      : 'La tira reparte las respuestas de cada uno entre las cuatro franjas';
 
     const cardPorAsesor = document.getElementById('card-por-asesor');
     if (d.por_asesor && d.por_asesor.length) {

@@ -3191,7 +3191,7 @@ OTROS = 'Otros'
 # al total.
 MAX_SERIES_TENDENCIA = 5
 
-def _calc_por_asesor(registros):
+def _calc_por_asesor(registros, franjas):
     """Ranking de asesores por MEDIANA, no por promedio.
 
     Los tiempos de respuesta tienen cola larga: una sola respuesta de 8 horas
@@ -3249,6 +3249,29 @@ def _calc_por_asesor(registros):
             return 'pocas respuestas'
         return None
 
+    def reparto(segs):
+        """Como se repartieron las respuestas de esta persona entre las franjas.
+
+        La mediana sola engaña: con 15 min de mediana y un p90 de 9 horas, el
+        numero grande dice que todo va bien y esconde que una de cada diez
+        conversaciones espero casi una jornada. El reparto muestra la cola.
+
+        Ademas se juzga solo: "8% critico" con el total al lado avisa por si
+        mismo cuando son una o dos conversaciones. Una mediana calculada sobre
+        17 respuestas se ve igual de firme que una sobre 348, y no lo es.
+
+        Van los cuatro tramos siempre, aunque alguno quede en cero: que una
+        persona NO tenga criticos es justamente lo que hay que poder ver."""
+        cuenta = [0] * len(franjas)
+        for s in segs:
+            cuenta[_get_franja_idx(s, franjas)] += 1
+        return [
+            {'label': f['label'], 'tag': f['tag'], 'color': f['color'],
+             'count': cuenta[i],
+             'pct': round(cuenta[i] / len(segs) * 100, 1)}
+            for i, f in enumerate(franjas)
+        ]
+
     resultado = [
         {
             'asesor': nombre,
@@ -3256,6 +3279,7 @@ def _calc_por_asesor(registros):
             'mediana_seg': _pctl(segs, 50),
             'p90_seg': _pctl(segs, 90),
             'promedio_seg': round(sum(segs) / len(segs)),
+            'distribucion': reparto(segs),
             'sin_puesto': sin_puesto(nombre, segs),
         }
         for nombre, segs in grupos.items()
@@ -4371,7 +4395,7 @@ def pulse_data():
             # entera: al filtrar por una persona desaparecia su mediana y su
             # p90, que es justo lo que uno quiere ver de esa persona. Con un
             # solo responsable devuelve una fila.
-            'por_asesor':    _calc_por_asesor(registros),
+            'por_asesor':    _calc_por_asesor(registros, franjas),
             'no_respondidos': no_respondidos,
             'trabajados_hoy': trabajados_hoy,
             # Los que solo recibieron el saludo del bot. Es el punto ciego del
