@@ -134,12 +134,15 @@
           <div class="section-sub">Estado de ahora mismo · no cambia con el filtro de fechas</div>
         </div>
         <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
-          <!-- Marcado por defecto: lo que el cliente dejo ABIERTO es lo que le
-               debe respuesta. Un lead ganado o perdido hace meses no es un
-               pendiente de atencion, y sin este filtro los arrastraba a todos.
-               En Camara China son 34.906 leads cerrados de 44.387. -->
-          <input type="checkbox" id="chk-solo-abiertas" checked onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
-          Solo conversaciones abiertas
+          <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
+               dejo abierto es lo que le debe respuesta; un lead ganado o
+               perdido hace meses no es un pendiente de atencion. Asi que el
+               estado normal —solo abiertas— es el de la casilla sin marcar, y
+               quien quiera ver ademas las cerradas la marca.
+               En Camara China son 34.906 leads cerrados de 44.387: con las
+               cerradas adentro el numero deja de ser accionable. -->
+          <input type="checkbox" id="chk-incluir-cerradas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
+          Incluir conversaciones cerradas
         </label>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1225,7 +1228,9 @@ async function cargarDatos() {
   emb.embudos.forEach(v => params.append('embudo', v));
   emb.etapas.forEach(v => params.append('etapa', v));
   params.append('modo', MODO);
-  if (document.getElementById('chk-solo-abiertas').checked) params.append('abiertas', '1');
+  // El backend sigue recibiendo "abiertas=1" = solo abiertas. La casilla dice
+  // lo contrario —incluir cerradas— asi que se manda cuando NO esta marcada.
+  if (!document.getElementById('chk-incluir-cerradas').checked) params.append('abiertas', '1');
 
   try {
     const res = await fetch('/pulse/data?' + params.toString());
