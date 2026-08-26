@@ -164,7 +164,6 @@
               <div>
                 <div class="kpi-num text-red-500" id="kpi-no-respondidos">—</div>
                 <div class="kpi-label">Sin responder</div>
-                <div class="mt-1 text-xs text-slate-500" id="nota-no-respondidos"></div>
               </div>
             </div>
             <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -180,10 +179,6 @@
               <div>
                 <div class="kpi-num text-blue-600" id="kpi-trabajados-hoy">—</div>
                 <div class="kpi-label">Atendidos hoy</div>
-                <!-- Sin tarjeta aparte para el bot: una linea alcanza. Si no
-                     se dijera, el saludo automatico contaria como atencion y
-                     nadie sabria cuantos de estos siguen esperando. -->
-                <div class="mt-1 text-xs text-slate-500" id="nota-solo-bot"></div>
               </div>
             </div>
             <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1234,15 +1229,12 @@ function filtrosComunes() {
 function pintarSnapshot(d) {
   document.getElementById('kpi-no-respondidos').textContent =
     d.no_respondidos.length.toLocaleString('es');
-  // El numero grande cuenta TODOS los atendidos hoy. Los que solo recibieron
-  // el saludo del bot se aclaran en una linea debajo: son los que parecen
-  // atendidos y siguen esperando a una persona.
-  const soloBot  = d.atendidos_solo_bot || [];
-  const todosHoy = d.trabajados_hoy.concat(soloBot);
+  // Cuenta TODOS los atendidos hoy, contestara una persona o el bot. El
+  // desglose se sigue calculando y viaja en la respuesta —'atendidos_solo_bot'—
+  // por si mas adelante se quiere mostrar en algun lado.
+  const todosHoy = d.trabajados_hoy.concat(d.atendidos_solo_bot || []);
   document.getElementById('kpi-trabajados-hoy').textContent =
     todosHoy.length.toLocaleString('es');
-  document.getElementById('nota-solo-bot').textContent = soloBot.length
-    ? `${soloBot.length} solo por el bot` : '';
   renderExtraLeads('panel-no-respondidos', d.no_respondidos);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
   ULTIMO_SNAPSHOT = Date.now();
@@ -1425,14 +1417,6 @@ async function cargarDatos() {
       avisoCob.classList.add('hidden');
     }
 
-    // "Sin responder" se calcula con los mensajes, que arrancan en el corte.
-    // Antes de esa fecha Kommo no nos mandaba los salientes, asi que no se
-    // puede saber si esas conversaciones fueron respondidas. Se aclara para
-    // que el numero no parezca incompleto sin motivo.
-    const desdeCuando = (d.config.medicion || {}).corte_fecha || d.config.fecha_minima;
-    document.getElementById('nota-no-respondidos').textContent = desdeCuando
-      ? `desde ${desdeCuando.split('-').reverse().join('/')}`
-      : '';
     pintarSnapshot(d);
 
     // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
