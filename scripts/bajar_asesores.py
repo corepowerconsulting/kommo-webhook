@@ -11,11 +11,13 @@ del tablero, es una licencia.
 
 Uso:
     python scripts/bajar_asesores.py tucoytico
+    python scripts/bajar_asesores.py todas     <- las seis, consolidado
 
 El token sale de .env.kommo, en la raiz del repo, con una linea por cuenta:
     tucoytico=eyJ0eXAi...
 Ese archivo esta en .gitignore (.env.*), asi que no se sube.
 """
+import html
 import io
 import json
 import os
@@ -25,19 +27,29 @@ import urllib.request
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def token_de(sub):
-    """Lee el token de esa cuenta desde .env.kommo. Nunca lo imprime."""
+def _tokens():
+    """Todas las cuentas de .env.kommo. Devuelve {subdomain: token}.
+
+    Nunca se imprime un token, ni truncado: la unica salida del script son
+    nombres y numeros."""
     ruta = os.path.join(RAIZ, '.env.kommo')
     if not os.path.exists(ruta):
-        sys.exit(f'No existe {ruta}. Tiene que tener una linea "{sub}=<token>".')
+        sys.exit(f'No existe {ruta}. Una linea por cuenta: "<subdomain>=<token>".')
+    fuera = {}
     for linea in io.open(ruta, encoding='utf-8'):
         linea = linea.strip()
         if not linea or linea.startswith('#') or '=' not in linea:
             continue
         nombre, valor = linea.split('=', 1)
-        if nombre.strip() == sub:
-            return valor.strip().strip('"').strip("'")
-    sys.exit(f'No hay linea "{sub}=..." en .env.kommo')
+        fuera[nombre.strip()] = valor.strip().strip('"').strip("'")
+    return fuera
+
+
+def token_de(sub):
+    t = _tokens().get(sub)
+    if not t:
+        sys.exit(f'No hay linea "{sub}=..." en .env.kommo')
+    return t
 
 
 def pedir(sub, token, ruta):
@@ -48,47 +60,73 @@ def pedir(sub, token, ruta):
         return json.loads(r.read().decode('utf-8'))
 
 
-def main():
-    if len(sys.argv) < 2:
-        sys.exit('Uso: python scripts/bajar_asesores.py <subdomain>')
-    sub = sys.argv[1].strip()
-    token = token_de(sub)
-
-    usuarios = []
-    pagina = 1
+def usuarios_de(sub, token):
+    usuarios, pagina = [], 1
     while True:
-        try:
-            d = pedir(sub, token, f'/api/v4/users?page={pagina}&limit=250')
-        except Exception as e:
-            sys.exit(f'Error consultando Kommo: {e}')
+        d = pedir(sub, token, f'/api/v4/users?page={pagina}&limit=250')
         lote = (d.get('_embedded') or {}).get('users') or []
         usuarios.extend(lote)
         if len(lote) < 250:
             break
         pagina += 1
+    return usuarios
 
-    print('=' * 74)
-    print(f'USUARIOS DE {sub} SEGUN KOMMO  ({len(usuarios)})')
-    print('=' * 74)
-    print(f'{"user_id":>10}  {"nombre":<34} {"email":<28}')
-    print('-' * 74)
-    for u in sorted(usuarios, key=lambda x: (x.get('name') or '').lower()):
-        print(f'{u.get("id"):>10}  {(u.get("name") or "")[:34]:<34} {(u.get("email") or "")[:28]:<28}')
 
-    # Cuales ya estan en nuestra lista y cuales faltan. Un id que falta sale en
-    # el ranking como "Usuario 12345".
+def limpiar(nombre):
+    """Kommo escapa los nombres para HTML: manda "Tuco&amp;Tico". Sin
+    desescapar, ese &amp; termina impreso tal cual en el ranking."""
+    return html.unescape((nombre or '').strip())
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit('Uso: python scripts/bajar_asesores.py <subdomain>|todas')
+
+    pedido = sys.argv[1].strip()
+    tokens = _tokens()
+    cuentas = list(tokens) if pedido == 'todas' else [pedido]
+    if pedido != 'todas':
+        token_de(pedido)          # valida que exista antes de empezar
+
     sys.path.insert(0, RAIZ)
     from pulse_config import ASESORES
-    ids = {u.get('id') for u in usuarios}
-    faltan = [u for u in usuarios if u.get('id') not in ASESORES]
-    print()
-    print(f'ya estan en pulse_config.ASESORES: {len(ids & set(ASESORES))} de {len(ids)}')
-    if faltan:
+
+    todo, faltantes = {}, []
+    for sub in cuentas:
+        try:
+            todo[sub] = usuarios_de(sub, tokens[sub])
+        except Exception as e:
+            print(f'!! {sub}: no se pudo consultar ({e})')
+            todo[sub] = None
+
+    for sub in cuentas:
+        us = todo[sub]
+        if us is None:
+            continue
         print()
-        print('FALTAN. Pegar en pulse_config.ASESORES:')
-        for u in sorted(faltan, key=lambda x: (x.get('name') or '').lower()):
-            nombre = (u.get('name') or '').replace("'", "\\'")
-            print(f"    {u.get('id')}: '{nombre}',")
+        print('=' * 78)
+        print(f'{sub}  —  {len(us)} usuarios en Kommo')
+        print('=' * 78)
+        print(f'{"user_id":>10}  {"nombre":<32} {"email":<30} en config')
+        print('-' * 78)
+        for u in sorted(us, key=lambda x: limpiar(x.get('name')).lower()):
+            uid, nombre = u.get('id'), limpiar(u.get('name'))
+            esta = 'si' if uid in ASESORES else 'FALTA'
+            if uid not in ASESORES:
+                faltantes.append((uid, nombre))
+            print(f'{uid:>10}  {nombre[:32]:<32} {(u.get("email") or "")[:30]:<30} {esta}')
+
+    # Un id que falta sale en el ranking como "Usuario 12345" en vez del nombre.
+    print()
+    print('=' * 78)
+    total = sum(len(u) for u in todo.values() if u)
+    print(f'TOTAL: {total} usuarios en {len([u for u in todo.values() if u])} cuentas · '
+          f'{len(faltantes)} sin configurar')
+    print('=' * 78)
+    if faltantes:
+        print('Pegar en pulse_config.ASESORES:')
+        for uid, nombre in sorted(set(faltantes), key=lambda x: x[1].lower()):
+            print(f"    {uid}: '{nombre}',")
     else:
         print('No falta ninguno.')
 
