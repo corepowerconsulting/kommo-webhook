@@ -2085,8 +2085,13 @@ def _turnos_de_mensajes(entrantes, salientes, autos=None):
     por_lead = defaultdict(lambda: {'ent': [], 'sal': []})
     for lead_id, ts in entrantes:
         por_lead[lead_id]['ent'].append(ts)
-    for lead_id, ts, autor, uid in salientes:
-        por_lead[lead_id]['sal'].append((ts, autor, uid))
+    # El 5o campo es el id del mensaje. Sirve para armar el link que abre la
+    # conversacion EN esa respuesta y no al final. Los que llaman sin el siguen
+    # andando: el link se degrada al lead, como antes.
+    for fila in salientes:
+        lead_id, ts, autor, uid = fila[:4]
+        msg_id = fila[4] if len(fila) > 4 else None
+        por_lead[lead_id]['sal'].append((ts, autor, uid, msg_id))
 
     turnos = []
     for lead_id, m in por_lead.items():
@@ -2102,7 +2107,7 @@ def _turnos_de_mensajes(entrantes, salientes, autos=None):
         piso = ent[0]
         i = 0
         esperando = None
-        for ts_sal, autor, uid in sal:
+        for ts_sal, autor, uid, msg_id in sal:
             if ts_sal < piso:
                 continue
             while i < len(ent) and ent[i] <= ts_sal:
@@ -2123,6 +2128,9 @@ def _turnos_de_mensajes(entrantes, salientes, autos=None):
                 # 'auto' se decide con el nombre ORIGINAL del mensaje: es el
                 # que figura en REMITENTES_AUTOMATICOS.
                 'auto':    (autor or '') in autos,
+                # El mensaje que CERRO la espera. Con esto el link del tablero
+                # abre la conversacion parada en esa respuesta.
+                'msg_id':  msg_id,
             })
             esperando = None
     return turnos
@@ -3188,6 +3196,9 @@ def _calc_metricas(registros, franjas, tz_offset):
                 'fmt': _fmt_seg(r['efectivo_seg']),
                 'fecha': _fmt_fecha_corta(local_dt),
                 'asesor': asesor_de_registro(r),
+                # Ver _fmt_row: abre la conversacion en la respuesta medida.
+                'msg_id': r.get('respuesta_msg_id'),
+                'msg_ts': r.get('respuesta_ts'),
             })
         distribucion.append({
             'label': f['label'], 'tag': f['tag'],
@@ -3361,10 +3372,10 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
     entrantes = [(r['lead_id'], r['ts']) for r in cursor.fetchall()]
 
     cursor.execute(
-        'SELECT lead_id, ts, autor_nombre, user_id FROM mensajes_asesor '
+        'SELECT lead_id, ts, autor_nombre, user_id, msg_id FROM mensajes_asesor '
         'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
         (subdomain, corte))
-    salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'])
+    salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'], r['msg_id'])
                  for r in cursor.fetchall()]
     if not salientes:
         return []
@@ -3436,6 +3447,12 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
             # quien apreto enviar y registra el canal. Es atencion real, pero
             # no se puede atribuir a nadie, y el ranking tiene que decirlo.
             'respondio_user_id':   t['user_id'],
+            # Con que mensaje se contesto y cuando. Es lo que deja abrir la
+            # conversacion parada en esa respuesta en vez de al final.
+            # Solo existe en el metodo nuevo: las filas anteriores al corte no
+            # tienen mensaje propio y el link se degrada al lead.
+            'respuesta_msg_id':    t.get('msg_id'),
+            'respuesta_ts':        t['fin'],
         })
     return registros
 
@@ -3465,6 +3482,12 @@ def _fmt_row(r, tz_offset):
         # Sobre cuantas respuestas se promedio: sin esto, un lead con una sola
         # respuesta y otro con cinco se leen igual.
         'respuestas': r.get('respuestas', 1),
+        # Para abrir la conversacion EN la respuesta que cerro la espera, no al
+        # final del chat. Van los dos: Kommo necesita el timestamp para ubicar
+        # el tramo y el id para marcar el mensaje. Probado que el segundo
+        # redondeado alcanza, no hacen falta los milisegundos.
+        'msg_id': r.get('respuesta_msg_id'),
+        'msg_ts': r.get('respuesta_ts'),
     }
 
 def _hoy_rango_ts(tz_offset):

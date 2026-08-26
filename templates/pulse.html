@@ -838,8 +838,20 @@ function renderExtremos() {
   renderTabla('tabla-extremos', datos, esLento ? 'lento' : 'rapido');
 }
 
-function leadHref(leadId) {
-  return CRM_URL ? `${CRM_URL}/leads/detail/${leadId}` : '#';
+// Con msgId y msgTs, el link abre la conversacion PARADA en la respuesta que
+// se midio; sin ellos, cae en la ficha del lead como antes.
+//
+// El formato lo sacamos de una URL que Kommo genera con "copiar enlace" sobre
+// un mensaje: ?t=<epoch en MILISEGUNDOS>&tid=<id del mensaje>. Los dos hacen
+// falta —con tid solo te deja al final del chat— y esta probado que el
+// segundo redondeado alcanza: no hay que guardar milisegundos.
+//
+// Solo funciona para mensajes NUESTROS: de los entrantes no guardamos id, asi
+// que "Sin responder" —donde justamente no hay respuesta— sigue yendo al lead.
+function leadHref(leadId, msgTs, msgId) {
+  if (!CRM_URL) return '#';
+  const base = `${CRM_URL}/leads/detail/${leadId}`;
+  return (msgId && msgTs) ? `${base}?t=${msgTs * 1000}&tid=${msgId}` : base;
 }
 
 function cambiarModo(modo) {
@@ -973,7 +985,7 @@ function renderExtraLeads(containerId, leads) {
   }
   el.innerHTML = `<div class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
     ${leads.map(l => `
-      <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
+      <a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
         <div class="min-w-0 flex-1">
           <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
           <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
@@ -1015,7 +1027,7 @@ function renderDist(distribucion) {
             ? '<div class="t-chico text-slate-500 text-center py-4">Sin leads en este rango</div>'
             : `<div class="max-h-60 overflow-y-auto divide-y divide-white">
                 ${d.leads.map(l => `
-                  <a href="${leadHref(l.lead_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
+                  <a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
                     <div class="min-w-0 flex-1">
                       <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
                       <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
@@ -1500,7 +1512,7 @@ function renderTabla(containerId, rows, tipo) {
     const pocas = !(r.respuestas > 1);
     const rank = pocas ? '—' : String(++puesto);
     return `
-    <a href="${leadHref(r.lead_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-2.5 ${pocas ? 'opacity-60' : ''}">
+    <a href="${leadHref(r.lead_id, r.msg_ts, r.msg_id)}" target="_blank" rel="noopener" class="row-hover flex items-center gap-3 px-3 py-2.5 ${pocas ? 'opacity-60' : ''}">
       <span class="t-micro text-slate-500 w-4 text-right font-semibold flex-shrink-0">${rank}</span>
       <div class="min-w-0 flex-1">
         <div class="t-chico font-semibold text-slate-800 truncate">${r.nombre || 'Sin nombre'}</div>
