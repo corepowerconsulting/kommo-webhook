@@ -42,7 +42,12 @@
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
        hay forma de que dos textos queden desparejos por olvidarse de uno. */
-    html { font-size: 17px; }
+       Va en 19px. Arranco en 16, subio a 17 y ahora a 19 porque en pantalla
+       real se seguia leyendo chico. Como TODO el dashboard esta en rem —los
+       seis tamaños de la escala, los pesos, y hasta los paddings y anchos de
+       Tailwind— la jerarquia queda intacta: crece todo en la misma
+       proporcion, ninguna cosa se acerca a otra. */
+    html { font-size: 19px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
@@ -82,7 +87,11 @@
     .flatpickr-day.selected, .flatpickr-day.selected:hover { background:var(--marca); border-color:var(--marca); }
     .flatpickr-day.today { border-color:var(--marca); }
 
-    .card { background:#fff; border-radius:18px; padding:24px; border:1px solid var(--linea); box-shadow:0 1px 3px rgba(15,23,42,.04); }
+    /* El relleno tambien en rem: si el texto crece y el padding no, la tarjeta
+       queda apretada. Lo mismo con los anchos que contienen texto, mas abajo:
+       un ancho fijo en px con letra mas grande no se ve mas grande, se ve
+       cortado. El radio de la esquina si queda en px, que no es texto. */
+    .card { background:#fff; border-radius:18px; padding:1.4rem; border:1px solid var(--linea); box-shadow:0 1px 3px rgba(15,23,42,.04); }
     /* Dos tamaños de cifra, uno por nivel de importancia. El grande es la
        metrica del producto y hay uno solo por pantalla; el otro es contexto.
        Con todos iguales el ojo iba al numero rojo mas grande en vez de a la
@@ -142,7 +151,7 @@
       font-weight:var(--p-medio); transition:.15s; box-shadow:0 1px 2px rgba(37,99,235,.35); white-space:nowrap;
     }
     .btn-primary:hover { background:var(--marca-oscura); }
-    .icon-chip { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .icon-chip { width:2.35rem; height:2.35rem; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     /* Subrecuadros de la barra de filtros. Agrupan visualmente lo que va
        junto —periodo, vista, personas— para que la linea no se lea como seis
        controles sueltos puestos en fila. */
@@ -153,13 +162,13 @@
     .grupo-lbl { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); white-space:nowrap; }
     /* Input de fecha sin caja propia: la caja es el subrecuadro que lo contiene. */
     .fecha-in {
-      background:transparent; border:0; padding:2px 0; width:88px; cursor:pointer;
+      background:transparent; border:0; padding:2px 0; width:5.2rem; cursor:pointer;
       font-size:var(--t-chico); font-weight:var(--p-medio); color:var(--texto);
     }
     .fecha-in:focus { outline:none; }
     /* Boton de selector multiple, compacto para que entre en la linea. */
     .multi-btn {
-      display:flex; align-items:center; gap:6px; max-width:190px;
+      display:flex; align-items:center; gap:6px; max-width:11.2rem;
       background:#fff; border:1px solid var(--linea); border-radius:9px;
       padding:5px 9px; font-size:var(--t-chico); color:var(--texto); transition:.15s;
     }
@@ -469,13 +478,15 @@
         </div>
         <span id="trend-rango" class="t-chico text-slate-500 mt-1"></span>
       </div>
-      <!-- Panel de arriba: el tiempo, que es lo que se viene a mirar. -->
-      <div class="mt-5" style="height:175px">
+      <!-- Panel de arriba: el tiempo, que es lo que se viene a mirar.
+           La altura en rem y no en px: los rotulos de los ejes crecen con la
+           raiz, y si la caja no crece con ellos se comen el dibujo. -->
+      <div class="mt-5" style="height:10.3rem">
         <canvas id="chart-trend"></canvas>
       </div>
       <!-- Panel de abajo: el volumen, como apoyo. Comparte el eje de dias con
            el de arriba, asi que se lee en vertical sin traducir nada. -->
-      <div class="mt-1" style="height:95px">
+      <div class="mt-1" style="height:5.6rem">
         <canvas id="chart-trend-vol"></canvas>
       </div>
     </div>
@@ -511,6 +522,21 @@
 <script>
 const SUBDOMAIN = "{{ subdomain }}";
 const DIAS_LABEL = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+// Chart.js dibuja sobre un canvas y no entiende rem: los tamaños hay que
+// darselos en px. Si se dejan fijos, cada vez que se sube la letra del
+// dashboard los ejes se quedan atras y los graficos parecen de otra pagina.
+// Se sacan de la raiz para que sigan a la escala solos.
+//
+// Con try/catch porque esto corre en el nivel superior del script: si
+// getComputedStyle falla, revienta la pagina entera antes de dibujar nada.
+const RAIZ_PX = (() => {
+  try { return parseFloat(getComputedStyle(document.documentElement).fontSize) || 19; }
+  catch (e) { return 19; }
+})();
+const FUENTE_EJE  = Math.round(RAIZ_PX * 0.68);   // numeros de los ejes
+const FUENTE_MINI = Math.round(RAIZ_PX * 0.62);   // leyenda y titulos de eje
+
 let distData = [];
 let CRM_URL = null;
 let asesoresListados = false;
@@ -854,7 +880,7 @@ function renderDist(distribucion) {
         <!-- Ancho fijo para que las cuatro barras arranquen en la misma
              vertical: si cada una empieza donde termina su etiqueta, dejan de
              ser comparables. -->
-        <div class="flex items-center gap-2.5 flex-shrink-0" style="width:215px">
+        <div class="flex items-center gap-2.5 flex-shrink-0" style="width:12.6rem">
           <span class="w-3 h-3 rounded flex-shrink-0" style="background:${d.color}"></span>
           <span class="t-chico font-semibold text-slate-700">${d.label}</span>
           <span class="tag ${tagClass(d.tag)}">${d.tag}</span>
@@ -942,7 +968,7 @@ const lineaObjetivo = {
     c.setLineDash([5, 4]); c.strokeStyle = COLOR.ok; c.lineWidth = 1.5;
     c.beginPath(); c.moveTo(left, y); c.lineTo(right, y); c.stroke();
     c.setLineDash([]);
-    c.fillStyle = COLOR.ok; c.font = '600 11px Inter, sans-serif';
+    c.fillStyle = COLOR.ok; c.font = `600 ${FUENTE_MINI}px Inter, sans-serif`;
     c.textAlign = 'left';
     c.fillText('objetivo ' + fmtSeg(OBJETIVO), left + 4, y - 4);
     c.restore();
@@ -1127,7 +1153,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
         legend: {
           display: porTiempo && hayAsesores,
           position: 'bottom',
-          labels: { boxWidth: 10, font: { size: 11 }, color: COLOR.apagado,
+          labels: { boxWidth: 10, font: { size: FUENTE_MINI }, color: COLOR.apagado,
                     // La leyenda dibuja el punto de cada serie, no un
                     // cuadradito: asi muestra la forma ademas del color, que
                     // es la segunda señal que se acaba de agregar.
@@ -1159,11 +1185,11 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
         y: {
           beginAtZero: true,
           grid: { color: COLOR.carril },
-          ticks: { font: { size: 12 }, color: COLOR.apagado, callback: fmtEje },
+          ticks: { font: { size: FUENTE_EJE }, color: COLOR.apagado, callback: fmtEje },
           // Con tope, los dias que se pasan quedan en el techo con un
           // triangulo en vez de estirar la escala y aplastar al resto.
           max: TOPE || undefined,
-          title: { display: true, color: COLOR.apagado, font: { size: 11, weight: '600' },
+          title: { display: true, color: COLOR.apagado, font: { size: FUENTE_MINI, weight: '600' },
                    text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
       }
@@ -1183,11 +1209,11 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
       },
       scales: {
         x: { grid: { display: false }, stacked: true,
-             ticks: { font: { size: 12 }, color: COLOR.apagado, maxTicksLimit: 15 } },
+             ticks: { font: { size: FUENTE_EJE }, color: COLOR.apagado, maxTicksLimit: 15 } },
         y: { beginAtZero: true, stacked: true, grid: { display: false },
-             ticks: { font: { size: 11 }, color: COLOR.tenue, precision: 0, maxTicksLimit: 3 },
+             ticks: { font: { size: FUENTE_MINI }, color: COLOR.tenue, precision: 0, maxTicksLimit: 3 },
              title: { display: true, text: 'Respuestas', color: COLOR.apagado,
-                      font: { size: 11, weight: '600' } } }
+                      font: { size: FUENTE_MINI, weight: '600' } } }
       }
     }
   });
