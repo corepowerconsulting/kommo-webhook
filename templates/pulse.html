@@ -565,6 +565,11 @@ let TREND_DATOS = null;
 // lo que dependa de esto lo sigue solo.
 let OBJETIVO = 0;
 
+// Las franjas de la cuenta, tal como vienen de la config. Ademas del objetivo
+// hacen falta enteras para poner los cortes del eje de tiempo en los mismos
+// umbrales: 5, 15 y 30 min.
+let FRANJAS = [];
+
 // ---------------------------------------------------------------------------
 // Selector multiple con checkboxes. Hoy lo usa "Responsables"; esta escrito
 // generico porque los filtros de asesor y de embudo van a necesitar lo mismo.
@@ -1170,6 +1175,35 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
     ? Math.round(v * 60) + ' min'
     : (Math.round(v * 10) / 10) + ' h';
 
+  // --- Los cortes del eje, en los umbrales de las franjas --------------------
+  // Chart.js elige solo numeros redondos —10, 20, 30 min— que no significan
+  // nada para este producto. Puestos en 5, 15 y 30 min cada linea de la grilla
+  // pasa a ser el techo de una franja, y un punto entre la primera y la
+  // segunda se lee "Bueno" sin mirar el numero ni contar cuadraditos.
+  //
+  // Salen de la config de la cuenta, igual que el objetivo: si el cliente
+  // mueve un umbral, la grilla lo sigue.
+  const CORTES = FRANJAS.map(f => f.max_seg).filter(s => s).map(s => s / 3600);
+  const ULTIMO = CORTES.length ? CORTES[CORTES.length - 1] : 0;
+
+  // El techo cae en el primer corte que cubra al dia mas lento, para que el
+  // eje TERMINE tambien en un umbral y no en un numero cualquiera.
+  const techo = TOPE || CORTES.find(c => c >= maxY) || maxY;
+
+  // Solo cuando los cortes no se apelotonan contra el piso: si las medianas
+  // son de horas, 5-15-30 min quedan los tres pegados al cero, ilegibles, y
+  // ademas no distinguen nada porque todos los dias caen en la ultima franja.
+  // Ahi conviene volver a los numeros redondos de Chart.js.
+  const usarCortes = ULTIMO > 0 && techo <= ULTIMO * 3;
+
+  // Cada corte pintado con el color de la franja que cierra: la linea de los
+  // 5 min es verde porque todo lo que queda debajo es "Ideal".
+  const COLOR_CORTE = {};
+  if (usarCortes) FRANJAS.forEach(f => {
+    if (f.max_seg) COLOR_CORTE[(f.max_seg / 3600).toFixed(6)] = f.color;
+  });
+  const colorDeLinea = v => COLOR_CORTE[Number(v).toFixed(6)] || COLOR.carril;
+
   // --- Panel de arriba: el tiempo -------------------------------------------
   new Chart(ctx, {
     type: 'line',
@@ -1225,11 +1259,22 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
         x: { grid: { display: false }, ticks: { display: false } },
         y: {
           beginAtZero: true,
-          grid: { color: COLOR.carril },
+          // La grilla se apoya en los umbrales, no en numeros redondos. Cada
+          // linea lleva el color de la franja que cierra.
+          grid: { color: usarCortes ? (c => colorDeLinea(c.tick && c.tick.value)) : COLOR.carril },
           ticks: { font: { size: FUENTE_EJE }, color: COLOR.apagado, callback: fmtEje },
+          // Se reemplazan los ticks que calculo Chart.js por los cortes de las
+          // franjas que entran, mas el cero y el techo. afterBuildTicks pisa
+          // la lista entera, asi que el 0 hay que ponerlo a mano: sin el, el
+          // eje arranca en cero pero no lo dice.
+          afterBuildTicks: usarCortes
+            ? (eje => { eje.ticks = [0].concat(CORTES.filter(c => c > 0 && c < techo))
+                                       .concat([techo])
+                                       .map(v => ({ value: v })); })
+            : undefined,
           // Con tope, los dias que se pasan quedan en el techo con un
           // triangulo en vez de estirar la escala y aplastar al resto.
-          max: TOPE || undefined,
+          max: TOPE || (usarCortes ? techo : undefined),
           title: { display: true, color: COLOR.apagado, font: { size: FUENTE_MINI, weight: '600' },
                    text: 'Tiempo · mediana en ' + (ejeEnMinutos ? 'minutos' : 'horas') }
         }
@@ -1590,6 +1635,7 @@ async function cargarDatos() {
     // que es justo lo que uno filtra para ver. Con uno solo, una fila.
     // Antes de dibujar el ranking: la barra se pinta segun el objetivo.
     const fr = d.config.franjas || [];
+    FRANJAS = fr;
     OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;
     document.getElementById('leyenda-objetivo').textContent = OBJETIVO
       ? `Barra: cuánto tarda · en rojo, por encima de ${fmtSeg(OBJETIVO)}` : '';
