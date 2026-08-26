@@ -3114,6 +3114,32 @@ def _calc_tiempo_efectivo(ts_cliente, ts_asesor, tz_offset, hora_ini, hora_fin, 
 def _en_horario_laboral(dt, hora_ini, hora_fin, dias_lab):
     return dt.weekday() in dias_lab and hora_ini <= dt.hour < hora_fin
 
+def _pct_enteros(cuentas, total):
+    """Porcentajes ENTEROS que suman exactamente 100.
+
+    El decimo de punto porcentual nunca cambio una decision, y ademas promete
+    una exactitud que no tenemos: la mediana de alguien con 17 respuestas tiene
+    un intervalo de confianza que cubre medio conjunto de sus datos. Decir
+    "31.7%" al lado de eso es decorativo, no preciso.
+
+    Pero redondear cada franja por separado NO suma 100: 31.7 + 15.0 + 13.0 +
+    38.5 se convierte en 32 + 15 + 13 + 39 = 99, y quien lee las cuatro las
+    suma. Se reparte por resto mayor —se trunca todo y las unidades que faltan
+    van a los que quedaron mas cerca de subir—, que es lo que garantiza el 100
+    exacto. De paso la tira del ranking, que dibuja estos mismos numeros como
+    anchos, cierra justo en el borde.
+    """
+    if not total:
+        return [0] * len(cuentas)
+    exactos = [c / total * 100 for c in cuentas]
+    piso = [int(x) for x in exactos]
+    faltan = 100 - sum(piso)
+    # De mayor a menor parte decimal: los que estaban mas cerca de subir.
+    orden = sorted(range(len(exactos)), key=lambda i: exactos[i] - piso[i], reverse=True)
+    for i in orden[:max(0, faltan)]:
+        piso[i] += 1
+    return piso
+
 def _get_franja_idx(seg, franjas):
     for i, f in enumerate(franjas):
         if f['max_seg'] is None or seg < f['max_seg']:
@@ -3150,6 +3176,7 @@ def _calc_metricas(registros, franjas, tz_offset):
     groups = [[] for _ in franjas]
     for r in registros:
         groups[_get_franja_idx(r['efectivo_seg'], franjas)].append(r)
+    pcts = _pct_enteros([len(g) for g in groups], total)
     distribucion = []
     for i, f in enumerate(franjas):
         leads = []
@@ -3165,7 +3192,7 @@ def _calc_metricas(registros, franjas, tz_offset):
         distribucion.append({
             'label': f['label'], 'tag': f['tag'],
             'count': len(groups[i]),
-            'pct': round(len(groups[i]) / total * 100, 1),
+            'pct': pcts[i],
             'color': f['color'],
             'leads': leads,
         })
@@ -3265,10 +3292,12 @@ def _calc_por_asesor(registros, franjas):
         cuenta = [0] * len(franjas)
         for s in segs:
             cuenta[_get_franja_idx(s, franjas)] += 1
+        # Enteros que suman 100: la tira los dibuja como anchos, asi que si no
+        # sumaran 100 quedaria un hueco o se pasaria del borde.
+        pcts = _pct_enteros(cuenta, len(segs))
         return [
             {'label': f['label'], 'tag': f['tag'], 'color': f['color'],
-             'count': cuenta[i],
-             'pct': round(cuenta[i] / len(segs) * 100, 1)}
+             'count': cuenta[i], 'pct': pcts[i]}
             for i, f in enumerate(franjas)
         ]
 

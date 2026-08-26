@@ -922,6 +922,15 @@ function fmtHoras(h) {
   return mm ? `${hh}h ${mm}m` : `${hh}h`;
 }
 
+// Los porcentajes bajan enteros del backend: el decimo de punto nunca cambio
+// una decision y ademas prometia una exactitud que no tenemos.
+//
+// Pero con enteros, 1 conversacion critica de 1000 redondea a "0%", y decir
+// 0% cuando hay una no es impreciso: es falso. Ese caso se dice aparte.
+function fmtPct(pct, count) {
+  return (count > 0 && pct === 0) ? '<1%' : pct + '%';
+}
+
 function tagClass(tag) {
   return { 'Ideal':'tag-green', 'Bueno':'tag-amber', 'Regular':'tag-orange', 'Crítico':'tag-red' }[tag] || 'tag-amber';
 }
@@ -997,7 +1006,7 @@ function renderDist(distribucion) {
           <span class="barra-franja-fill" style="width:${d.pct}%;background:${d.color}"></span>
         </span>
         <span class="t-chico font-semibold text-slate-800 w-14 text-right flex-shrink-0">${d.count}</span>
-        <span class="t-chico text-slate-500 w-14 text-right flex-shrink-0">${d.pct}%</span>
+        <span class="t-chico text-slate-500 w-14 text-right flex-shrink-0">${fmtPct(d.pct, d.count)}</span>
         <svg id="chev-${i}" class="chevron flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tenue)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div id="leads-${i}" class="hidden px-2 pb-2">
@@ -1047,7 +1056,7 @@ function renderDonut(distribucion) {
         // Repetirla alrededor de la dona serian los mismos cuatro nombres dos
         // veces en la misma tarjeta.
         legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${distribucion[ctx.dataIndex].count} (${distribucion[ctx.dataIndex].pct}%)` } }
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${distribucion[ctx.dataIndex].count} (${fmtPct(distribucion[ctx.dataIndex].pct, distribucion[ctx.dataIndex].count)})` } }
       },
       animation: { duration: ANIM }
     }
@@ -1562,7 +1571,7 @@ function renderAsesores(porAsesor, minMuestra) {
     const critico = (a.distribucion || [])[(a.distribucion || []).length - 1];
     const criticoTxt = critico && critico.count > 0
       ? `<div class="t-micro text-slate-500 mt-1 ml-[42px]">
-           <span class="font-semibold" style="color:${critico.color}">${critico.pct}%</span>
+           <span class="font-semibold" style="color:${critico.color}">${fmtPct(critico.pct, critico.count)}</span>
            ${critico.tag.toLowerCase()} · ${critico.count} de ${a.total}
          </div>`
       : '';
@@ -1861,14 +1870,14 @@ async function cargarDatos() {
     const ideal   = dist[0];
     const critico = dist[dist.length - 1];
 
-    document.getElementById('kpi-pct-ideal').textContent    = ideal.pct + '%';
+    document.getElementById('kpi-pct-ideal').textContent    = fmtPct(ideal.pct, ideal.count);
     document.getElementById('kpi-sub-ideal').textContent    = `${ideal.count} respuestas < 5 min`;
 
     // El unico color que queda en las cifras, y solo cuando el dato lo pide:
     // mas gente esperando +30 min que atendida en menos de 5. Es un estado
     // que se explica solo y no necesita un umbral nuevo en la config.
     const critEl = document.getElementById('kpi-pct-critico');
-    critEl.textContent = critico.pct + '%';
+    critEl.textContent = fmtPct(critico.pct, critico.count);
     critEl.classList.toggle('kpi-alerta', critico.pct > ideal.pct);
     document.getElementById('kpi-sub-critico').textContent  = `${critico.count} esperaron +30 min`;
 
