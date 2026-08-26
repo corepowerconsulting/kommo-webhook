@@ -1619,7 +1619,7 @@ function renderTabla(containerId, rows, tipo) {
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
              etiqueta es lo unico que la gente ve del calculo. -->
-        <div class="text-[12px] text-slate-500 leading-tight">${
+        <div class="t-micro text-slate-500 leading-tight">${
           pocas ? 'una sola respuesta' : `mediana de ${r.respuestas} respuestas`
         }</div>
       </div>
@@ -1695,7 +1695,7 @@ function renderAsesores(porAsesor, minMuestra) {
       ? `<span class="t-micro text-slate-300 w-5 text-right">—</span>`
       : `<span class="t-micro font-semibold text-slate-500 w-5 text-right">${++puesto}</span>`;
     const aviso = a.sin_puesto
-      ? `<span class="text-[12px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+      ? `<span class="t-micro font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
            ${a.sin_puesto}
          </span>`
       : '';
@@ -1712,7 +1712,7 @@ function renderAsesores(porAsesor, minMuestra) {
         </div>
         <div class="text-right flex-shrink-0 pl-3">
           <div class="t-chico font-extrabold leading-tight" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
-          <div class="text-[12px] text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
+          <div class="t-micro text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
       <!-- La tira arranca despues del puesto y del icono para que todas
