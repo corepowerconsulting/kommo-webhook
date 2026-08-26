@@ -42,14 +42,15 @@
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
        hay forma de que dos textos queden desparejos por olvidarse de uno. */
-       Va en 21px. Arranco en 16 y fue subiendo —17, 19, 21— siempre por lo
-       mismo: en la pantalla real se leia chico. Como TODO el dashboard esta en
-       rem —los seis tamaños de la escala, los pesos, los paddings y anchos de
-       Tailwind, la altura de los graficos y hasta el tamaño de fuente que se
-       le pasa a Chart.js— la jerarquia queda intacta: crece todo en la misma
-       proporcion y ninguna cosa se acerca a otra.
+       Va en 24px, o sea 1.5 veces el 16 de un navegador. Arranco en 16 y fue
+       subiendo —17, 19, 21, 24— siempre por lo mismo: en la pantalla real se
+       leia chico. Como TODO el dashboard esta en rem —los seis tamaños de la
+       escala, los pesos, los paddings y anchos de Tailwind, la altura de los
+       graficos y hasta el tamaño de fuente que se le pasa a Chart.js— la
+       jerarquia queda intacta: crece todo en la misma proporcion y ninguna
+       cosa se acerca a otra.
        Subirlo de nuevo es cambiar este numero y nada mas. */
-    html { font-size: 21px; }
+    html { font-size: 24px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
@@ -1128,7 +1129,9 @@ function renderDist(distribucion) {
                       <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
                       <div class="t-micro text-slate-500 mt-0.5 truncate">${l.asesor || ''}${l.asesor ? ' · ' : ''}${l.fecha}</div>
                     </div>
-                    <span class="t-chico font-semibold text-slate-700 flex-shrink-0">${l.fmt}</span>
+                    <!-- El tiempo es el dato de la fila: un escalon arriba
+                         del nombre del lead, igual que en las otras listas. -->
+                    <span class="t-base font-extrabold text-slate-700 flex-shrink-0">${l.fmt}</span>
                   </a>
                 `).join('')}
               </div>`
@@ -1614,7 +1617,9 @@ function renderTabla(containerId, rows, tipo) {
         <div class="t-micro text-slate-500 truncate">${r.asesor || 'Sin asignar'} · ${r.fecha} · #${r.lead_id}</div>
       </div>
       <div class="text-right flex-shrink-0 pl-3">
-        <div class="t-chico font-extrabold ${colorClass} leading-tight">${r.fmt}</div>
+        <!-- Misma regla que el ranking: el tiempo es el dato de la fila y va
+             un escalon arriba del nombre del lead. -->
+        <div class="t-base font-extrabold ${colorClass} leading-tight">${r.fmt}</div>
         <!-- Dice "mediana" porque es la mediana. Decia "prom." de cuando el
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
@@ -1711,7 +1716,12 @@ function renderAsesores(porAsesor, minMuestra) {
           ${aviso}
         </div>
         <div class="text-right flex-shrink-0 pl-3">
-          <div class="t-chico font-extrabold leading-tight" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
+          <!-- Un escalon POR ENCIMA del nombre. Es el dato del que trata la
+               fila; con los dos en t-chico se distinguian solo por el peso, y
+               entre semibold y extrabold a ese tamaño no hay diferencia que se
+               vea. La regla vale para toda la pagina: el numero del que trata
+               una fila va un escalon arriba de su etiqueta. -->
+          <div class="t-base font-extrabold leading-tight" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
           <div class="t-micro text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
