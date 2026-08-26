@@ -235,7 +235,11 @@
               <span id="frescura">en vivo</span>
             </span>
           </div>
-          <div class="section-sub">Estado de ahora mismo</div>
+          <!-- Las dos tarjetas se abren con clic y hasta ahora nada lo decia:
+               tenian chevron y cursor de mano, pero eso es una pista, no un
+               aviso. La de Distribucion si lo dice desde siempre, asi que se
+               usa la misma forma en el mismo lugar. -->
+          <div class="section-sub">Estado de ahora mismo · clic en una tarjeta para ver los leads</div>
         </div>
         <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
           <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
@@ -1367,6 +1371,24 @@ function renderAsesores(porAsesor, minMuestra) {
   const conPuesto = porAsesor.filter(a => !a.sin_puesto);
   const escala = Math.max(1, ...(conPuesto.length ? conPuesto : porAsesor).map(a => a.mediana_seg || 0));
 
+  // Cuantas respuestas sostienen cada barra. Hasta ahora estaba escrito al
+  // lado del nombre pero no se VEIA: alguien con 12 respuestas dibujaba la
+  // misma barra que alguien con 300, y el ranking los ponia a competir como
+  // si valieran lo mismo. El minimo de muestra deja fuera a los de menos de
+  // 10, pero entre 12 y 300 hay la misma diferencia de confianza y no se
+  // notaba.
+  //
+  // Va en el GROSOR y no en el largo: el largo ya significa cuanto tarda, y
+  // dos cosas en el mismo canal no se pueden leer por separado. Grosor es
+  // "cuanto peso tiene este dato", que es justo lo que hay que saber para
+  // creerle al puesto.
+  //
+  // Con raiz cuadrada y no proporcional: entre 12 y 300 la proporcion directa
+  // deja al chico en un hilo invisible, y la idea es que se vea DELGADO, no
+  // que desaparezca. El piso de 3px lo garantiza.
+  const maxTotal = Math.max(1, ...porAsesor.map(a => a.total || 0));
+  const grosorDe = total => 3 + Math.round(6 * Math.sqrt((total || 0) / maxTotal));
+
   let puesto = 0;
   el.innerHTML = porAsesor.map(a => {
     // La barra es el cambio: comparar "12m" contra "1h 05m" como texto obliga
@@ -1409,7 +1431,7 @@ function renderAsesores(porAsesor, minMuestra) {
       <!-- La barra arranca despues del puesto y del icono para que todas
            empiecen en la misma vertical: si cada una arrancara donde termina su
            nombre, las longitudes no se podrian comparar. -->
-      <div class="barra-asesor mt-2 ml-[42px]">
+      <div class="barra-asesor mt-2 ml-[42px]" style="height:${grosorDe(a.total)}px">
         <div class="barra-asesor-fill" style="width:${pct}%;background:${colorBarra}"></div>
       </div>
     </div>`;
@@ -1637,8 +1659,10 @@ async function cargarDatos() {
     const fr = d.config.franjas || [];
     FRANJAS = fr;
     OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;
+    // La barra codifica tres cosas y ninguna se adivina sola: hay que decirlo.
     document.getElementById('leyenda-objetivo').textContent = OBJETIVO
-      ? `Barra: cuánto tarda · en rojo, por encima de ${fmtSeg(OBJETIVO)}` : '';
+      ? `Barra: largo, cuánto tarda · rojo, por encima de ${fmtSeg(OBJETIVO)} · grosor, cuántas respuestas la sostienen`
+      : 'Barra: largo, cuánto tarda · grosor, cuántas respuestas la sostienen';
 
     const cardPorAsesor = document.getElementById('card-por-asesor');
     if (d.por_asesor && d.por_asesor.length) {
