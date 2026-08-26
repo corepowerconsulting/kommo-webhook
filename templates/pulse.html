@@ -531,11 +531,13 @@
                siempre es quien contesto: Kommo no manda los mensajes
                salientes. Pero las cuentas que cargan el campo custom "Asesor"
                si tienen a la persona real, y ahi el titulo lo dice. -->
+          <!-- Sin subtitulo ni leyenda a proposito. Los dos renglones que
+               estaban aca explicaban con palabras lo que el dibujo tiene que
+               decir solo, y el titulo ya distingue "por asesor" de "por
+               responsable", que era la mitad de lo que aclaraba el subtitulo.
+               La tira usa los mismos cuatro colores de la tarjeta de arriba,
+               asi que su leyenda ya esta puesta dos tarjetas antes. -->
           <h2 class="section-title" id="titulo-por-asesor">Tiempo de respuesta por responsable</h2>
-          <div class="section-sub" id="sub-por-asesor">Mediana · responsable del lead, no quien contestó</div>
-          <!-- Sin esto la barra se lee al reves: la mas larga es la mas LENTA,
-               y una barra larga y llena parece "mas y mejor". -->
-          <div class="t-micro text-slate-500 mt-1" id="leyenda-objetivo"></div>
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
@@ -1767,19 +1769,16 @@ async function cargarDatos() {
     // El ranking mide a QUIEN CONTESTO, no al dueño del lead, en dos casos:
     // cuando la cuenta carga el campo custom "Asesor", y —desde que capturamos
     // los mensajes salientes— en todas, porque el mensaje trae su remitente.
-    // Solo se cae al responsable en lo anterior al corte, que es lo que dice
-    // la segunda mitad del subtitulo.
+    // Solo se cae al responsable en lo anterior al corte.
+    //
+    // Esa distincion ahora la carga el TITULO y nada mas: el subtitulo que la
+    // repetia con mas palabras se borro.
     const hayCampoAsesor = (d.config.asesores_campo || []).length > 0;
     const sabemosQuienContesto =
       hayCampoAsesor || !!(d.config.medicion || {}).corte_mensajes;
     document.getElementById('titulo-por-asesor').textContent = sabemosQuienContesto
       ? 'Tiempo de respuesta por asesor'
       : 'Tiempo de respuesta por responsable';
-    document.getElementById('sub-por-asesor').textContent =
-      (esFueraHorario ? 'Mediana del tiempo real · ' : 'Mediana · ') +
-      (sabemosQuienContesto
-        ? 'asesor que atendió; si el lead no lo trae, el responsable'
-        : 'responsable del lead, no quien contestó');
 
     // No dejar elegir fechas anteriores al primer evento capturado para este cliente.
     // Ademas de bloquear el calendario, el dia se marca subrayado (marcarPrimerDia).
@@ -1846,13 +1845,9 @@ async function cargarDatos() {
     // Antes de dibujar el ranking: la barra se pinta segun el objetivo.
     const fr = d.config.franjas || [];
     FRANJAS = fr;
+    // OBJETIVO sigue en uso —pinta de rojo la mediana que lo pasa y dibuja la
+    // linea del grafico— pero ya no se explica con un renglon de texto.
     OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;
-    // La tira no necesita leyenda de colores —son los mismos cuatro de la
-    // tarjeta de arriba— pero si hay que decir QUE reparte, porque a simple
-    // vista podria ser cualquier cosa.
-    document.getElementById('leyenda-objetivo').textContent = OBJETIVO
-      ? `La tira reparte las respuestas de cada uno entre las cuatro franjas · en rojo, mediana por encima de ${fmtSeg(OBJETIVO)}`
-      : 'La tira reparte las respuestas de cada uno entre las cuatro franjas';
 
     const cardPorAsesor = document.getElementById('card-por-asesor');
     if (d.por_asesor && d.por_asesor.length) {
