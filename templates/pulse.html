@@ -133,15 +133,16 @@
        mediana esta bajo 5 min, rojo si pasa de 30— o sea que es informacion,
        que es justamente para lo que se reserva el color.
        Fondo claro y texto oscuro de la misma familia, igual que las etiquetas:
-       el color pleno detras de una cifra de 86px no se puede leer. El borde
-       izquierdo si va pleno, que es donde el color se ve sin estorbar.
+       el color pleno detras de una cifra de 86px no se puede leer.
+       Sin borde de color a la izquierda: el fondo ya dice la franja, y el filo
+       partia en dos una tarjeta que esta centrada.
        Y transicion: al cambiar el filtro de fechas la tarjeta pasa de un color
        a otro, y el salto seco parece un error de dibujo. */
-    .kpi-franja { border-left:4px solid transparent; transition:background .3s, border-color .3s, color .3s; }
-    .kpi-f0 { background:var(--franja-0-fondo); border-left-color:var(--franja-0); color:var(--franja-0-texto); }
-    .kpi-f1 { background:var(--franja-1-fondo); border-left-color:var(--franja-1); color:var(--franja-1-texto); }
-    .kpi-f2 { background:var(--franja-2-fondo); border-left-color:var(--franja-2); color:var(--franja-2-texto); }
-    .kpi-f3 { background:var(--franja-3-fondo); border-left-color:var(--franja-3); color:var(--franja-3-texto); }
+    .kpi-franja { transition:background .3s, color .3s; }
+    .kpi-f0 { background:var(--franja-0-fondo); color:var(--franja-0-texto); }
+    .kpi-f1 { background:var(--franja-1-fondo); color:var(--franja-1-texto); }
+    .kpi-f2 { background:var(--franja-2-fondo); color:var(--franja-2-texto); }
+    .kpi-f3 { background:var(--franja-3-fondo); color:var(--franja-3-texto); }
     /* La cifra y el rotulo heredan ese color; sin esto la cifra sigue en tinta
        sobre un fondo de color y el veredicto se pierde. */
     .kpi-franja .kpi-num-xl, .kpi-franja .kpi-label { color:inherit; }
@@ -369,7 +370,11 @@
                Adentro van <span> y no <div> porque el contenido de un boton
                tiene que ser texto: con div el HTML es invalido. Las clases de
                flex funcionan igual sobre span. -->
-          <button type="button" class="w-full text-left flex items-start justify-between"
+          <!-- Centrado como las tres tarjetas de KPI. El chevron va absoluto y
+               no en la fila: con justify-between el bloque del medio se corre
+               a la izquierda para dejarle lugar y no queda centrado de verdad.
+               Sacandolo del flujo, el contenido se centra contra la tarjeta. -->
+          <button type="button" class="relative w-full text-center flex items-start justify-center"
                   aria-expanded="false" aria-controls="panel-no-respondidos"
                   onclick="toggleExtra('no-respondidos')">
             <span class="flex items-start gap-3.5">
@@ -384,12 +389,12 @@
                 <span class="kpi-label block">Sin responder</span>
               </span>
             </span>
-            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 absolute right-0 top-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div id="panel-no-respondidos" class="hidden mt-4"></div>
         </div>
         <div class="card border-l-4 !border-l-blue-400">
-          <button type="button" class="w-full text-left flex items-start justify-between"
+          <button type="button" class="relative w-full text-center flex items-start justify-center"
                   aria-expanded="false" aria-controls="panel-trabajados-hoy"
                   onclick="toggleExtra('trabajados-hoy')">
             <span class="flex items-start gap-3.5">
@@ -401,7 +406,7 @@
                 <span class="kpi-label block">Atendidos hoy</span>
               </span>
             </span>
-            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 absolute right-0 top-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
