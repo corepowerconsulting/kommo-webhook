@@ -362,15 +362,7 @@
             <div id="nota-tope" class="hidden mt-1 text-xs text-slate-500"></div>
           </div>
         </div>
-        <div class="flex flex-col items-end gap-2">
-          <!-- El interruptor decide donde se abre el detalle por persona:
-               como lineas de tiempo arriba, o como barras apiladas abajo. -->
-          <div class="inline-flex bg-slate-100 rounded-xl p-1">
-            <button id="btn-trend-cantidad" onclick="cambiarTrend('cantidad')" class="px-3 py-1 rounded-lg text-xs font-semibold transition">Por volumen</button>
-            <button id="btn-trend-tiempo"   onclick="cambiarTrend('tiempo')"   class="px-3 py-1 rounded-lg text-xs font-semibold transition">Por tiempo</button>
-          </div>
-          <span id="trend-rango" class="text-sm text-slate-500"></span>
-        </div>
+        <span id="trend-rango" class="text-sm text-slate-500 mt-1"></span>
       </div>
       <!-- Panel de arriba: el tiempo, que es lo que se viene a mirar. -->
       <div class="mt-5" style="height:175px">
@@ -428,9 +420,6 @@ let EXTREMOS = 'lentos';
 let TOP_LENTOS = [];
 let TOP_RAPIDOS = [];
 let MIN_EXTREMOS = 1;
-// 'cantidad' | 'tiempo'. Los dos salen de la misma respuesta del servidor, asi
-// que cambiar de modo no vuelve a pedir datos.
-let TREND_MODO = 'cantidad';
 let TREND_DATOS = null;
 // El objetivo de respuesta, en segundos. Sale de la primera franja configurada
 // ("Ideal"), no de un numero escrito aca: si el cliente cambia el umbral, todo
@@ -602,22 +591,6 @@ function cambiarExtremos(cual) {
   renderExtremos();
 }
 
-// Cantidad = cuantas respondio cada uno. Tiempo = cuanto tardo cada uno.
-// Redibuja con lo que ya esta en memoria, sin volver a pedir datos: los dos
-// modos salen de la misma respuesta del servidor.
-function cambiarTrend(modo) {
-  if (TREND_MODO === modo) return;
-  TREND_MODO = modo;
-  actualizarBotonesTrend();
-  if (TREND_DATOS) renderTrend(TREND_DATOS.t, TREND_DATOS.a);
-}
-
-function actualizarBotonesTrend() {
-  const activo   = 'px-3 py-1 rounded-lg text-xs font-semibold transition bg-white text-blue-600 shadow-sm';
-  const inactivo = 'px-3 py-1 rounded-lg text-xs font-semibold transition text-slate-500 hover:text-slate-700';
-  document.getElementById('btn-trend-cantidad').className = TREND_MODO === 'cantidad' ? activo : inactivo;
-  document.getElementById('btn-trend-tiempo').className   = TREND_MODO === 'tiempo'   ? activo : inactivo;
-}
 
 // Se muestran 5, no 10: para ver "los extremos" con cinco alcanza, y quien
 // necesite mas puede hacer clic en cualquier franja de la Distribucion y ver
@@ -882,7 +855,7 @@ const lineaObjetivo = {
   }
 };
 
-function renderTrend(tendencia, tendenciaPorAsesor) {
+function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
   // Dos paneles que comparten el eje de dias: arriba el tiempo, abajo el
   // volumen. Antes era un solo dibujo con dos escalas distintas, y donde se
   // cruzaban la barra y la linea parecia que significaba algo — no significaba
@@ -896,7 +869,16 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
 
   const labels = tendencia.map(d => { const [,m,dia]=d.fecha.split('-'); return `${dia}/${m}`; });
   const hayAsesores = tendenciaPorAsesor && tendenciaPorAsesor.length > 0;
-  const porTiempo = TREND_MODO === 'tiempo';
+  // Ya no hay interruptor. Decidia DONDE se abria el detalle por persona
+  // —lineas arriba o barras abajo— que es una idea dificil de explicar y un
+  // control mas que leer. Ahora el grafico se adapta solo al filtro:
+  //
+  //   sin filtrar personas   una linea, la mediana del equipo
+  //   con 2 o mas elegidas   una linea por persona, para compararlas
+  //
+  // O sea que la comparacion se pide donde ya se pedia —el filtro de
+  // Responsables— en vez de con un boton propio que hacia lo mismo.
+  const porTiempo = (personasElegidas || []).length >= 2;
   // El detalle por persona se abre en UN panel o en el otro: como lineas de
   // tiempo arriba, o como barras apiladas abajo. Las medianas no se apilan
   // —sumar la de dos personas no da ningun numero— y las cantidades si.
@@ -925,7 +907,7 @@ function renderTrend(tendencia, tendenciaPorAsesor) {
   // reloj no salta las horas no laborables y el numero es otro.
   const real = (typeof MODO !== 'undefined' && MODO === 'fuera_horario') ? ' real' : '';
   document.getElementById('leyenda-linea').textContent = porTiempo
-    ? `Arriba: mediana${real} de cada persona · abajo el volumen total`
+    ? `Arriba: mediana${real} de cada persona elegida · abajo el volumen`
     : `Arriba: mediana${real} del equipo · abajo el volumen por persona`;
   // Si se acoto el eje hay que decirlo: un punto pegado al techo sin aviso se
   // lee como el valor del techo, no como "se salio de escala".
@@ -1433,9 +1415,14 @@ async function cargarDatos() {
 
     // Tendencia
     if (d.tendencia.length > 0) {
-      TREND_DATOS = { t: d.tendencia, a: d.tendencia_por_asesor };
-      actualizarBotonesTrend();
-      renderTrend(TREND_DATOS.t, TREND_DATOS.a);
+      TREND_DATOS = {
+        t: d.tendencia,
+        a: d.tendencia_por_asesor,
+        // Con 2 o mas responsables elegidos el grafico dibuja una linea por
+        // persona; sin filtrar, una sola linea del equipo.
+        p: d.config.asesores_elegidos || [],
+      };
+      renderTrend(TREND_DATOS.t, TREND_DATOS.a, TREND_DATOS.p);
       document.getElementById('trend-rango').textContent =
         `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
     }
