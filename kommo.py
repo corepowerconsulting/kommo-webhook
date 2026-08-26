@@ -190,6 +190,14 @@ def init_db():
     # entrante (author][name], con author][type] = external, o sea el cliente),
     # asi que se guarda aca y se usa cuando el lead no trae el suyo.
     c.execute('ALTER TABLE mensajes_cliente ADD COLUMN IF NOT EXISTS cliente_nombre TEXT')
+    # La clave primaria es (subdomain, lead_id, ts), asi que 'ts' queda tercera
+    # y una consulta por (subdomain, ts) no la puede usar. "Sin responder"
+    # consulta exactamente asi —los mensajes desde el corte— y ahora ademas se
+    # refresca sola cada minuto y medio, o sea muchas veces por sesion.
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_cliente_sub_ts
+                 ON mensajes_cliente (subdomain, ts)''')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_asesor_sub_ts
+                 ON mensajes_asesor (subdomain, ts)''')
     c.execute('''
         CREATE TABLE IF NOT EXISTS leads_estado (
             subdomain TEXT,
@@ -3890,6 +3898,63 @@ def pulse_logout():
     subdomain = request.args.get('subdomain', '').strip()
     session.pop(f'pulse_ok_{subdomain}', None)
     return redirect(url_for('pulse', subdomain=subdomain))
+
+@app.route('/pulse/snapshot')
+def pulse_snapshot():
+    """Solo las dos tarjetas de "ahora mismo", para refrescarlas solas.
+
+    Existe para no reconsultar el dashboard entero cada minuto y medio. El
+    resto de la pantalla depende del rango de fechas y no cambia si nadie toca
+    el filtro; el snapshot si cambia, y hasta ahora habia que recargar la
+    pagina para enterarse.
+
+    Recibe los mismos filtros que /pulse/data. Si recibiera otros, el numero
+    de la tarjeta dejaria de coincidir con la lista que se abre debajo."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if not subdomain or subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain no configurado'}), 400
+    if not pulse_autorizado(subdomain):
+        return jsonify({'error': 'No autorizado'}), 401
+
+    cfg       = PULSE_CONFIG[subdomain]
+    tz_offset = cfg['tz_offset']
+    h_ini, h_fin = cfg['horario']
+
+    asesor_ids = sorted({
+        int(p) for crudo in request.args.getlist('asesor')
+        for p in str(crudo).split(',') if p.strip().lstrip('-').isdigit()
+    })
+    solo_abiertas = request.args.get('abiertas', '').strip() == '1'
+    embudos_sel = sorted({
+        int(p.strip()) for crudo in request.args.getlist('embudo')
+        for p in str(crudo).split(',') if p.strip().isdigit()
+    })
+    etapas_sel = sorted({
+        p.strip() for crudo in request.args.getlist('etapa')
+        for p in str(crudo).split(',') if p.strip() and ':' in p
+    })
+    sql_embudo, params_embudo = _filtro_embudo(embudos_sel, etapas_sel)
+
+    conn = get_conn()
+    try:
+        corte = _corte_salientes(conn.cursor(cursor_factory=RealDictCursor), subdomain)
+    finally:
+        conn.close()
+
+    fecha_min = _fecha_minima(subdomain)
+    piso = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
+
+    no_respondidos = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
+                                           piso, sql_embudo, params_embudo, corte)
+    trabajados, solo_bot = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
+                                                 asesor_ids, solo_abiertas,
+                                                 sql_embudo, params_embudo, corte)
+    _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot)
+    return jsonify({
+        'no_respondidos':     no_respondidos,
+        'trabajados_hoy':     trabajados,
+        'atendidos_solo_bot': solo_bot,
+    })
 
 @app.route('/pulse/data')
 def pulse_data():

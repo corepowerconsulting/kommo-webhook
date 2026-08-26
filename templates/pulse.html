@@ -130,7 +130,16 @@
     <div>
       <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
         <div>
-          <div class="section-title">Snapshot actual</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="section-title">Snapshot actual</div>
+            <!-- Se refresca solo cada minuto y medio. Decirlo importa: sin
+                 esto, un numero quieto se lee como un numero viejo y la gente
+                 recarga la pagina por las dudas. -->
+            <span class="flex items-center gap-1.5 text-xs text-slate-500">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+              <span id="frescura">en vivo</span>
+            </span>
+          </div>
           <div class="section-sub">Estado de ahora mismo · no cambia con el filtro de fechas</div>
         </div>
         <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
@@ -1202,6 +1211,82 @@ function renderAsesores(porAsesor, minMuestra) {
 }
 
 
+// Los filtros que comparten el dashboard y el refresco del snapshot. Estan en
+// un solo lugar a proposito: si el snapshot se pidiera con otros filtros, el
+// numero de la tarjeta dejaria de coincidir con la lista que se abre debajo.
+function filtrosComunes() {
+  const params = new URLSearchParams({ subdomain: SUBDOMAIN });
+  // Un parametro por elegido; sin ninguno, el backend no filtra.
+  multiValores('asesor').forEach(v => params.append('asesor', v));
+  // Embudos tildados enteros y etapas sueltas van por separado: el backend los
+  // combina con OR sobre leads_estado.
+  const emb = embudosListados ? embudoValores() : { embudos: [], etapas: [] };
+  emb.embudos.forEach(v => params.append('embudo', v));
+  emb.etapas.forEach(v => params.append('etapa', v));
+  // El backend recibe "abiertas=1" = solo abiertas. La casilla dice lo
+  // contrario —incluir cerradas— asi que se manda cuando NO esta marcada.
+  if (!document.getElementById('chk-incluir-cerradas').checked) params.append('abiertas', '1');
+  return params;
+}
+
+// Pinta las dos tarjetas de "ahora mismo". La usan la carga completa y el
+// refresco automatico, para que las dos dejen la pantalla igual.
+function pintarSnapshot(d) {
+  document.getElementById('kpi-no-respondidos').textContent =
+    d.no_respondidos.length.toLocaleString('es');
+  // El numero grande cuenta TODOS los atendidos hoy. Los que solo recibieron
+  // el saludo del bot se aclaran en una linea debajo: son los que parecen
+  // atendidos y siguen esperando a una persona.
+  const soloBot  = d.atendidos_solo_bot || [];
+  const todosHoy = d.trabajados_hoy.concat(soloBot);
+  document.getElementById('kpi-trabajados-hoy').textContent =
+    todosHoy.length.toLocaleString('es');
+  document.getElementById('nota-solo-bot').textContent = soloBot.length
+    ? `${soloBot.length} solo por el bot` : '';
+  renderExtraLeads('panel-no-respondidos', d.no_respondidos);
+  renderExtraLeads('panel-trabajados-hoy', todosHoy);
+  ULTIMO_SNAPSHOT = Date.now();
+  marcarFrescura();
+}
+
+let ULTIMO_SNAPSHOT = 0;
+
+function marcarFrescura() {
+  const el = document.getElementById('frescura');
+  if (!el || !ULTIMO_SNAPSHOT) return;
+  const seg = Math.round((Date.now() - ULTIMO_SNAPSHOT) / 1000);
+  el.textContent = seg < 60
+    ? 'actualizado recién'
+    : `actualizado hace ${Math.floor(seg / 60)} min`;
+}
+
+// Solo el snapshot, no el dashboard entero: el resto depende del rango de
+// fechas y no cambia si nadie toca el filtro.
+async function refrescarSnapshot() {
+  // Con la pestaña oculta no hay nadie mirando; seguir consultando seria carga
+  // contra la base a cambio de nada.
+  if (document.hidden) return;
+  try {
+    const res = await fetch('/pulse/snapshot?' + filtrosComunes().toString());
+    const d = await res.json();
+    if (!d.error) pintarSnapshot(d);
+  } catch (e) {
+    // Un refresco que falla no puede romper la pantalla: los numeros que ya
+    // estan siguen siendo validos, solo quedan viejos.
+    console.warn('refresco del snapshot:', e);
+  }
+}
+
+// Minuto y medio: el snapshot cambia con el ritmo de las conversaciones, no
+// segundo a segundo. Mas seguido seria carga contra Supabase sin que nadie
+// note la diferencia.
+setInterval(refrescarSnapshot, 90000);
+setInterval(marcarFrescura, 30000);
+// Al volver a la pestaña, refresca en el acto en vez de esperar el ciclo.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refrescarSnapshot();
+});
+
 async function cargarDatos() {
   document.getElementById('loading').classList.remove('hidden');
   document.getElementById('content').classList.add('hidden');
@@ -1214,23 +1299,13 @@ async function cargarDatos() {
     desdeInput.value = FECHA_MINIMA;
   }
 
+  const params = filtrosComunes();
   const desde  = document.getElementById('desde').value;
   const hasta  = document.getElementById('hasta').value;
-  const params = new URLSearchParams({ subdomain: SUBDOMAIN });
   if (desde)  params.append('desde',  desde);
   if (hasta)  params.append('hasta',  hasta);
-  // Un parametro por elegido; sin ninguno, el backend no filtra.
-  multiValores('asesor').forEach(v => params.append('asesor', v));
   multiValores('asesorcampo').forEach(v => params.append('asesor_nombre', v));
-  // Embudos tildados enteros y etapas sueltas van por separado: el backend los
-  // combina con OR sobre leads_estado.
-  const emb = embudosListados ? embudoValores() : { embudos: [], etapas: [] };
-  emb.embudos.forEach(v => params.append('embudo', v));
-  emb.etapas.forEach(v => params.append('etapa', v));
   params.append('modo', MODO);
-  // El backend sigue recibiendo "abiertas=1" = solo abiertas. La casilla dice
-  // lo contrario —incluir cerradas— asi que se manda cuando NO esta marcada.
-  if (!document.getElementById('chk-incluir-cerradas').checked) params.append('abiertas', '1');
 
   try {
     const res = await fetch('/pulse/data?' + params.toString());
@@ -1350,8 +1425,6 @@ async function cargarDatos() {
       avisoCob.classList.add('hidden');
     }
 
-    // Leads accionables
-    document.getElementById('kpi-no-respondidos').textContent = d.no_respondidos.length.toLocaleString('es');
     // "Sin responder" se calcula con los mensajes, que arrancan en el corte.
     // Antes de esa fecha Kommo no nos mandaba los salientes, asi que no se
     // puede saber si esas conversaciones fueron respondidas. Se aclara para
@@ -1360,16 +1433,7 @@ async function cargarDatos() {
     document.getElementById('nota-no-respondidos').textContent = desdeCuando
       ? `desde ${desdeCuando.split('-').reverse().join('/')}`
       : '';
-    // El numero grande cuenta TODOS los atendidos hoy, como siempre. Los que
-    // solo recibieron el saludo del bot se aclaran en una linea debajo: son
-    // los que parecen atendidos y siguen esperando a una persona.
-    const soloBot = d.atendidos_solo_bot || [];
-    const todosHoy = d.trabajados_hoy.concat(soloBot);
-    document.getElementById('kpi-trabajados-hoy').textContent = todosHoy.length.toLocaleString('es');
-    document.getElementById('nota-solo-bot').textContent = soloBot.length
-      ? `${soloBot.length} solo por el bot` : '';
-    renderExtraLeads('panel-no-respondidos', d.no_respondidos);
-    renderExtraLeads('panel-trabajados-hoy', todosHoy);
+    pintarSnapshot(d);
 
     // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
     // antes se escondia y desaparecian la mediana y el p90 de esa persona,
