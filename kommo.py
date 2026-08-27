@@ -702,7 +702,7 @@ def remitentes_auto_de(subdomain):
 def asesor_de_registro(r):
     """Quien atendio una respuesta.
 
-    Tres fuentes, en este orden:
+    Cuatro fuentes, en este orden:
 
       1. Si el mensaje lo mando un BOT, gana el nombre del bot. Va primero
          porque el campo custom es del LEAD, no del mensaje: si el Salesbot
@@ -711,18 +711,34 @@ def asesor_de_registro(r):
       2. El campo custom 'Asesor' del lead. Solo lo carga Camara China, y ahi
          es mejor que el remitente del mensaje: todos comparten el usuario
          'Ventas', asi que el mensaje dice 'Ventas' y el campo dice la persona.
-      3. Quien mando el mensaje, que es lo que tenemos desde que capturamos los
-         salientes. Para las otras cinco cuentas es la fuente real.
+      3. Quien mando el mensaje, PERO solo si Kommo lo identifico.
       4. El responsable del lead, que es lo unico que habia antes del corte.
+
+    Y si no hay ninguna de las cuatro, devuelve None y el ranking lo agrupa
+    bajo 'Sin asignar'.
+
+    Sobre el paso 3: user_id 0 significa que la respuesta salio por un canal
+    compartido —WhatsApp Lite, Wazzup, la app de WhatsApp Business— y entonces
+    el nombre que trae el mensaje es el del CANAL, no el de quien apreto
+    enviar. Medido sobre las seis cuentas: 5.994 de 17.820 salientes, el 34%,
+    llegan asi. Poner "WhatsApp Lite" en el ranking no dice nada de nadie; el
+    responsable del lead, al menos, es una persona.
+
+    Donde el canal SI identifica al usuario —Ventas Directas, o cualquier
+    respuesta desde la web— el paso 3 sigue ganandole al responsable, que es
+    lo correcto: ahi sabemos quien contesto de verdad y el responsable seria
+    una aproximacion peor.
 
     La regla vive en un solo lugar porque la usan el ranking, la tendencia
     diaria y el detalle de la distribucion; si se separan, el dashboard puede
     mostrar un nombre en el ranking y otro distinto al abrir la franja."""
     if r.get('respondio_auto'):
         return r.get('respondio_nombre')
-    return (r.get('asesor_nombre')
-            or r.get('respondio_nombre')
-            or nombre_asesor(r.get('responsible_user_id')))
+    if r.get('asesor_nombre'):
+        return r['asesor_nombre']
+    if r.get('respondio_user_id'):
+        return r.get('respondio_nombre')
+    return nombre_asesor(r.get('responsible_user_id'))
 
 def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsible_user_id=None,
                              lead_nombre=None, asesor_nombre=None):
@@ -3345,30 +3361,27 @@ def _calc_por_asesor(registros, franjas):
     # bajo un solo nombre y el ranking no dice nada. Cuando el campo no viene,
     # se cae al responsable y la cuenta se comporta como siempre.
     grupos = defaultdict(list)
-    bots, canales, personas = set(), set(), set()
+    bots = set()
+    # Cuantas de las respuestas de cada uno salieron por un canal compartido y
+    # por lo tanto se le atribuyen por ser el RESPONSABLE del lead, no porque
+    # se lo haya visto contestar. No cambia el ranking, pero hay que poder
+    # decirlo: no es lo mismo un numero medido que uno inferido.
+    por_canal = defaultdict(int)
     for r in registros:
         nombre = asesor_de_registro(r) or SIN_ASIGNAR
         grupos[nombre].append(r['efectivo_seg'])
         if r.get('respondio_auto'):
             bots.add(nombre)
-        elif r.get('respondio_user_id') == 0:
-            canales.add(nombre)
-        else:
-            personas.add(nombre)
+        elif not r.get('respondio_user_id') and not r.get('asesor_nombre'):
+            por_canal[nombre] += 1
 
-    # Un nombre es un CANAL si nunca vino de un usuario identificado. Si al
-    # menos una vez llego con user_id propio, es una persona y se lo trata
-    # como tal.
-    canales -= personas
-
+    # Ya no hace falta la categoria 'sin identificar': el nombre de un canal no
+    # puede llegar hasta aca. asesor_de_registro solo usa el remitente cuando
+    # Kommo lo identifico; si la respuesta salio por WhatsApp Lite o Wazzup, se
+    # atribuye al responsable del lead, que si es una persona.
     def sin_puesto(nombre, segs):
         if nombre in bots:
             return 'automático'
-        # Es atencion real de una persona, pero Kommo no sabe cual: contestaron
-        # desde la app o desde una integracion (Wazzup, WhatsApp Business). No
-        # puede competir en un ranking de personas porque no es una.
-        if nombre in canales:
-            return 'sin identificar'
         if nombre == SIN_ASIGNAR:
             return 'sin responsable'
         if len(segs) < MIN_MUESTRA_ASESOR:
@@ -3408,6 +3421,10 @@ def _calc_por_asesor(registros, franjas):
             'p90_seg': _pctl(segs, 90),
             'promedio_seg': round(sum(segs) / len(segs)),
             'distribucion': reparto(segs),
+            # Cuantas se le atribuyen por ser el responsable del lead y no por
+            # haberlo visto contestar: la respuesta salio por un canal
+            # compartido y Kommo no dice quien la mando.
+            'por_canal': por_canal.get(nombre, 0),
             'sin_puesto': sin_puesto(nombre, segs),
         }
         for nombre, segs in grupos.items()

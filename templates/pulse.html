@@ -1832,6 +1832,17 @@ function renderAsesores(porAsesor, minMuestra) {
           <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span class="t-chico font-semibold text-slate-700 truncate">${a.asesor}</span>
           <span class="t-micro text-slate-500 whitespace-nowrap">${a.total} ${a.total === 1 ? 'respuesta' : 'respuestas'}</span>
+          <!-- Cuantas se le atribuyen por ser el RESPONSABLE del lead y no
+               porque se lo haya visto contestar: la respuesta salio por un
+               canal compartido —WhatsApp Lite, Wazzup, la app de WhatsApp— y
+               Kommo no dice quien la mando.
+               No cambia el numero, pero hay que poder decirlo: un tiempo
+               medido y uno inferido no valen lo mismo, y en algunas cuentas
+               esto es el 78% de las respuestas. -->
+          ${a.por_canal ? `<span class="t-micro text-slate-300 whitespace-nowrap"
+                 data-tip="1" data-tip-color="${COLOR.otros}"
+                 data-tip-label="Salieron por un canal compartido"
+                 data-tip-detalle="se le cuentan por ser el responsable del lead, no porque Kommo diga quién las mandó">${a.por_canal} por canal</span>` : ''}
           ${aviso}
         </div>
         <div class="text-right flex-shrink-0 pl-3">
