@@ -450,8 +450,24 @@
     <!-- Barra de filtros en UNA linea, con cada grupo en su subrecuadro:
          periodo / vista / personas. Las etiquetas van adentro del recuadro y
          no encima, que es lo que hacia que la barra ocupara dos alturas. -->
-    <div class="card !p-4 no-imprimir">
+    <!-- Sin tarjeta alrededor. Cada grupo ya trae su propio recuadro, asi que
+         el card era una caja dentro de otra; sacandolo, la fila arranca en el
+         mismo x que el contenido y este grid puede alinearse EXACTO con el de
+         las dos tarjetas del snapshot.
+         Es el mismo grid: dos columnas y el mismo gap. Esa es la unica forma
+         de que los bordes izquierdos coincidan de verdad; con un flex suelto
+         cada grupo caia donde terminaba el anterior. -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 no-imprimir">
+
+      <!-- Columna 1 — CUANDO. El horario va antes que las fechas: primero se
+           decide si se miran las horas laborales o las de fuera, y recien
+           despues que dias. Al reves obliga a volver sobre lo ya elegido. -->
       <div class="flex items-center gap-2.5 flex-wrap">
+
+        <div class="grupo !p-1 !gap-0">
+          <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Horario laboral</button>
+          <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Fuera de horario</button>
+        </div>
 
         <div class="grupo">
           <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -460,10 +476,11 @@
           <input type="text" id="hasta" readonly class="fecha-in"/>
         </div>
 
-        <div class="grupo !p-1 !gap-0">
-          <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Horario laboral</button>
-          <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Fuera de horario</button>
-        </div>
+      </div>
+
+      <!-- Columna 2 — QUIEN. Arranca en la misma vertical que "Atendidos
+           hoy", que es la segunda tarjeta del snapshot. -->
+      <div class="flex items-center gap-2.5 flex-wrap">
 
         <div class="grupo">
           <div class="multi-wrap relative">
@@ -502,14 +519,14 @@
 
         <button onclick="cargarDatos()" class="btn-primary ml-auto !py-2">Aplicar</button>
       </div>
+    </div>
 
-      <!-- Horario y dias: contexto, no un control. Va en una linea fina y
-           discreta en vez de una segunda fila con su propio separador. -->
-      <div class="mt-3 t-micro text-slate-500">
-        <span id="horario-txt" class="font-semibold text-slate-500"></span>
-        <span class="text-slate-300 mx-1.5">·</span>
-        <span id="dias-txt" class="font-semibold text-slate-500"></span>
-      </div>
+    <!-- Horario y dias: contexto, no un control. Va en una linea fina y
+         discreta en vez de una segunda fila con su propio separador. -->
+    <div class="t-micro text-slate-500 no-imprimir">
+      <span id="horario-txt" class="font-semibold text-slate-500"></span>
+      <span class="text-slate-300 mx-1.5">·</span>
+      <span id="dias-txt" class="font-semibold text-slate-500"></span>
     </div>
 
     <!-- Aviso de cobertura: si el periodo elegido tiene dias sin captura, los
