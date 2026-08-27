@@ -9,7 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
     :root {
       /* --- Colores: bajan de paleta.py, no se escriben aca --------------
@@ -37,6 +37,17 @@
       --p-normal: 400;
       --p-medio:  600;
       --p-fuerte: 800;
+
+      /* --- Alturas de linea: tres ---------------------------------------
+         Era la pata que faltaba del sistema. Habia tamaños y pesos como
+         token, pero las alturas andaban sueltas: tres valores distintos en
+         el CSS y cinco leading-tight de Tailwind en el markup.
+         Un sistema tipografico se declara con las TRES cosas; con dos, la
+         proxima fila que alguien escriba va a tener el interlineado que le
+         parezca. */
+      --lh-cifra: 1;      /* cifras: sin aire, el numero es un bloque */
+      --lh-corto: 1.25;   /* etiquetas y filas de una o dos lineas */
+      --lh-texto: 1.5;    /* avisos y todo lo que sea un parrafo */
     }
 
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
@@ -85,6 +96,11 @@
     .t-base   { font-size: var(--t-base); }
     .t-titulo { font-size: var(--t-titulo); }
     .t-cifra  { font-size: var(--t-cifra); }
+    /* Las alturas tambien como clase, para reemplazar leading-tight de
+       Tailwind, que trae su propio valor fuera del sistema. */
+    .lh-cifra { line-height: var(--lh-cifra); }
+    .lh-corto { line-height: var(--lh-corto); }
+    .lh-texto { line-height: var(--lh-texto); }
 
     .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:var(--marca); text-decoration-thickness:2px; text-underline-offset:2px; font-weight:var(--p-medio); }
     .flatpickr-day.selected, .flatpickr-day.selected:hover { background:var(--marca); border-color:var(--marca); }
@@ -110,9 +126,9 @@
        El color queda libre para lo unico que deberia hacer, que es marcar la
        excepcion (.kpi-alerta), y para el borde y el icono de cada tarjeta,
        que marcan la CATEGORIA y no el valor. */
-    .kpi-num-xl { font-size:var(--t-cifra-xl); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.03em; color:var(--tinta); }
-    .kpi-num    { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; color:var(--tinta); }
-    .kpi-num-sm { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:1; letter-spacing:-0.02em; color:var(--tinta); }
+    .kpi-num-xl { font-size:var(--t-cifra-xl); font-weight:var(--p-fuerte); line-height:var(--lh-cifra); letter-spacing:-0.03em; color:var(--tinta); }
+    .kpi-num    { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:var(--lh-cifra); letter-spacing:-0.02em; color:var(--tinta); }
+    .kpi-num-sm { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:var(--lh-cifra); letter-spacing:-0.02em; color:var(--tinta); }
     /* La excepcion. Se pone por JS y solo cuando el dato la justifica. */
     .kpi-num-xl.kpi-alerta, .kpi-num.kpi-alerta, .kpi-num-sm.kpi-alerta { color:var(--alerta); }
     .kpi-label{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--apagado); margin-top:6px; }
@@ -181,7 +197,7 @@
       position:fixed; z-index:60; pointer-events:none;
       background:rgba(15,23,42,.92); color:#fff;
       padding:6px 10px; border-radius:8px;
-      font-size:var(--t-micro); line-height:1.45; white-space:nowrap;
+      font-size:var(--t-micro); line-height:var(--lh-texto); white-space:nowrap;
       box-shadow:0 4px 14px rgba(15,23,42,.28);
       display:flex; align-items:center; gap:7px;
     }
@@ -208,7 +224,7 @@
     .field-label { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); display:block; }
     .control {
       border:1px solid var(--linea); border-radius:10px; padding:9px 12px; font-size:var(--t-chico);
-      color:var(--texto); background:var(--fondo-suave); transition:.15s; line-height:1.2;
+      color:var(--texto); background:var(--fondo-suave); transition:.15s; line-height:var(--lh-corto);
     }
     .control:focus { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.15); border-color:var(--foco); background:#fff; }
     .btn-primary {
@@ -296,7 +312,7 @@
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
       </div>
-      <div class="leading-tight">
+      <div class="lh-corto">
         <!-- El h1 de la pagina. Era un div: la pagina no tenia NINGUN
              encabezado, asi que para un lector de pantalla no habia titulo ni
              secciones, solo 143 divs seguidos. Tailwind resetea el tamaño de
@@ -1075,6 +1091,27 @@ function fmtPct(pct, count) {
   }, { passive: true });
 })();
 
+// La cifra principal dice la unidad con todas las letras: "9 minutos", no
+// "9m". Es la unica de la pantalla que se lee de lejos, y una letra suelta a
+// 86px obliga a traducirla mentalmente.
+//
+// En las tablas la abreviatura SI conviene: ahi lo que importa es que la
+// columna sea angosta y que todas las filas midan parecido, y por eso fmtSeg
+// se queda como esta.
+function fmtSegLargo(seg) {
+  if (!seg || seg <= 0) return 'menos de 1 segundo';
+  const con = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+  if (seg < 60) return con(seg, 'segundo', 'segundos');
+  if (seg < 3600) {
+    const m = Math.floor(seg / 60), s = seg % 60;
+    // Los segundos solo si los hay: "9 minutos" se lee mejor que
+    // "9 minutos 0 segundos".
+    return con(m, 'minuto', 'minutos') + (s ? ' ' + con(s, 'segundo', 'segundos') : '');
+  }
+  const hh = Math.floor(seg / 3600), mm = Math.floor((seg % 3600) / 60);
+  return con(hh, 'hora', 'horas') + (mm ? ' ' + con(mm, 'minuto', 'minutos') : '');
+}
+
 function tagClass(tag) {
   return { 'Ideal':'tag-green', 'Bueno':'tag-amber', 'Regular':'tag-orange', 'Crítico':'tag-red' }[tag] || 'tag-amber';
 }
@@ -1655,12 +1692,12 @@ function renderTabla(containerId, rows, tipo) {
       <div class="text-right flex-shrink-0 pl-3">
         <!-- Misma regla que el ranking: el tiempo es el dato de la fila y va
              un escalon arriba del nombre del lead. -->
-        <div class="t-base font-extrabold ${colorClass} leading-tight">${r.fmt}</div>
+        <div class="t-base font-extrabold ${colorClass} lh-corto">${r.fmt}</div>
         <!-- Dice "mediana" porque es la mediana. Decia "prom." de cuando el
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
              etiqueta es lo unico que la gente ve del calculo. -->
-        <div class="t-micro text-slate-500 leading-tight">${
+        <div class="t-micro text-slate-500 lh-corto">${
           pocas ? 'una sola respuesta' : `mediana de ${r.respuestas} respuestas`
         }</div>
       </div>
@@ -1757,8 +1794,8 @@ function renderAsesores(porAsesor, minMuestra) {
                entre semibold y extrabold a ese tamaño no hay diferencia que se
                vea. La regla vale para toda la pagina: el numero del que trata
                una fila va un escalon arriba de su etiqueta. -->
-          <div class="t-base font-extrabold leading-tight" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
-          <div class="t-micro text-slate-500 leading-tight">p90 ${fmtSeg(a.p90_seg)}</div>
+          <div class="t-base font-extrabold lh-corto" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
+          <div class="t-micro text-slate-500 lh-corto">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
       <!-- La tira arranca despues del puesto y del icono para que todas
@@ -2005,7 +2042,7 @@ async function cargarDatos() {
     // KPIs
     // La cifra grande es la mediana: el promedio se lo lleva la cola larga y
     // termina mostrando un tiempo que no espero ningun cliente real.
-    document.getElementById('kpi-promedio').textContent  = fmtSeg(d.metricas.mediana_seg);
+    document.getElementById('kpi-promedio').textContent  = fmtSegLargo(d.metricas.mediana_seg);
     document.getElementById('kpi-p90').textContent       = fmtSeg(d.metricas.p90_seg);
     document.getElementById('kpi-prom-sec').textContent  = fmtSeg(d.metricas.promedio_seg);
     document.getElementById('kpi-maximo').textContent    = fmtSeg(d.metricas.maximo_seg);
