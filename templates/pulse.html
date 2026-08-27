@@ -48,17 +48,27 @@
       --lh-cifra: 1;      /* cifras: sin aire, el numero es un bloque */
       --lh-corto: 1.25;   /* etiquetas y filas de una o dos lineas */
       --lh-texto: 1.5;    /* avisos y todo lo que sea un parrafo */
+
+      /* --- Ancho del contenido ------------------------------------------
+         EN PIXELES, y es la unica medida del tablero que no va en rem. A
+         proposito: la pantalla se mide en pixeles, no en rem. Estaba con el
+         max-w-7xl de Tailwind, que son 80rem, asi que crecia con la letra:
+         a 27px de raiz daban 2160px, mas ancho que cualquier monitor, y los
+         margenes quedaban fuera de la pantalla.
+         Un contenedor que sigue al texto termina sin margenes justo cuando
+         mas grande esta la letra, que es cuando mas falta hacen. */
+      --ancho-max: 1280px;
     }
 
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
        hay forma de que dos textos queden desparejos por olvidarse de uno.
 
-       Va en 20px. La historia importa para no repetirla: se subio de 16 a 17,
+       Va en 18px. La historia importa para no repetirla: se subio de 16 a 17,
        19, 21, 24 y 27 porque "se veia chico", pero el comentario roto de aca
        arriba tenia la regla muerta y la raiz seguia en 16 en todos esos
-       cambios. Al arreglarlo aparecio el 27 de golpe y era enorme. 20 es el
-       primer valor elegido MIRANDO la pantalla y no a ciegas.
+       cambios. Al arreglarlo aparecio el 27 de golpe y era enorme; de ahi
+       bajo a 20 y despues a 18, ya mirando la pantalla en cada paso.
        Como TODO el dashboard esta en rem —los seis tamaños de la escala, los
        pesos, los paddings y anchos de Tailwind, la altura de los graficos y
        hasta el tamaño de fuente que se le pasa a Chart.js— la jerarquia queda
@@ -73,7 +83,7 @@
        cambios de tamaño seguidos.
        La prueba que la vigilaba leia el TEXTO del archivo, no el efecto, asi
        que no vio nada. Ahora hay una que valida el CSS. */
-    html { font-size: 20px; }
+    html { font-size: 18px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
@@ -110,6 +120,9 @@
     .t-cifra  { font-size: var(--t-cifra); }
     /* Las alturas tambien como clase, para reemplazar leading-tight de
        Tailwind, que trae su propio valor fuera del sistema. */
+    /* Reemplaza al ancho maximo de Tailwind: mismo centrado, pero con un
+       ancho que no depende del tamaño de la letra. */
+    .contenedor { max-width: var(--ancho-max); margin-left: auto; margin-right: auto; }
     .lh-cifra { line-height: var(--lh-cifra); }
     .lh-corto { line-height: var(--lh-corto); }
     .lh-texto { line-height: var(--lh-texto); }
@@ -317,7 +330,7 @@
 
 <!-- TOP BAR: solo identidad, nada de filtros aca -->
 <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-  <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+  <div class="contenedor px-6 h-16 flex items-center justify-between">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -341,7 +354,7 @@
 </header>
 
 <!-- MAIN -->
-<main class="max-w-7xl mx-auto px-6 py-8">
+<main class="contenedor px-6 py-8">
 
   <div id="loading" class="flex flex-col items-center justify-center py-32 gap-3">
     <div class="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
