@@ -104,7 +104,6 @@
     body .text-slate-900, body .text-slate-800 { color: var(--tinta); }
     body .text-slate-700, body .text-slate-600 { color: var(--texto); }
     body .text-slate-500 { color: var(--apagado); }
-    body .text-slate-400 { color: var(--tenue); }
     body .text-slate-300 { color: var(--otros); }
     body .text-blue-600  { color: var(--marca); }
     body .bg-blue-600    { background: var(--marca); }
@@ -118,14 +117,14 @@
     .t-base   { font-size: var(--t-base); }
     .t-titulo { font-size: var(--t-titulo); }
     .t-cifra  { font-size: var(--t-cifra); }
-    /* Las alturas tambien como clase, para reemplazar leading-tight de
-       Tailwind, que trae su propio valor fuera del sistema. */
+    /* La altura corta, como clase, para reemplazar leading-tight de Tailwind,
+       que trae su propio valor fuera del sistema. Las otras dos alturas se
+       usan como variable dentro de otras reglas, asi que no necesitan clase:
+       una clase que nadie usa es una regla que no le pega a nada. */
     /* Reemplaza al ancho maximo de Tailwind: mismo centrado, pero con un
        ancho que no depende del tamaño de la letra. */
     .contenedor { max-width: var(--ancho-max); margin-left: auto; margin-right: auto; }
-    .lh-cifra { line-height: var(--lh-cifra); }
     .lh-corto { line-height: var(--lh-corto); }
-    .lh-texto { line-height: var(--lh-texto); }
 
     .flatpickr-day.primer-dia-datos { text-decoration: underline; text-decoration-color:var(--marca); text-decoration-thickness:2px; text-underline-offset:2px; font-weight:var(--p-medio); }
     .flatpickr-day.selected, .flatpickr-day.selected:hover { background:var(--marca); border-color:var(--marca); }
@@ -230,7 +229,6 @@
     .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
     .franja-row:hover { background:var(--carril); }
     .chevron { transition:transform .2s; }
-    .leads-panel { transition:all .2s; }
     /* Barra de una franja de la distribucion. El carril gris marca el 100%,
        asi que cada franja se lee contra el total sin tener que comparar el
        largo de una barra con el de otra. */
@@ -246,12 +244,6 @@
       outline:2px solid var(--foco); outline-offset:2px; border-radius:10px;
     }
 
-    .field-label { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); display:block; }
-    .control {
-      border:1px solid var(--linea); border-radius:10px; padding:9px 12px; font-size:var(--t-chico);
-      color:var(--texto); background:var(--fondo-suave); transition:.15s; line-height:var(--lh-corto);
-    }
-    .control:focus { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.15); border-color:var(--foco); background:#fff; }
     .btn-primary {
       background:var(--marca); color:#fff; padding:9px 22px; border-radius:10px; font-size:var(--t-chico);
       font-weight:var(--p-medio); transition:.15s; box-shadow:0 1px 2px rgba(37,99,235,.35); white-space:nowrap;
