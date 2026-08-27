@@ -54,13 +54,16 @@
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
        hay forma de que dos textos queden desparejos por olvidarse de uno.
 
-       Va en 27px, o sea 1.7 veces el 16 de un navegador. Arranco en 16 y fue
-       subiendo —17, 19, 21, 24, 27— siempre por lo mismo: en la pantalla real
-       se leia chico. Como TODO el dashboard esta en rem —los seis tamaños de
-       la escala, los pesos, los paddings y anchos de Tailwind, la altura de
-       los graficos y hasta el tamaño de fuente que se le pasa a Chart.js— la
-       jerarquia queda intacta: crece todo en la misma proporcion y ninguna
-       cosa se acerca a otra.
+       Va en 20px. La historia importa para no repetirla: se subio de 16 a 17,
+       19, 21, 24 y 27 porque "se veia chico", pero el comentario roto de aca
+       arriba tenia la regla muerta y la raiz seguia en 16 en todos esos
+       cambios. Al arreglarlo aparecio el 27 de golpe y era enorme. 20 es el
+       primer valor elegido MIRANDO la pantalla y no a ciegas.
+       Como TODO el dashboard esta en rem —los seis tamaños de la escala, los
+       pesos, los paddings y anchos de Tailwind, la altura de los graficos y
+       hasta el tamaño de fuente que se le pasa a Chart.js— la jerarquia queda
+       intacta: cambia todo en la misma proporcion y ninguna cosa se acerca a
+       otra.
 
        CUIDADO al editar este comentario: tiene que tener UNA sola marca de
        cierre, la de abajo. Estuvo cerrado dos veces y las lineas del medio
@@ -70,7 +73,7 @@
        cambios de tamaño seguidos.
        La prueba que la vigilaba leia el TEXTO del archivo, no el efecto, asi
        que no vio nada. Ahora hay una que valida el CSS. */
-    html { font-size: 27px; }
+    html { font-size: 20px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
