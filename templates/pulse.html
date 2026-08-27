@@ -52,15 +52,24 @@
 
     /* Todo el dashboard un escalon mas grande. Se sube la raiz en vez de tocar
        cada tamaño: los rem —los propios y los de Tailwind— escalan solos y no
-       hay forma de que dos textos queden desparejos por olvidarse de uno. */
+       hay forma de que dos textos queden desparejos por olvidarse de uno.
+
        Va en 27px, o sea 1.7 veces el 16 de un navegador. Arranco en 16 y fue
        subiendo —17, 19, 21, 24, 27— siempre por lo mismo: en la pantalla real
-       se leia chico. Como TODO el dashboard esta en rem —los seis tamaños de la
-       escala, los pesos, los paddings y anchos de Tailwind, la altura de los
-       graficos y hasta el tamaño de fuente que se le pasa a Chart.js— la
+       se leia chico. Como TODO el dashboard esta en rem —los seis tamaños de
+       la escala, los pesos, los paddings y anchos de Tailwind, la altura de
+       los graficos y hasta el tamaño de fuente que se le pasa a Chart.js— la
        jerarquia queda intacta: crece todo en la misma proporcion y ninguna
        cosa se acerca a otra.
-       Subirlo de nuevo es cambiar este numero y nada mas. */
+
+       CUIDADO al editar este comentario: tiene que tener UNA sola marca de
+       cierre, la de abajo. Estuvo cerrado dos veces y las lineas del medio
+       quedaron como CSS suelto. El navegador entra en recuperacion de
+       errores, busca la proxima llave y se traga el bloque entero: la regla
+       que sigue nunca se aplico y la raiz se quedo en 16px durante cinco
+       cambios de tamaño seguidos.
+       La prueba que la vigilaba leia el TEXTO del archivo, no el efecto, asi
+       que no vio nada. Ahora hay una que valida el CSS. */
     html { font-size: 27px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
