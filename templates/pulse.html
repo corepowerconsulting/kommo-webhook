@@ -261,14 +261,17 @@
     /* Input de fecha sin caja propia: la caja es el subrecuadro que lo contiene. */
     .fecha-in {
       background:transparent; border:0; padding:2px 0; width:5.2rem; cursor:pointer;
-      font-size:var(--t-chico); font-weight:var(--p-medio); color:var(--texto);
+      /* Un escalon MENOS que el resto. La barra de filtros es lo que uno toca
+         una vez y despues ignora: no compite con los datos, y bajandola la
+         fila entera ocupa menos alto, que es lo que se gana. */
+      font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--texto);
     }
     .fecha-in:focus { outline:none; }
     /* Boton de selector multiple, compacto para que entre en la linea. */
     .multi-btn {
       display:flex; align-items:center; gap:6px; max-width:11.2rem;
       background:#fff; border:1px solid var(--linea); border-radius:9px;
-      padding:5px 9px; font-size:var(--t-chico); color:var(--texto); transition:.15s;
+      padding:5px 9px; font-size:var(--t-micro); color:var(--texto); transition:.15s;
     }
     .multi-btn:hover { border-color:var(--otros); }
 
@@ -450,14 +453,15 @@
     <!-- Barra de filtros en UNA linea, con cada grupo en su subrecuadro:
          periodo / vista / personas. Las etiquetas van adentro del recuadro y
          no encima, que es lo que hacia que la barra ocupara dos alturas. -->
-    <!-- Sin tarjeta alrededor. Cada grupo ya trae su propio recuadro, asi que
-         el card era una caja dentro de otra; sacandolo, la fila arranca en el
-         mismo x que el contenido y este grid puede alinearse EXACTO con el de
-         las dos tarjetas del snapshot.
-         Es el mismo grid: dos columnas y el mismo gap. Esa es la unica forma
-         de que los bordes izquierdos coincidan de verdad; con un flex suelto
-         cada grupo caia donde terminaba el anterior. -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 no-imprimir">
+    <div class="card !p-4 no-imprimir">
+      <!-- El mismo grid que las dos tarjetas del snapshot: dos columnas y el
+           mismo gap. Asi la columna de QUIEN arranca exactamente donde arranca
+           "Atendidos hoy".
+           El padding de la tarjeta no lo estorba, aunque lo parezca: corre el
+           inicio del grid Y le achica el ancho por igual, asi que se cancela.
+           Con W de contenido, gap g y padding p, la columna 2 arranca en
+           W/2 + g/2 en los dos casos. Verificado con numeros, no a ojo. -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
       <!-- Columna 1 — CUANDO. El horario va antes que las fechas: primero se
            decide si se miran las horas laborales o las de fuera, y recien
@@ -465,8 +469,8 @@
       <div class="flex items-center gap-2.5 flex-wrap">
 
         <div class="grupo !p-1 !gap-0">
-          <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Horario laboral</button>
-          <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-lg t-chico font-semibold transition whitespace-nowrap">Fuera de horario</button>
+          <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap">Horario laboral</button>
+          <button type="button" id="btn-modo-fuera" onclick="cambiarModo('fuera_horario')" class="px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap">Fuera de horario</button>
         </div>
 
         <div class="grupo">
@@ -517,16 +521,21 @@
           </div>
         </div>
 
-        <button onclick="cargarDatos()" class="btn-primary ml-auto !py-2">Aplicar</button>
       </div>
-    </div>
+      </div>
 
-    <!-- Horario y dias: contexto, no un control. Va en una linea fina y
-         discreta en vez de una segunda fila con su propio separador. -->
-    <div class="t-micro text-slate-500 no-imprimir">
-      <span id="horario-txt" class="font-semibold text-slate-500"></span>
-      <span class="text-slate-300 mx-1.5">·</span>
-      <span id="dias-txt" class="font-semibold text-slate-500"></span>
+      <!-- Segunda linea de la tarjeta: a la izquierda el horario de la cuenta
+           —contexto, no un control— y a la derecha el boton. Comparten
+           renglon, asi que el "8:00 AM" y el "Aplicar" quedan a la misma
+           altura en vez de en dos filas sueltas. -->
+      <div class="mt-3 flex items-center justify-between gap-4 flex-wrap">
+        <div class="t-micro text-slate-500">
+          <span id="horario-txt" class="font-semibold text-slate-500"></span>
+          <span class="text-slate-300 mx-1.5">·</span>
+          <span id="dias-txt" class="font-semibold text-slate-500"></span>
+        </div>
+        <button onclick="cargarDatos()" class="btn-primary !py-2">Aplicar</button>
+      </div>
     </div>
 
     <!-- Aviso de cobertura: si el periodo elegido tiene dias sin captura, los
@@ -980,8 +989,11 @@ function cambiarModo(modo) {
 }
 
 function actualizarBotonesModo() {
-  const activo   = 'px-4 py-2 rounded-lg t-chico font-semibold transition bg-white text-blue-600 shadow-sm';
-  const inactivo = 'px-4 py-2 rounded-lg t-chico font-semibold transition text-slate-500 hover:text-slate-700';
+  // Mismo tamaño y mismo padding que en el markup: esta funcion PISA la clase
+  // entera al marcar el activo, asi que si aca dice otra cosa el boton cambia
+  // de tamaño al primer clic.
+  const activo   = 'px-3 py-1.5 rounded-lg t-micro font-semibold transition bg-white text-blue-600 shadow-sm';
+  const inactivo = 'px-3 py-1.5 rounded-lg t-micro font-semibold transition text-slate-500 hover:text-slate-700';
   document.getElementById('btn-modo-laboral').className = MODO === 'laboral' ? activo : inactivo;
   document.getElementById('btn-modo-fuera').className   = MODO === 'fuera_horario' ? activo : inactivo;
 }
