@@ -26,6 +26,7 @@ import json
 import os
 import sys
 import urllib.request
+from collections import defaultdict
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROD = 'https://kommo-webhook-mp4u.onrender.com'
@@ -55,6 +56,11 @@ def main():
 
     tokens = _tokens()
     total_personas = total_canales = total_bots = total_licencias = 0
+    # Que valores toma author[type] en la practica, y como se relaciona con
+    # que el mensaje traiga o no un user_id. Es la pregunta que hizo el
+    # cliente y no estaba medida: capturabamos el campo sin tabularlo.
+    tipos = defaultdict(lambda: {'ident': 0, 'canal': 0, 'msjs': 0, 'ejemplos': set()})
+    origenes = defaultdict(lambda: {'msjs': 0, 'ejemplos': set()})
 
     for sub in tokens:
         print()
@@ -83,6 +89,19 @@ def main():
         print('  ' + '-' * 84)
         contestaron = set()
         for r in rem:
+            # Tabulacion de author[type] y origin, cruzada con si el mensaje
+            # vino identificado. Es lo que decide si un valor sirve para
+            # distinguir "salio del CRM" de "salio de afuera".
+            t = tipos[r['author_type'] or '(vacio)']
+            t['msjs'] += r['mensajes']
+            t['ident' if r['user_id'] else 'canal'] += 1
+            if len(t['ejemplos']) < 4:
+                t['ejemplos'].add(r['nombre_en_el_mensaje'])
+            o = origenes[r['origin'] or '(vacio)']
+            o['msjs'] += r['mensajes']
+            if len(o['ejemplos']) < 4:
+                o['ejemplos'].add(r['nombre_en_el_mensaje'])
+
             trato = r['lo_trata_como']
             if 'automático' in trato:
                 total_bots += 1
@@ -113,6 +132,29 @@ def main():
     print(f'  bots                   : {total_bots}')
     print(f'  usuarios sin actividad : {total_licencias}')
     print('=' * 88)
+
+    # --- Que valores toma author[type], y si sirven para decidir ------------
+    # La pregunta concreta: ¿alcanza author[type] para saber si el mensaje
+    # salio del CRM o de afuera? Se responde viendo si cada valor aparece SOLO
+    # con user_id o SOLO sin el. Si un mismo valor aparece de los dos lados, no
+    # sirve como condicion.
+    print()
+    print('=' * 88)
+    print('  author[type]: que valores llegan y si distinguen CRM de canal')
+    print('=' * 88)
+    print(f'  {"author_type":<16} {"mensajes":>9} {"identif.":>9} {"canal":>7}  {"¿sirve?":<12} ejemplos')
+    print('  ' + '-' * 84)
+    for t, d in sorted(tipos.items(), key=lambda x: -x[1]['msjs']):
+        puro = 'si, solo CRM' if not d['canal'] else ('si, solo canal' if not d['ident'] else 'NO, mezcla')
+        print(f'  {t:<16} {d["msjs"]:>9} {d["ident"]:>9} {d["canal"]:>7}  {puro:<12} '
+              f'{", ".join(sorted(d["ejemplos"]))[:34]}')
+
+    print()
+    print('=' * 88)
+    print('  origin: por donde salio')
+    print('=' * 88)
+    for o, d in sorted(origenes.items(), key=lambda x: -x[1]['msjs']):
+        print(f'  {o:<26} {d["msjs"]:>8} mensajes   {", ".join(sorted(d["ejemplos"]))[:38]}')
 
 
 if __name__ == '__main__':
