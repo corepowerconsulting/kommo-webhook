@@ -2099,10 +2099,21 @@ async function cargarDatos() {
     // KPIs
     // La cifra grande es la mediana: el promedio se lo lleva la cola larga y
     // termina mostrando un tiempo que no espero ningun cliente real.
-    document.getElementById('kpi-promedio').textContent  = fmtSegLargo(d.metricas.mediana_seg);
-    document.getElementById('kpi-p90').textContent       = fmtSeg(d.metricas.p90_seg);
-    document.getElementById('kpi-prom-sec').textContent  = fmtSeg(d.metricas.promedio_seg);
-    document.getElementById('kpi-maximo').textContent    = fmtSeg(d.metricas.maximo_seg);
+    //
+    // Sin un solo registro hay que poner el guion A MANO. _calc_metricas
+    // devuelve ceros cuando no hay nada que medir, y los formateadores
+    // dibujan el cero como "menos de 1 segundo" y "< 1s": el vacio se leia
+    // como el mejor resultado posible del tablero. Paso de verdad en
+    // gruporegalado, con un rango de fechas caido dentro del apagon del 31/08.
+    //
+    // Es el mismo error que nos tuvo dos dias sin notar que la base no
+    // guardaba nada: el silencio pareciendose al exito.
+    const hayDatos = d.metricas.total > 0;
+    const sinDato = '—';
+    document.getElementById('kpi-promedio').textContent  = hayDatos ? fmtSegLargo(d.metricas.mediana_seg) : sinDato;
+    document.getElementById('kpi-p90').textContent       = hayDatos ? fmtSeg(d.metricas.p90_seg)          : sinDato;
+    document.getElementById('kpi-prom-sec').textContent  = hayDatos ? fmtSeg(d.metricas.promedio_seg)     : sinDato;
+    document.getElementById('kpi-maximo').textContent    = hayDatos ? fmtSeg(d.metricas.maximo_seg)       : sinDato;
 
     const badge = getBadgeTag(d.metricas.mediana_seg, d.config.franjas);
     // La tarjeta entera se pinta con la franja en la que cae la mediana. El
@@ -2125,15 +2136,18 @@ async function cargarDatos() {
     const ideal   = dist[0];
     const critico = dist[dist.length - 1];
 
-    document.getElementById('kpi-pct-ideal').textContent    = fmtPct(ideal.pct, ideal.count);
+    // Mismo criterio que arriba: sin registros, "0%" tampoco es cierto. Uno
+    // de los dos porcentajes iba a parecer bueno y el otro malo, y los dos
+    // estarian describiendo un conjunto vacio.
+    document.getElementById('kpi-pct-ideal').textContent    = hayDatos ? fmtPct(ideal.pct, ideal.count) : sinDato;
     document.getElementById('kpi-sub-ideal').textContent    = `${ideal.count} respuestas < 5 min`;
 
     // El unico color que queda en las cifras, y solo cuando el dato lo pide:
     // mas gente esperando +30 min que atendida en menos de 5. Es un estado
     // que se explica solo y no necesita un umbral nuevo en la config.
     const critEl = document.getElementById('kpi-pct-critico');
-    critEl.textContent = fmtPct(critico.pct, critico.count);
-    critEl.classList.toggle('kpi-alerta', critico.pct > ideal.pct);
+    critEl.textContent = hayDatos ? fmtPct(critico.pct, critico.count) : sinDato;
+    critEl.classList.toggle('kpi-alerta', hayDatos && critico.pct > ideal.pct);
     document.getElementById('kpi-sub-critico').textContent  = `${critico.count} esperaron +30 min`;
 
     // Distribución

@@ -94,7 +94,34 @@ _CARGA = {
     # de estos sube de 0, ahi esta la causa de las desactivaciones.
     'hilos_rechazados': 0,
     'errores_body': 0,
+    # Escrituras a la base. El 31/08/2026 Supabase entro en modo solo lectura y
+    # estuvimos 43 horas recibiendo webhooks sin guardar uno solo. Nadie se
+    # entero: cada fallo hacia un print y seguia, y este endpoint miraba hilos
+    # y errores de body —los dos en cero— asi que informaba que todo iba bien.
+    # El tablero se vacio en silencio y lo noto el cliente antes que nosotros.
+    #
+    # Contar los fallos es lo que habria avisado el mismo dia.
+    'escrituras_ok': 0,
+    'escrituras_fallidas': 0,
+    'ultimo_error_escritura': None,
+    'cuando_el_ultimo_error': None,
+    # Eventos que llegaron y se decidio NO guardar (ver _que_guardar). Se
+    # cuentan para que el ahorro sea visible y no un descarte a ciegas.
+    'eventos_no_guardados': 0,
 }
+
+def _fallo_escritura(donde, e):
+    """Una escritura a la base fallo: se CUENTA, no solo se imprime.
+
+    'donde' nombra la tabla, para que el contador diga si falla todo o solo
+    una. El mensaje de Postgres se guarda entero porque es el que da el
+    diagnostico en una linea: 'cannot execute INSERT in a read-only
+    transaction' fue el del 31/08, y tardamos dos dias en leerlo porque solo
+    vivia en los logs de Render."""
+    _CARGA['escrituras_fallidas'] += 1
+    _CARGA['ultimo_error_escritura'] = f'{donde}: {e}'
+    _CARGA['cuando_el_ultimo_error'] = datetime.utcnow().isoformat()
+    print(f"❌ Error {donde}: {e}")
 
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN')
 if not ADMIN_TOKEN:
@@ -468,9 +495,10 @@ def guardar_msjs_entrantes(subdomain, data):
         c = conn.cursor()
         n = insertar_msjs_cliente(c, subdomain, filas)
         conn.commit()
+        _CARGA['escrituras_ok'] += 1
         return n
     except Exception as e:
-        print(f"❌ Error mensajes_cliente: {e}")
+        _fallo_escritura('mensajes_cliente', e)
         return 0
     finally:
         conn.close()
@@ -614,10 +642,11 @@ def guardar_msjs_salientes(subdomain, data):
                 (subdomain, chats)
             )
         conn.commit()
+        _CARGA['escrituras_ok'] += 1
         return n
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error mensajes_asesor: {e}")
+        _fallo_escritura('mensajes_asesor', e)
         return 0
     finally:
         conn.close()
@@ -632,10 +661,11 @@ def guardar_conversaciones(subdomain, data):
         c = conn.cursor()
         n = insertar_conversaciones(c, subdomain, mapa)
         conn.commit()
+        _CARGA['escrituras_ok'] += 1
         return n
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error conversaciones: {e}")
+        _fallo_escritura('conversaciones', e)
         return 0
     finally:
         conn.close()
@@ -643,7 +673,78 @@ def guardar_conversaciones(subdomain, data):
 # ========================
 # GUARDAR EVENTO
 # ========================
+# Los unicos tipos cuyo JSON crudo se vuelve a LEER: los backfills lo releen
+# para reconstruir hacia atras (/backfill, /backfill-mensajes,
+# /backfill-salientes, /backfill-embudo). Del resto solo importa que llego.
+TIPOS_CON_CRUDO = {'mensaje', 'mensaje_saliente', 'lead_update'}
+
+# Cuantos ejemplos completos se guardan de cada FORMA de evento desconocido.
+# Con uno alcanzaria para ver que trae; van 3 por si el primero llega vacio o
+# recortado. Pasados esos, el evento no se guarda: ya sabemos que existe y que
+# no lo usamos, y la fila numero 40.000 no agrega nada.
+EJEMPLOS_POR_FORMA = 3
+
+# Techo de formas distintas a recordar. Sin techo, un payload raro que cambie
+# de claves seguido haria crecer este diccionario sin limite dentro del
+# proceso. 500 es holgado: hoy Kommo manda una docena de formas.
+TOPE_FORMAS = 500
+
+# Formas de payload ya vistas EN ESTE PROCESO, con cuantas guardamos de cada
+# una. Se reinicia con cada deploy a proposito: lo que se busca es poder mirar
+# un evento nuevo, no acumular copias del mismo.
+_FORMAS_VISTAS = Counter()
+
+def _que_guardar(tipo_evento, data):
+    """Decide si el evento se guarda, y con cuanto detalle.
+
+    Devuelve (guardar, raw_data). guardar=False significa que el evento no
+    deja fila: se cuenta en /health/carga y nada mas.
+
+    Esto es lo que lleno el disco. Estabamos suscritos a 60 eventos de Kommo y
+    leemos 5: los otros 55 —talk, contacts, notes, tasks, catalogos— caian en
+    tipo_evento='desconocido' y se guardaban ENTEROS. 278.147 filas que nadie
+    releyo nunca, y contacts[update] trae todos los campos personalizados del
+    contacto. El 31/08/2026 la base llego al limite, Supabase la puso en modo
+    solo lectura y estuvimos 43 horas recibiendo sin guardar nada.
+
+    La regla queda al reves que antes:
+
+      mensaje / mensaje_saliente / lead_update
+          fila + JSON entero. Son los unicos que los backfills releen.
+      lead_status / lead_responsible
+          fila sin JSON. Queda el registro de que el evento llego, que es lo
+          unico que se mira, y se va lo que pesa.
+      desconocido
+          los primeros EJEMPLOS_POR_FORMA de cada forma, enteros. El resto no
+          se guarda.
+
+    Guardar esos primeros ejemplos no es un lujo: asi descubrimos que Kommo SI
+    manda los mensajes salientes, bajo una clave que no estabamos mirando. Lo
+    que no hacia falta era la copia numero mil."""
+    if tipo_evento in TIPOS_CON_CRUDO:
+        return True, json.dumps(data)
+
+    if tipo_evento != 'desconocido':
+        return True, None
+
+    patrones = sorted({re.sub(r'\[\d+\]', '[n]', k) for k in data})
+    firma = '|'.join(patrones)
+    vistas = _FORMAS_VISTAS.get(firma, 0)
+    if vistas >= EJEMPLOS_POR_FORMA:
+        return False, None
+    if vistas == 0 and len(_FORMAS_VISTAS) >= TOPE_FORMAS:
+        return False, None
+    _FORMAS_VISTAS[firma] = vistas + 1
+    return True, json.dumps(data)
+
 def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
+    guardar, crudo = _que_guardar(tipo_evento, data)
+    if not guardar:
+        # Se cuenta, no se descarta en silencio: si algun dia hay que volver a
+        # mirar un evento que hoy ignoramos, este numero dice cuanto nos
+        # estamos perdiendo y /health/desconocidos tiene los ejemplos.
+        _CARGA['eventos_no_guardados'] += 1
+        return
     conn = get_conn()
     c = conn.cursor()
     try:
@@ -655,13 +756,14 @@ def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
             tipo_evento,
             lead_id,
             int(timestamp) if timestamp else None,
-            json.dumps(data),
+            crudo,
             datetime.now().isoformat()
         ))
         conn.commit()
+        _CARGA['escrituras_ok'] += 1
         print(f"💾 {subdomain} | {tipo_evento} | lead: {lead_id}")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        _fallo_escritura('eventos', e)
     finally:
         conn.close()
 
@@ -759,9 +861,10 @@ def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsibl
                           asesor_nombre = COALESCE(EXCLUDED.asesor_nombre, tiempos_respuesta.asesor_nombre)
         ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat(), responsible_user_id, lead_nombre, asesor_nombre))
         conn.commit()
+        _CARGA['escrituras_ok'] += 1
         print(f"⏱️  {subdomain} | lead {lead_id} | asesor respondió en {tiempo_seg // 60}min {tiempo_seg % 60}s")
     except Exception as e:
-        print(f"❌ Error tiempo respuesta: {e}")
+        _fallo_escritura('tiempos_respuesta', e)
     finally:
         conn.close()
 
@@ -797,8 +900,9 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
             WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
         ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre, pipeline_id))
         conn.commit()
+        _CARGA['escrituras_ok'] += 1
     except Exception as e:
-        print(f"❌ Error lead_estado: {e}")
+        _fallo_escritura('leads_estado', e)
     finally:
         conn.close()
 
@@ -1592,7 +1696,20 @@ def health_carga():
         # desactivacion, la causa esta fuera de la aplicacion.
         'hilos_rechazados':           _CARGA['hilos_rechazados'],
         'errores_body':               _CARGA['errores_body'],
-        'como_leerlo': 'hilos_maximo en cientos confirma que las rafagas '
+        # Lo PRIMERO que hay que mirar. Recibir no es guardar: el 31/08 se
+        # recibieron 65.000 webhooks y no se guardo ninguno, y este endpoint
+        # decia que todo estaba bien porque solo miraba las lineas de arriba.
+        'guardando':                  _CARGA['escrituras_fallidas'] == 0,
+        'escrituras_ok':              _CARGA['escrituras_ok'],
+        'escrituras_fallidas':        _CARGA['escrituras_fallidas'],
+        'ultimo_error_escritura':     _CARGA['ultimo_error_escritura'],
+        'cuando_el_ultimo_error':     _CARGA['cuando_el_ultimo_error'],
+        'eventos_no_guardados':       _CARGA['eventos_no_guardados'],
+        'formas_desconocidas_vistas': len(_FORMAS_VISTAS),
+        'como_leerlo': 'guardando:false es la alarma que importa — llegan '
+                       'webhooks y no se estan guardando; el motivo exacto '
+                       'esta en ultimo_error_escritura. '
+                       'hilos_maximo en cientos confirma que las rafagas '
                        'saturan el servidor; cerca de 10-20 lo descarta. '
                        'hilos_rechazados o errores_body arriba de 0 explican '
                        'las desactivaciones de Kommo.',
@@ -1824,7 +1941,12 @@ def health_desconocidos():
     La pregunta que buscamos responder: si alguno de estos es el mensaje
     SALIENTE del asesor. Todo lo que falta para medir bien —la hora exacta de
     la respuesta y quien contesto— depende de ese dato, y hasta ahora se dio por
-    hecho que Kommo no lo manda."""
+    hecho que Kommo no lo manda.
+
+    OJO con leer las cantidades como volumen. Desde el arreglo del disco
+    (31/08/2026) solo se guardan los primeros EJEMPLOS_POR_FORMA de cada forma:
+    'veces' dice cuantos EJEMPLOS tenemos, no cuantos llegaron. El total que
+    llega y se descarta esta en /health/carga, en eventos_no_guardados."""
     subdomain = request.args.get('subdomain', '').strip()
     try:
         limite = min(int(request.args.get('limite', 300)), 3000)

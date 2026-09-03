@@ -104,7 +104,19 @@ ASESORES = {
 #
 # Si aparece un bot nuevo se agrega aca. La pista es siempre la misma: una
 # mediana de segundos.
-REMITENTES_AUTOMATICOS = {'Salesbot', 'Instagram', 'Facebook'}
+REMITENTES_AUTOMATICOS = {
+    'Salesbot', 'Instagram', 'Facebook',
+    # Nuestro propio bot de soporte, instalado en las cuentas de los clientes.
+    # Contesta con mediana de 42 segundos y p90 de 71: nadie humano responde el
+    # 90% de los mensajes en menos de 72 segundos. En Camara China eran 2.402
+    # de los 6.019 turnos que contabamos como humanos —el 40%— y hundian la
+    # mediana de la cuenta de unos 10 minutos a 1m 22s.
+    #
+    # Un solo user_id (6767570) y un solo nombre exacto en las cinco cuentas de
+    # clientes donde aparece. En la cuenta de Core Power NO va: ahi ese nombre
+    # es el equipo de verdad, y por eso esa cuenta lo saca abajo.
+    'Soporte Core Power Consulting',
+}
 
 # tz_offset: la diferencia con UTC de la ciudad donde atiende cada cuenta. Se
 # usa para dos cosas: mostrar las horas y decidir si un mensaje entro dentro
@@ -126,6 +138,12 @@ PULSE_CONFIG = {
         # Confirmado con Juan: atienden de verdad de 5 de la mañana a 6 de la
         # tarde. No es una compensacion de la zona horaria que estaba mal.
         'horario': (5, 18),
+        # La cuenta propia. Aca "Soporte Core Power Consulting" son personas
+        # —el equipo— y no el bot que corre en las cuentas de los clientes, asi
+        # que se saca de la lista global. Es el mismo nombre y el mismo user_id
+        # en las dos situaciones: lo que cambia es de que lado del mostrador
+        # esta, y eso el payload no lo dice.
+        'remitentes_automaticos': REMITENTES_AUTOMATICOS - {'Soporte Core Power Consulting'},
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
             {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
