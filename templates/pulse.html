@@ -254,12 +254,16 @@
          - la flecha va en un boton redondo al costado, que se enciende en
            tinta al hover y gira al abrir;
          - abierta, la tarjeta queda con el borde en el azul de marca. */
+    /* El acento de estos estados es el azul de Pulse, no la tinta: en toda la
+       pagina "lo que se puede tocar" es azul (botones, enlaces, foco), y un
+       encendido en negro rompia esa armonia (Juan, 04/09). Hover en el azul
+       claro de foco, abierta en el azul de marca. */
     .card-clic { cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .15s; }
-    .card-clic:hover { border-color:var(--tenue); box-shadow:0 4px 12px rgba(15,23,42,.08); transform:translateY(-1px); }
+    .card-clic:hover { border-color:var(--foco); box-shadow:0 4px 12px rgba(37,99,235,.10); transform:translateY(-1px); }
     .card-clic.abierta { border-color:var(--marca); }
     .chev-chip { width:1.8rem; height:1.8rem; border-radius:99px; background:var(--carril); color:var(--apagado);
                  display:flex; align-items:center; justify-content:center; transition:background .15s, color .15s; }
-    .card-clic:hover .chev-chip, .card-clic.abierta .chev-chip { background:var(--tinta); color:#fff; }
+    .card-clic:hover .chev-chip, .card-clic.abierta .chev-chip { background:var(--marca); color:#fff; }
     /* Barra de una franja de la distribucion. El carril gris marca el 100%,
        asi que cada franja se lee contra el total sin tener que comparar el
        largo de una barra con el de otra. */
