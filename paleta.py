@@ -28,8 +28,11 @@ LINEA        = '#e2e8f0'   # bordes
 CARRIL       = '#f1f5f9'   # fondo de barras y grillas
 FONDO_SUAVE  = '#f8fafc'   # hover y subrecuadros
 
-MARCA        = '#2563eb'   # un solo azul, botones y acentos
-MARCA_OSCURA = '#1d4ed8'   # su hover
+# El azul principal paso de #2563eb a #1d4ed8 (04/09, revision de diseño):
+# sobre blanco sube de 5,2:1 a 6,7:1 de contraste. El hover va al reves,
+# mas claro: al tocar, el boton se enciende en vez de apagarse.
+MARCA        = '#1d4ed8'   # un solo azul, botones y acentos
+MARCA_OSCURA = '#2563eb'   # su hover (mas claro que el principal, a proposito)
 FOCO         = '#60a5fa'   # borde del control enfocado
 ALERTA       = '#dc2626'   # rojo: lo unico que exige accion
 OK           = '#16a34a'   # verde: el objetivo cumplido

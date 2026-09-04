@@ -83,7 +83,10 @@
        cambios de tamaño seguidos.
        La prueba que la vigilaba leia el TEXTO del archivo, no el efecto, asi
        que no vio nada. Ahora hay una que valida el CSS. */
-    html { font-size: 18px; }
+    /* 16px desde el 04/09, por decision de Juan tras la revision de diseño:
+       18 era grande para un tablero y obligaba a hacer scroll. Como todo
+       esta en rem, baja proporcionalmente y nada se desalinea. */
+    html { font-size: 16px; }
     * { font-family: 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
@@ -371,7 +374,9 @@
       <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
         <div>
           <div class="flex items-center gap-2 flex-wrap">
-            <h2 class="section-title">Snapshot actual</h2>
+            <!-- "Operacion en tiempo real" y no "Snapshot" (04/09): nombra lo
+                 que es, sin jerga, y hace de par con "Analisis del periodo". -->
+            <h2 class="section-title">Operación en tiempo real</h2>
             <!-- Se refresca solo cada minuto y medio. Decirlo importa: sin
                  esto, un numero quieto se lee como un numero viejo y la gente
                  recarga la pagina por las dudas. -->
@@ -384,7 +389,7 @@
                tenian chevron y cursor de mano, pero eso es una pista, no un
                aviso. La de Distribucion si lo dice desde siempre, asi que se
                usa la misma forma en el mismo lugar. -->
-          <div class="section-sub">Estado de ahora mismo · clic en una tarjeta para ver los leads</div>
+          <div class="section-sub">Qué está pasando ahora · clic en una tarjeta para ver los leads</div>
         </div>
         <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
           <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
@@ -398,18 +403,22 @@
           Incluir conversaciones cerradas
         </label>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="card border-l-4 !border-l-red-400">
-          <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
-               con Tab ni se activa con Enter: quien no usa mouse no podia abrir
-               esta lista. Cambia solo el elemento; los estilos son los mismos.
-               Adentro van <span> y no <div> porque el contenido de un boton
-               tiene que ser texto: con div el HTML es invalido. Las clases de
-               flex funcionan igual sobre span. -->
-          <!-- Centrado como las tres tarjetas de KPI. El chevron va absoluto y
-               no en la fila: con justify-between el bloque del medio se corre
-               a la izquierda para dejarle lugar y no queda centrado de verdad.
-               Sacandolo del flujo, el contenido se centra contra la tarjeta. -->
+      <!-- Cuatro tarjetas de estado: el panel de operacion (04/09, respuesta
+           de Juan a "una sola cifra grande"). Responden en este orden a la
+           pregunta del supervisor: cuantos esperan, cuantos ya son criticos,
+           cuantos se atendieron, cuanta gente esta atendiendo.
+           La cifra dominante de esta mitad es la de CRITICOS: es la que dice
+           que atender primero. La mediana sigue siendo la dominante de la
+           otra mitad, la del periodo. Dos mitades, dos preguntas, una cifra
+           grande cada una.
+           Los bordes van en rojo-500 y azul-500 (antes 400): marcan la
+           CATEGORIA de la tarjeta y con mas contraste se perciben antes sin
+           competir con el numero, que sigue en tinta. -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="card border-l-4 !border-l-red-500">
+          <!-- BOTON, no un div con onclick: se alcanza con Tab y se activa
+               con Enter. Adentro van <span>, porque el contenido de un boton
+               tiene que ser texto. -->
           <button type="button" class="relative w-full text-center flex items-start justify-center"
                   aria-expanded="false" aria-controls="panel-no-respondidos"
                   onclick="toggleExtra('no-respondidos')">
@@ -418,18 +427,35 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </span>
               <span>
-                <!-- La cifra en tinta: el borde izquierdo rojo y el icono ya
-                     dicen que esta tarjeta es la de alerta. Pintar tambien el
-                     numero no agregaba nada, porque nunca dejaba de ser rojo. -->
                 <span class="kpi-num block" id="kpi-no-respondidos">—</span>
                 <span class="kpi-label block">Sin responder</span>
               </span>
             </span>
             <svg id="chev-no-respondidos" class="chevron flex-shrink-0 absolute right-0 top-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div id="panel-no-respondidos" class="hidden mt-4"></div>
         </div>
-        <div class="card border-l-4 !border-l-blue-400">
+
+        <!-- Criticos ahora: los que llevan esperando mas que la ultima franja
+             de la cuenta. Es la cifra grande de esta mitad. Clic abre la lista
+             de Sin responder ya filtrada a esa franja. -->
+        <div class="card border-l-4 !border-l-red-600">
+          <button type="button" class="relative w-full text-center flex items-start justify-center"
+                  aria-expanded="false" aria-controls="panel-no-respondidos"
+                  onclick="abrirCriticos()">
+            <span class="flex items-start gap-3.5">
+              <span class="icon-chip bg-red-100">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--franja-3-texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </span>
+              <span>
+                <span class="kpi-num-xl block" id="kpi-criticos">—</span>
+                <span class="kpi-label block">Críticos ahora</span>
+                <span class="t-micro text-slate-500 block mt-0.5" id="kpi-criticos-sub"></span>
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <div class="card border-l-4 !border-l-blue-500">
           <button type="button" class="relative w-full text-center flex items-start justify-center"
                   aria-expanded="false" aria-controls="panel-trabajados-hoy"
                   onclick="toggleExtra('trabajados-hoy')">
@@ -444,10 +470,33 @@
             </span>
             <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 absolute right-0 top-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
 
+        <!-- Asesores activos hoy: cuantas personas distintas contestaron algo
+             hoy, contra cuantas tiene la cuenta. Sin clic: no hay lista que
+             abrir, el detalle es la tabla de abajo. -->
+        <div class="card border-l-4 !border-l-slate-300">
+          <div class="w-full text-center flex items-start justify-center">
+            <span class="flex items-start gap-3.5">
+              <span class="icon-chip bg-slate-100">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              <span>
+                <span class="kpi-num block" id="kpi-asesores-activos">—</span>
+                <span class="kpi-label block">Asesores activos hoy</span>
+                <span class="t-micro text-slate-500 block mt-0.5" id="kpi-asesores-activos-sub"></span>
+              </span>
+            </span>
+          </div>
+        </div>
       </div>
+
+      <!-- Las listas van DEBAJO de las cuatro tarjetas y a todo el ancho.
+           Adentro de una tarjeta de un cuarto de ancho no cabian; y asi la
+           de Sin responder se abre tanto desde su tarjeta como desde la de
+           Criticos, que la filtra. -->
+      <div id="panel-no-respondidos" class="hidden card"></div>
+      <div id="panel-trabajados-hoy" class="hidden card"></div>
     </div>
 
     <!-- Detalle por asesor del AHORA (reunion del 31/08). Con varias personas
@@ -1334,6 +1383,67 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
     </div>`;
 }
 
+// --- Panel de operacion: criticos ahora y asesores activos ---------------------
+// En que franja cae un lead que espera, segun cuanto lleva esperando en
+// horario laboral. Es la misma regla de los chips y de la tabla por asesor.
+function franjaDe(l) {
+  const franjas = FRANJAS || [];
+  const seg = l.espera_seg || 0;
+  for (let i = 0; i < franjas.length; i++) {
+    const f = franjas[i];
+    if (!f.max_seg || seg < f.max_seg) return i;
+  }
+  return franjas.length - 1;
+}
+
+// Cuantos asesores tiene la cuenta, para el "7 de 9". Llega con /pulse/data
+// (el refresco del snapshot no lo trae) y se guarda aca.
+let ASESORES_TOTAL = 0;
+
+function pintarEstado(noResp, trabajados) {
+  const franjas = FRANJAS || [];
+  const ultima = franjas.length - 1;
+  const criticos = ultima >= 0 ? (noResp || []).filter(l => franjaDe(l) === ultima).length : 0;
+  document.getElementById('kpi-criticos').textContent = criticos.toLocaleString('es');
+  // "esperan +30 min": el rango sale de la config de la cuenta, no va fijo.
+  document.getElementById('kpi-criticos-sub').textContent =
+    ultima >= 0 ? `esperan ${franjas[ultima].label}` : '';
+
+  // Personas distintas que contestaron hoy. Los leads sin asesor no cuentan
+  // como persona, y el bot tampoco: esta tarjeta habla del equipo.
+  const activos = new Set((trabajados || []).map(l => l.asesor).filter(Boolean));
+  document.getElementById('kpi-asesores-activos').textContent = activos.size.toLocaleString('es');
+  document.getElementById('kpi-asesores-activos-sub').textContent =
+    ASESORES_TOTAL ? `de ${ASESORES_TOTAL} en la cuenta` : '';
+}
+
+// La tarjeta de Criticos abre la lista de Sin responder ya filtrada a la
+// ultima franja. Si ya estaba abierta y filtrada, no hace nada raro: queda
+// igual. Cerrarla es el chevron de Sin responder, como siempre.
+function abrirCriticos() {
+  const franjas = FRANJAS || [];
+  if (!franjas.length) return;
+  FRANJA_SEL = franjas.length - 1;
+  const panel = document.getElementById('panel-no-respondidos');
+  if (panel.classList.contains('hidden')) toggleExtra('no-respondidos');
+  renderNoRespondidos(ULTIMOS_NO_RESP);
+}
+
+// --- Comparativos: cuando importa una diferencia ----------------------------
+// Regla de color para un "+18% vs ayer" (revision de diseño, 04/09): gris
+// entre 0 y ±3% —ruido, no cambio—, y color solo cuando la diferencia dice
+// algo. Que direccion es buena depende de la metrica: mas atendidos es bueno,
+// mas sin responder es malo. Todavia no hay comparativos en pantalla (falta
+// guardar la foto de ayer); la regla queda lista y probada para ese dia.
+const DELTA_NEUTRO_PCT = 3;
+function deltaEstilo(pct, subirEsBueno) {
+  if (pct === null || pct === undefined || Number.isNaN(pct)) return { color: COLOR.apagado, signo: '' };
+  const signo = pct > 0 ? '+' : (pct < 0 ? '−' : '');
+  if (Math.abs(pct) <= DELTA_NEUTRO_PCT) return { color: COLOR.apagado, signo };
+  const bueno = subirEsBueno ? pct > 0 : pct < 0;
+  return { color: bueno ? COLOR.ok : COLOR.alerta, signo };
+}
+
 // --- Sin responder: accionable ---------------------------------------------
 // La lista venia ordenada por fecha del mensaje, del mas nuevo al mas viejo, y
 // sin ninguna marca. Con 229 leads no habia forma de saber a cual atender
@@ -2107,6 +2217,7 @@ function pintarSnapshot(d) {
   renderNoRespondidos(d.no_respondidos);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
   renderAsesoresAhora(d.no_respondidos, d.trabajados_hoy, d.atendidos_solo_bot || []);
+  pintarEstado(d.no_respondidos, d.trabajados_hoy);
   ULTIMO_SNAPSHOT = Date.now();
   marcarFrescura();
 }
@@ -2258,6 +2369,7 @@ async function cargarDatos() {
 
     // Selector de responsables: se puebla una sola vez, si no cada recarga
     // borraria lo que la persona acaba de tildar.
+    ASESORES_TOTAL = (d.config.asesores || []).length;
     if (!asesoresListados && d.config.asesores) {
       multiInit('asesor', d.config.asesores.map(a => ({ value: a.id, label: a.nombre })), 'Todos');
       const campo = d.config.asesores_campo || [];
