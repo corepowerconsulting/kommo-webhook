@@ -460,6 +460,7 @@
                      numero no agregaba nada, porque nunca dejaba de ser rojo. -->
                 <span class="kpi-num block" id="kpi-no-respondidos">—</span>
                 <span class="kpi-label block">Sin responder</span>
+                <span class="t-micro block mt-1.5" id="cmp-no-respondidos"></span>
               </span>
             </span>
             <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
@@ -479,6 +480,7 @@
               <span>
                 <span class="kpi-num block" id="kpi-trabajados-hoy">—</span>
                 <span class="kpi-label block">Atendidos hoy</span>
+                <span class="t-micro block mt-1.5" id="cmp-trabajados-hoy"></span>
               </span>
             </span>
             <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
@@ -1411,6 +1413,40 @@ function deltaEstilo(pct, subirEsBueno) {
   return { color: bueno ? COLOR.ok : COLOR.alerta, signo };
 }
 
+// El renglon bajo cada numero: contra cuanto habia el mismo dia anterior, a la
+// misma hora. No sale de ninguna foto guardada: el backend lo reconstruye de
+// los mensajes, que tienen timestamp. Cuando la comparacion no seria honesta
+// —antes del corte, o un dia de captura parcial— el backend manda null y el
+// renglon no se dibuja: es preferible no decir nada a decir algo falso.
+//
+// Menos sin responder es bueno; mas atendidos es bueno. De ahi el segundo
+// argumento de deltaEstilo.
+function pintarComparativo(cmp, sinResponderHoy, atendidosHoy) {
+  const filas = [
+    ['cmp-no-respondidos', sinResponderHoy, cmp && cmp.no_respondidos, false],
+    ['cmp-trabajados-hoy', atendidosHoy,    cmp && cmp.trabajados_hoy, true],
+  ];
+  for (const [id, hoy, antes, subirEsBueno] of filas) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (!cmp || antes === null || antes === undefined) { el.textContent = ''; continue; }
+    const pct = antes ? Math.round((hoy - antes) / antes * 100) : null;
+    const { color, signo } = deltaEstilo(pct, subirEsBueno);
+    const dia = fmtDiaCorto(cmp.fecha);
+    el.innerHTML = pct === null
+      ? `<span class="text-slate-500">${dia}: ${antes.toLocaleString('es')}</span>`
+      : `<span style="color:${color};font-weight:var(--p-medio)">${signo}${Math.abs(pct)}%</span>
+         <span class="text-slate-500">vs ${dia} a esta hora (${antes.toLocaleString('es')})</span>`;
+  }
+}
+
+// '2026-09-03' -> '03/09'. Sin Date() a proposito: new Date('2026-09-03') lo
+// interpreta en UTC y en las cuentas al oeste muestra el dia anterior.
+function fmtDiaCorto(iso) {
+  const p = String(iso || '').split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}` : String(iso || '');
+}
+
 // --- Sin responder: accionable ---------------------------------------------
 // La lista venia ordenada por fecha del mensaje, del mas nuevo al mas viejo, y
 // sin ninguna marca. Con 229 leads no habia forma de saber a cual atender
@@ -2182,6 +2218,7 @@ function pintarSnapshot(d) {
   renderNoRespondidos(d.no_respondidos);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
   renderAsesoresAhora(d.no_respondidos, d.trabajados_hoy, d.atendidos_solo_bot || []);
+  pintarComparativo(d.comparado, d.no_respondidos.length, todosHoy.length);
   ULTIMO_SNAPSHOT = Date.now();
   marcarFrescura();
 }

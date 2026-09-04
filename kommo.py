@@ -3913,9 +3913,60 @@ def _embudos_con_leads(cursor, subdomain):
     salida.sort(key=lambda x: -x['leads'])
     return salida
 
+# Un dia con menos de esta fraccion del volumen habitual de la cuenta no se
+# capturo entero. 0.30 y no 0: el apagon del 31/08 dejo unos minutos de datos
+# en cada punta, asi que mirar "dias con CERO eventos" no lo detecta —que es
+# justamente lo que pasaba con el piso de captura, que trabaja por dia—.
+FRACCION_DIA_COMPLETO = 0.30
+
+def _dias_parciales(subdomain, conn=None):
+    """Dias en los que capturamos MUY por debajo de lo habitual.
+
+    Un numero historico calculado sobre un dia asi miente: parece que nadie
+    contesto cuando lo que pasa es que no estabamos escuchando. Se compara
+    contra la mediana de mensajes por dia de la propia cuenta, no contra un
+    umbral fijo, porque el volumen va de 600 mensajes diarios en Camara China
+    a 20 en Core Power.
+
+    Se mide sobre mensajes_asesor, que es chica y esta indexada por
+    (subdomain, ts); recorrer 'eventos' costaria un segundo."""
+    propia = conn is None
+    if propia:
+        conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT TO_CHAR(TO_TIMESTAMP(ts), 'YYYY-MM-DD'), COUNT(*) "
+            'FROM mensajes_asesor WHERE subdomain = %s GROUP BY 1',
+            (subdomain,))
+        por_dia = dict(c.fetchall())
+    finally:
+        if propia:
+            conn.close()
+    if len(por_dia) < 3:
+        return set()
+    cuentas = sorted(por_dia.values())
+    mediana = cuentas[len(cuentas) // 2]
+    piso = mediana * FRACCION_DIA_COMPLETO
+    return {dia for dia, n in por_dia.items() if n < piso}
+
+_DIAS_PARCIALES_TTL_SEG = 3600
+_dias_parciales_cache = {}
+
+def dias_parciales(subdomain, conn=None):
+    """_dias_parciales con cache de una hora: cambia una vez por dia."""
+    ahora = time.monotonic()
+    v = _dias_parciales_cache.get(subdomain)
+    if v and v[1] > ahora:
+        return v[0]
+    valor = _dias_parciales(subdomain, conn)
+    _dias_parciales_cache[subdomain] = (valor, ahora + _DIAS_PARCIALES_TTL_SEG)
+    return valor
+
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None,
-                          sql_embudo='', params_embudo=(), corte=None, conn=None):
+                          sql_embudo='', params_embudo=(), corte=None, conn=None,
+                          hasta_ts=None):
     """Leads cuyo último mensaje es del cliente: nadie contestó después.
 
     Se calcula con los MENSAJES y desde el corte, no con los campos de fecha
@@ -3950,16 +4001,23 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                        le.asesor_nombre, cli.ultimo AS f_ult_msj_cliente
                   FROM leads_estado le
                   JOIN (SELECT lead_id, MAX(ts) AS ultimo FROM mensajes_cliente
-                         WHERE subdomain = %s AND ts >= %s GROUP BY lead_id) cli
+                         WHERE subdomain = %s AND ts >= %s AND (%s IS NULL OR ts <= %s)
+                         GROUP BY lead_id) cli
                     ON cli.lead_id = le.lead_id
              LEFT JOIN (SELECT lead_id, MAX(ts) AS ultimo FROM mensajes_asesor
                          WHERE subdomain = %s AND lead_id IS NOT NULL
+                           AND (%s IS NULL OR ts <= %s)
                          GROUP BY lead_id) asr
                     ON asr.lead_id = le.lead_id
                  WHERE le.subdomain = %s
                    AND (asr.ultimo IS NULL OR cli.ultimo > asr.ultimo)
             '''
-            params = [subdomain, corte, subdomain, subdomain]
+            # hasta_ts reconstruye el estado en un momento PASADO: quienes
+            # estaban esperando a esa hora. No hace falta guardar ninguna foto
+            # —tenemos cada mensaje con su timestamp de los dos lados—, alcanza
+            # con no mirar lo que llego despues. Con hasta_ts=None es el ahora.
+            params = [subdomain, corte, hasta_ts, hasta_ts,
+                      subdomain, hasta_ts, hasta_ts, subdomain]
         else:
             query = '''
                 SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre, asesor_nombre
@@ -4009,9 +4067,55 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         salida.append(fila)
     return salida
 
+def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
+                      asesor_ids=None, solo_abiertas=False,
+                      sql_embudo='', params_embudo=()):
+    """Los dos numeros del snapshot, pero en un dia PASADO y a esta misma hora.
+
+    No hace falta ninguna foto guardada: tenemos cada mensaje entrante y
+    saliente con su timestamp, asi que el estado de cualquier momento se
+    reconstruye mirando solo lo que habia llegado hasta entonces. Esto se
+    creyo imposible por un rato y no lo es.
+
+    "A esta misma hora" y no el dia entero: hoy va por la mitad, y compararlo
+    contra un dia completo de ayer infla la diferencia.
+
+    Devuelve None cuando la comparacion no seria honesta:
+      - antes del corte no teniamos los salientes, asi que todo pareceria sin
+        responder;
+      - un dia con captura parcial —el apagon del 31/08— da lo mismo.
+    Es preferible no mostrar el comparativo a mostrar uno que miente."""
+    if not fecha or not corte:
+        return None
+    try:
+        inicio = _local_date_to_ts(fecha, tz_offset)
+    except (ValueError, TypeError):
+        return None
+    ahora = int(time.time())
+    hoy_inicio, _ = _hoy_rango_ts(tz_offset)
+    # El mismo tramo del dia que lleva hoy: de la medianoche de esa fecha hasta
+    # la hora que es ahora.
+    corte_hora = inicio + (ahora - hoy_inicio)
+    if inicio < corte or corte_hora >= ahora:
+        return None
+    if fecha in dias_parciales(subdomain, conn):
+        return None
+
+    sin_responder = _leads_no_respondidos(
+        subdomain, tz_offset, asesor_ids, solo_abiertas, corte,
+        sql_embudo, params_embudo, corte, conn=conn, hasta_ts=corte_hora)
+    trabajados, solo_bot = _leads_trabajados_hoy(
+        subdomain, tz_offset, h_ini, h_fin, asesor_ids, solo_abiertas,
+        sql_embudo, params_embudo, corte, conn=conn, rango=(inicio, corte_hora))
+    return {
+        'fecha':          fecha,
+        'no_respondidos': len(sin_responder),
+        'trabajados_hoy': len(trabajados) + len(solo_bot),
+    }
+
 def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None,
                           solo_abiertas=False, sql_embudo='', params_embudo=(),
-                          corte=None, conn=None):
+                          corte=None, conn=None, rango=None):
     """Leads que recibieron respuesta hoy, SEPARADOS en dos listas: los que
     atendio una persona y los que solo contesto el bot.
 
@@ -4029,7 +4133,9 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
 
     Sin 'corte' (cuenta sin salientes capturados) se cae al metodo viejo y todo
     queda en la lista de personas, que es como se comportaba hasta ahora."""
-    inicio, fin = _hoy_rango_ts(tz_offset)
+    # 'rango' permite pedir otro dia —el comparativo contra ayer— con la misma
+    # consulta: son mensajes con timestamp, no una foto guardada.
+    inicio, fin = rango if rango else _hoy_rango_ts(tz_offset)
     autos = list(remitentes_auto_de(subdomain))
     propia = conn is None
     if propia:
@@ -4398,12 +4504,22 @@ def pulse_snapshot():
                                                      asesor_ids, solo_abiertas,
                                                      sql_embudo, params_embudo, corte, conn=conn)
         _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
+        # Contra que dia se compara. Por defecto ayer; ?comparar=YYYY-MM-DD
+        # para otro. Devuelve None si esa fecha no da un numero honesto.
+        pedida = (request.args.get('comparar') or '').strip()
+        if not pedida:
+            ayer = (datetime.utcnow() + timedelta(hours=tz_offset) - timedelta(days=1))
+            pedida = ayer.strftime('%Y-%m-%d')
+        comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, pedida,
+                                      corte, conn, asesor_ids, solo_abiertas,
+                                      sql_embudo, params_embudo)
     finally:
         conn.close()
     return jsonify({
         'no_respondidos':     no_respondidos,
         'trabajados_hoy':     trabajados,
         'atendidos_solo_bot': solo_bot,
+        'comparado':          comparado,
     })
 
 @app.route('/pulse/data')
@@ -4802,6 +4918,14 @@ def pulse_data():
         _completar_nombres(subdomain, no_respondidos, trabajados_hoy, atendidos_solo_bot,
                            conn=conn)
         _marca('completar_nombres')
+        pedida = (request.args.get('comparar') or '').strip()
+        if not pedida:
+            ayer = (datetime.utcnow() + timedelta(hours=tz_offset) - timedelta(days=1))
+            pedida = ayer.strftime('%Y-%m-%d')
+        comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, pedida,
+                                      corte, conn, asesor_ids, solo_abiertas,
+                                      sql_embudo, params_embudo)
+        _marca('comparativo')
         cobertura = _cobertura(subdomain, desde_str, hasta_str, dias_lab, conn=conn)
         _marca('cobertura')
         tiempos['total'] = round(sum(tiempos.values()), 3)
@@ -4870,6 +4994,9 @@ def pulse_data():
             # mensaje es nuestro, y figuraban en "Atendidos" sin que ninguna
             # persona los hubiera mirado.
             'atendidos_solo_bot': atendidos_solo_bot,
+            # Mismo comparativo que en /pulse/snapshot, para que la primera
+            # carga ya lo traiga y no haya que esperar al refresco.
+            'comparado': comparado,
         })
     except Exception as e:
         print(f'❌ PULSE /data procesamiento: {e}')
