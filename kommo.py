@@ -168,8 +168,37 @@ def token_requerido(f):
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
+def _agregar_columna(c, tabla, columna, tipo):
+    """ALTER TABLE ... ADD COLUMN solo si la columna NO existe.
+
+    'ADD COLUMN IF NOT EXISTS' parece inofensivo, pero toma un bloqueo
+    exclusivo sobre la tabla AUNQUE la columna ya este. init_db lo hacia
+    nueve veces en cada arranque, y en un deploy el proceso nuevo arranca
+    mientras el viejo sigue sirviendo el tablero: el 04/09 se cruzaron y
+    Postgres mato una consulta con "deadlock detected". Preguntar primero al
+    catalogo no bloquea nada."""
+    c.execute(
+        'SELECT 1 FROM information_schema.columns '
+        'WHERE table_schema = %s AND table_name = %s AND column_name = %s',
+        ('public', tabla, columna))
+    if c.fetchone() is None:
+        c.execute(f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS {columna} {tipo}')
+
+def _activar_rls(c, tabla):
+    """ENABLE ROW LEVEL SECURITY solo si no esta activo. Misma razon que
+    _agregar_columna: el ALTER bloquea la tabla aunque no cambie nada."""
+    c.execute('SELECT relrowsecurity FROM pg_class WHERE relname = %s', (tabla,))
+    fila = c.fetchone()
+    if fila is not None and not fila[0]:
+        c.execute(f'ALTER TABLE {tabla} ENABLE ROW LEVEL SECURITY')
+
 def init_db():
     conn = get_conn()
+    # Cada sentencia en su propia transaccion. Antes iban todas en una y los
+    # bloqueos de cada ALTER se acumulaban sobre todas las tablas hasta el
+    # commit final: es la mitad del deadlock del 04/09 (la otra mitad era el
+    # tablero reteniendo sus bloqueos de lectura, ver pulse_data).
+    conn.autocommit = True
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS eventos (
@@ -194,18 +223,18 @@ def init_db():
             UNIQUE (subdomain, lead_id, f_ult_msj_asesor)
         )
     ''')
-    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS responsible_user_id BIGINT')
-    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
+    _agregar_columna(c, 'tiempos_respuesta', 'responsible_user_id', 'BIGINT')
+    _agregar_columna(c, 'tiempos_respuesta', 'lead_nombre', 'TEXT')
     # Quien atendio segun el campo custom de la cuenta, cuando lo tiene. Es
     # distinto de responsible_user_id: ese es el DUEÑO del lead, y en las
     # cuentas que comparten usuario no identifica a nadie.
-    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS asesor_nombre TEXT')
+    _agregar_columna(c, 'tiempos_respuesta', 'asesor_nombre', 'TEXT')
     # Hora del PRIMER mensaje del cliente sin responder. 'F Ult msj cliente'
     # guarda el ULTIMO, asi que si el cliente escribe varias veces antes de que
     # le contesten, medir desde ahi subestima la espera (medido: 2.3x en la
     # mediana). NULL = no hay mensajes guardados de esa ventana; en ese caso se
     # cae al valor viejo.
-    c.execute('ALTER TABLE tiempos_respuesta ADD COLUMN IF NOT EXISTS f_primer_msj_cliente BIGINT')
+    _agregar_columna(c, 'tiempos_respuesta', 'f_primer_msj_cliente', 'BIGINT')
     c.execute('''CREATE INDEX IF NOT EXISTS idx_tiempos_sub_lead
                  ON tiempos_respuesta (subdomain, lead_id, f_ult_msj_asesor)''')
     # _fecha_minima hace MIN(capturado_at) por subdominio en CADA carga del
@@ -230,7 +259,7 @@ def init_db():
     # autonica y 70% en gruporegalado. Kommo manda el nombre en cada mensaje
     # entrante (author][name], con author][type] = external, o sea el cliente),
     # asi que se guarda aca y se usa cuando el lead no trae el suyo.
-    c.execute('ALTER TABLE mensajes_cliente ADD COLUMN IF NOT EXISTS cliente_nombre TEXT')
+    _agregar_columna(c, 'mensajes_cliente', 'cliente_nombre', 'TEXT')
     # La clave primaria es (subdomain, lead_id, ts), asi que 'ts' queda tercera
     # y una consulta por (subdomain, ts) no la puede usar. "Sin responder"
     # consulta exactamente asi —los mensajes desde el corte— y ahora ademas se
@@ -251,18 +280,18 @@ def init_db():
             PRIMARY KEY (subdomain, lead_id)
         )
     ''')
-    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS lead_nombre TEXT')
-    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS status_id BIGINT')
+    _agregar_columna(c, 'leads_estado', 'lead_nombre', 'TEXT')
+    _agregar_columna(c, 'leads_estado', 'status_id', 'BIGINT')
     # El embudo. Llega en el 100% de los lead_update y hasta ahora se tiraba.
     # Sin esto no se puede filtrar por embudo, que es lo que se pidio en la
     # reunion: Camara China tiene 24 embudos y mezclarlos en un solo numero
     # hace que el dashboard promedie ventas con reclamos y con cursos.
-    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS pipeline_id BIGINT')
+    _agregar_columna(c, 'leads_estado', 'pipeline_id', 'BIGINT')
     # Tambien aca y no solo en tiempos_respuesta: las tarjetas de "Sin
     # responder" y "Atendidos hoy" leen esta tabla, y si mostraran el
     # responsable mientras el ranking muestra al asesor, el mismo lead
     # apareceria con dos nombres distintos en la misma pantalla.
-    c.execute('ALTER TABLE leads_estado ADD COLUMN IF NOT EXISTS asesor_nombre TEXT')
+    _agregar_columna(c, 'leads_estado', 'asesor_nombre', 'TEXT')
 
     # Mensajes SALIENTES: los que manda el asesor (o el bot) al cliente.
     #
@@ -332,12 +361,10 @@ def init_db():
     for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado',
                   'mensajes_asesor', 'conversaciones'):
         try:
-            c.execute(f'ALTER TABLE {tabla} ENABLE ROW LEVEL SECURITY')
+            _activar_rls(c, tabla)
         except Exception as e:
             # No debe impedir el arranque: sin esto la app no procesa webhooks.
-            conn.rollback()
             print(f"⚠️  No se pudo activar RLS en {tabla}: {e}")
-    conn.commit()
     conn.close()
     print("✅ Base de datos lista")
 
@@ -4071,8 +4098,10 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
             _fmt_lead_estado(fila, tz_offset, 'f_ult_msj_asesor'))
     return por_persona, solo_bot
 
-def _lista_asesores(subdomain):
-    conn = get_conn()
+def _lista_asesores(subdomain, conn=None):
+    propia = conn is None
+    if propia:
+        conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(
@@ -4081,12 +4110,13 @@ def _lista_asesores(subdomain):
         )
         ids = [row[0] for row in c.fetchall()]
     finally:
-        conn.close()
+        if propia:
+            conn.close()
     asesores = [{'id': uid, 'nombre': nombre_asesor(uid)} for uid in ids]
     asesores = [a for a in asesores if a['nombre']]
     return sorted(asesores, key=lambda x: x['nombre'])
 
-def _lista_asesores_campo(subdomain):
+def _lista_asesores_campo(subdomain, conn=None):
     """Nombres vistos en el campo custom "Asesor" de esta cuenta.
 
     Se sacan de los datos y no de una lista fija: es texto que se carga en
@@ -4094,7 +4124,9 @@ def _lista_asesores_campo(subdomain):
     configurado devuelve vacio y el dashboard no muestra el filtro."""
     if not campo_quien_atendio_de(subdomain):
         return []
-    conn = get_conn()
+    propia = conn is None
+    if propia:
+        conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(
@@ -4104,7 +4136,8 @@ def _lista_asesores_campo(subdomain):
         )
         nombres = [row[0] for row in c.fetchall() if (row[0] or '').strip()]
     finally:
-        conn.close()
+        if propia:
+            conn.close()
     return sorted(nombres)
 
 def _cobertura(subdomain, desde_str, hasta_str, dias_lab, conn=None):
@@ -4350,6 +4383,10 @@ def pulse_snapshot():
     # sin responder, atendidos, nombres— y cada una paga ~0,35 s de saludo TLS
     # contra Supabase; y esto corre cada 90 segundos por pestaña abierta.
     conn = get_conn()
+    # Solo lecturas, y cada una suelta su bloqueo al terminar. Sin esto la
+    # conexion compartida retiene los bloqueos de lectura de cada tabla hasta
+    # el final, y se cruza con el init_db del proceso nuevo en cada deploy.
+    conn.autocommit = True
     try:
         corte = _corte_salientes(conn.cursor(cursor_factory=RealDictCursor), subdomain)
         fecha_min = _fecha_minima(subdomain, conn)
@@ -4444,6 +4481,12 @@ def pulse_data():
 
     _marca('parametros')
     conn = get_conn()
+    # Solo lecturas. Con autocommit cada consulta suelta su bloqueo al
+    # terminar, como cuando cada una tenia su conexion. Sin esto, la conexion
+    # compartida retiene los bloqueos de lectura de todas las tablas que ya
+    # leyo hasta el final de la carga (~3 s), y en un deploy se cruza con los
+    # ALTER de init_db del proceso nuevo: "deadlock detected", 04/09.
+    conn.autocommit = True
     _marca('conexion')
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
@@ -4771,14 +4814,14 @@ def pulse_data():
                 'dias_fmt':    _fmt_dias(dias_lab),
                 'franjas':     franjas,
                 'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
-                'asesores':    _lista_asesores(subdomain),
+                'asesores':    _lista_asesores(subdomain, conn=conn),
                 # Solo se nombra cuando hay UNO: con varios elegidos el titulo
                 # tendria que enumerarlos y no cabe.
                 'asesor_actual': nombre_asesor(asesor_ids[0]) if len(asesor_ids) == 1 else None,
                 'asesores_elegidos': asesor_ids,
                 # Vacio en las cuentas sin campo "Asesor": el dashboard usa eso
                 # para no mostrar un filtro que no filtraria nada.
-                'asesores_campo': _lista_asesores_campo(subdomain),
+                'asesores_campo': _lista_asesores_campo(subdomain, conn=conn),
                 # Selector anidado: el embudo es el padre y sus etapas los
                 # hijos. Vacio en las cuentas sin pipeline_id todavia cargado,
                 # y ahi el dashboard no muestra el filtro.
