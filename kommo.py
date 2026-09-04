@@ -3580,6 +3580,60 @@ def _corte_salientes(cursor, subdomain):
     fila = cursor.fetchone()
     return fila['corte'] if fila else None
 
+# Turnos armados por cuenta, para no rearmarlos en cada carga. Armarlos es la
+# parte cara del tablero —cargar todos los mensajes desde el corte y
+# recorrerlos en Python, 1 s medido en Camara China— y NO depende de ningun
+# filtro: periodo, responsable, embudo y horario se aplican despues, sobre los
+# turnos ya hechos. Asi que se guardan y se reusan.
+#
+# La clave es el ultimo ts de cada tabla de mensajes: dos consultas de indice
+# que cuestan milisegundos. Si entro un mensaje nuevo, la clave cambia y se
+# rearma; si no, se reusa tal cual. No hay vencimiento por tiempo porque no
+# hace falta: el dato es exacto o se rehace. Lo que cambia de filtro —el caso
+# de "pongo un periodo y dice cargando"— entra de lleno.
+#
+# Los turnos se devuelven como estan y quien los usa no los modifica: los
+# registros se construyen aparte, en _registros_de_mensajes.
+_turnos_cache = {}     # subdomain -> (clave, turnos)
+
+def _turnos_cacheados(cursor, subdomain, corte):
+    cursor.execute('SELECT MAX(ts) AS m FROM mensajes_cliente WHERE subdomain = %s', (subdomain,))
+    ult_cli = (cursor.fetchone() or {}).get('m')
+    cursor.execute('SELECT MAX(ts) AS m FROM mensajes_asesor WHERE subdomain = %s', (subdomain,))
+    ult_asr = (cursor.fetchone() or {}).get('m')
+    clave = (corte, ult_cli, ult_asr)
+    v = _turnos_cache.get(subdomain)
+    if v and v[0] == clave:
+        return v[1]
+
+    # Los entrantes se leen desde antes del corte a proposito: un cliente pudo
+    # escribir el dia anterior y recibir respuesta despues del corte. Si se
+    # leyeran solo desde el corte, ese turno se mediria desde un mensaje que no
+    # es el primero sin contestar.
+    cursor.execute(
+        'SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s AND ts >= %s',
+        (subdomain, corte - GAP_REACTIVACION_SEG))
+    entrantes = [(r['lead_id'], r['ts']) for r in cursor.fetchall()]
+
+    cursor.execute(
+        'SELECT lead_id, ts, autor_nombre, user_id, msg_id FROM mensajes_asesor '
+        'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
+        (subdomain, corte))
+    salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'], r['msg_id'])
+                 for r in cursor.fetchall()]
+
+    turnos = []
+    if salientes:
+        turnos = _turnos_de_mensajes(entrantes, salientes, remitentes_auto_de(subdomain))
+        # La frontera se decide por CUANDO SE RESPONDIO, no por cuando escribio
+        # el cliente. Asi cada respuesta cae en un metodo y en uno solo: la
+        # consulta vieja se corta con f_ult_msj_asesor < corte. Si se partiera
+        # por el inicio, una respuesta del borde quedaria contada dos veces.
+        turnos = [t for t in turnos
+                  if t['fin'] >= corte and t['seg'] <= GAP_REACTIVACION_SEG]
+    _turnos_cache[subdomain] = (clave, turnos)
+    return turnos
+
 def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
                            fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre,
                            embudos_sel=(), etapas_sel=()):
@@ -3602,28 +3656,9 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
     if not corte:
         return []
 
-    cursor.execute(
-        'SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s AND ts >= %s',
-        (subdomain, corte - GAP_REACTIVACION_SEG))
-    entrantes = [(r['lead_id'], r['ts']) for r in cursor.fetchall()]
-
-    cursor.execute(
-        'SELECT lead_id, ts, autor_nombre, user_id, msg_id FROM mensajes_asesor '
-        'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
-        (subdomain, corte))
-    salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'], r['msg_id'])
-                 for r in cursor.fetchall()]
-    if not salientes:
-        return []
-
-    turnos = _turnos_de_mensajes(entrantes, salientes, remitentes_auto_de(subdomain))
-
-    # La frontera se decide por CUANDO SE RESPONDIO, no por cuando escribio el
-    # cliente. Asi cada respuesta cae en un metodo y en uno solo: la consulta
-    # vieja se corta con f_ult_msj_asesor < corte. Si se partiera por el inicio,
-    # una respuesta del borde quedaria contada dos veces.
-    turnos = [t for t in turnos
-              if t['fin'] >= corte and t['seg'] <= GAP_REACTIVACION_SEG]
+    # Los turnos ya armados, o rearmados si entro un mensaje nuevo. Ver
+    # _turnos_cacheados: es la parte cara y no depende de ningun filtro.
+    turnos = _turnos_cacheados(cursor, subdomain, corte)
     if not turnos:
         return []
 
@@ -3753,7 +3788,7 @@ SQL_NOMBRES_CLIENTE = '''
     ORDER BY lead_id, ts DESC
 '''
 
-def _completar_nombres(subdomain, *listas):
+def _completar_nombres(subdomain, *listas, conn=None):
     """Rellena el 'nombre' vacio de varias listas de leads, en UNA consulta.
 
     Recibe todas las listas juntas a proposito: son dos tarjetas que se dibujan
@@ -3763,13 +3798,16 @@ def _completar_nombres(subdomain, *listas):
               if not (f.get('nombre') or '').strip()]
     if not faltan:
         return
-    conn = get_conn()
+    propia = conn is None
+    if propia:
+        conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         c.execute(SQL_NOMBRES_CLIENTE, (subdomain, list(set(faltan))))
         nombres = {r['lead_id']: r['cliente_nombre'] for r in c.fetchall()}
     finally:
-        conn.close()
+        if propia:
+            conn.close()
     for lst in listas:
         for f in lst:
             if not (f.get('nombre') or '').strip():
@@ -3850,7 +3888,7 @@ def _embudos_con_leads(cursor, subdomain):
 
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None,
-                          sql_embudo='', params_embudo=(), corte=None):
+                          sql_embudo='', params_embudo=(), corte=None, conn=None):
     """Leads cuyo último mensaje es del cliente: nadie contestó después.
 
     Se calcula con los MENSAJES y desde el corte, no con los campos de fecha
@@ -3874,7 +3912,9 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     de verdad es otra pregunta, y se mide aparte.
 
     Sin corte —cuenta sin salientes capturados— se cae al método viejo."""
-    conn = get_conn()
+    propia = conn is None
+    if propia:
+        conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         if corte:
@@ -3917,7 +3957,8 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         c.execute(query, params)
         rows = c.fetchall()
     finally:
-        conn.close()
+        if propia:
+            conn.close()
 
     # Cuanto lleva esperando cada uno, en segundos EFECTIVOS (horario laboral
     # de la cuenta), para que el tablero le ponga la misma franja que usa el
@@ -3943,7 +3984,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
 
 def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None,
                           solo_abiertas=False, sql_embudo='', params_embudo=(),
-                          corte=None):
+                          corte=None, conn=None):
     """Leads que recibieron respuesta hoy, SEPARADOS en dos listas: los que
     atendio una persona y los que solo contesto el bot.
 
@@ -3963,7 +4004,9 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
     queda en la lista de personas, que es como se comportaba hasta ahora."""
     inicio, fin = _hoy_rango_ts(tz_offset)
     autos = list(remitentes_auto_de(subdomain))
-    conn = get_conn()
+    propia = conn is None
+    if propia:
+        conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         if corte:
@@ -4006,7 +4049,8 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
         c.execute(query, params)
         rows = c.fetchall()
     finally:
-        conn.close()
+        if propia:
+            conn.close()
 
     por_persona, solo_bot = [], []
     for r in rows:
@@ -4063,7 +4107,7 @@ def _lista_asesores_campo(subdomain):
         conn.close()
     return sorted(nombres)
 
-def _cobertura(subdomain, desde_str, hasta_str, dias_lab):
+def _cobertura(subdomain, desde_str, hasta_str, dias_lab, conn=None):
     """Que porcion de los dias LABORABLES del periodo elegido tiene datos.
 
     Cuando el webhook se cae dejamos de recibir mensajes, pero el dashboard
@@ -4084,7 +4128,9 @@ def _cobertura(subdomain, desde_str, hasta_str, dias_lab):
     if desde > hasta:
         return None
 
-    conn = get_conn()
+    propia = conn is None
+    if propia:
+        conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(
@@ -4095,7 +4141,8 @@ def _cobertura(subdomain, desde_str, hasta_str, dias_lab):
         )
         con_datos = {r[0] for r in c.fetchall()}
     finally:
-        conn.close()
+        if propia:
+            conn.close()
 
     laborables, cubiertos = 0, 0
     d = desde
@@ -4136,7 +4183,25 @@ def _fmt_dias(dias_lab):
 # Dos o mas seguidos ya no: eso es el webhook caido.
 MAX_DIAS_SIN_DATOS = 1
 
-def _fecha_minima(subdomain):
+# Cache de _fecha_minima por cuenta. La consulta recorre TODOS los eventos de
+# la cuenta —392.000 en Camara China, 0,8 s medidos— para un dato que cambia
+# una vez al dia: el primer dia de la racha continua de captura. Una hora de
+# vigencia alcanza y sobra; si el webhook se cae y vuelve, el piso se mueve a
+# lo sumo una hora despues, y la caida ya la avisa /health/actividad.
+_FECHA_MIN_TTL_SEG = 3600
+_fecha_min_cache = {}     # subdomain -> (valor, expira_en)
+
+def _fecha_minima(subdomain, conn=None):
+    """Version con cache de _fecha_minima_calc. Ver ahi que calcula."""
+    ahora = time.monotonic()
+    v = _fecha_min_cache.get(subdomain)
+    if v and v[1] > ahora:
+        return v[0]
+    valor = _fecha_minima_calc(subdomain, conn)
+    _fecha_min_cache[subdomain] = (valor, ahora + _FECHA_MIN_TTL_SEG)
+    return valor
+
+def _fecha_minima_calc(subdomain, conn=None):
     """Desde cuando la captura viene SIN CORTES para este cliente.
 
     Antes devolvia MIN(capturado_at): el primer evento que recibimos alguna
@@ -4154,7 +4219,11 @@ def _fecha_minima(subdomain):
     cuando NOSOTROS recibimos, no la fecha que trae el lead (un lead dormido
     puede llegar con fecha de hace anios en el snapshot inicial)."""
     dias_lab = PULSE_CONFIG.get(subdomain, {}).get('dias_laborables', [0, 1, 2, 3, 4])
-    conn = get_conn()
+    # Usa la conexion que le pasan, o abre una propia. Cada conexion a
+    # Supabase cuesta ~0,35 s de saludo TLS: el tablero abria seis por carga.
+    propia = conn is None
+    if propia:
+        conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(
@@ -4163,7 +4232,8 @@ def _fecha_minima(subdomain):
         )
         con_datos = {r[0] for r in c.fetchall() if r[0]}
     finally:
-        conn.close()
+        if propia:
+            conn.close()
     if not con_datos:
         return None
 
@@ -4276,21 +4346,23 @@ def pulse_snapshot():
     })
     sql_embudo, params_embudo = _filtro_embudo(embudos_sel, etapas_sel)
 
+    # UNA conexion para todo el refresco. Abria cinco —corte, fecha minima,
+    # sin responder, atendidos, nombres— y cada una paga ~0,35 s de saludo TLS
+    # contra Supabase; y esto corre cada 90 segundos por pestaña abierta.
     conn = get_conn()
     try:
         corte = _corte_salientes(conn.cursor(cursor_factory=RealDictCursor), subdomain)
+        fecha_min = _fecha_minima(subdomain, conn)
+        piso = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
+
+        no_respondidos = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
+                                               piso, sql_embudo, params_embudo, corte, conn=conn)
+        trabajados, solo_bot = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
+                                                     asesor_ids, solo_abiertas,
+                                                     sql_embudo, params_embudo, corte, conn=conn)
+        _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
     finally:
         conn.close()
-
-    fecha_min = _fecha_minima(subdomain)
-    piso = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
-
-    no_respondidos = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
-                                           piso, sql_embudo, params_embudo, corte)
-    trabajados, solo_bot = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
-                                                 asesor_ids, solo_abiertas,
-                                                 sql_embudo, params_embudo, corte)
-    _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot)
     return jsonify({
         'no_respondidos':     no_respondidos,
         'trabajados_hoy':     trabajados,
@@ -4439,8 +4511,17 @@ def pulse_data():
             params.append(subdomain)
             params.extend(params_embudo)
         query += ' ORDER BY lead_id, f_ult_msj_cliente, f_ult_msj_asesor ASC'
-        c.execute(query, params)
-        rows = c.fetchall()
+        # Si el periodo entero es posterior al corte, esta consulta no puede
+        # devolver nada: mide solo respuestas ANTERIORES al corte
+        # (f_ult_msj_asesor < corte), y el inicio de la espera es siempre
+        # menor que la respuesta. Se salta: eran 0,6 s en Camara China para
+        # traer una lista vacia, y es el caso comun porque el rango por
+        # defecto es reciente.
+        if corte and desde_ts is not None and desde_ts >= corte:
+            rows = []
+        else:
+            c.execute(query, params)
+            rows = c.fetchall()
 
         # Nombre de respaldo para los leads que Kommo nunca bautizo. Se piden
         # SOLO los que hacen falta: gruporegalado tiene decenas de miles de
@@ -4474,9 +4555,13 @@ def pulse_data():
         _marca('nombres_cliente')
     except Exception as e:
         print(f'❌ PULSE /data query: {e}')
-        return jsonify({'error': str(e)}), 500
-    finally:
         conn.close()
+        return jsonify({'error': str(e)}), 500
+    # La conexion sigue ABIERTA a proposito: la usan tambien fecha minima, sin
+    # responder, atendidos hoy, nombres y cobertura, mas abajo. Antes cada una
+    # abria la suya —seis por carga— y cada conexion a Supabase paga ~0,35 s
+    # de saludo TLS: 1,8 s de una carga de 6 eran apretones de manos. Se cierra
+    # en el finally del bloque que sigue.
 
     try:
         registros = []
@@ -4655,24 +4740,26 @@ def pulse_data():
             ]
 
         _marca('calculo')
-        # Una sola vez: _fecha_minima hace un MIN sobre toda la tabla eventos.
-        fecha_min = _fecha_minima(subdomain)
+        # Con cache de una hora: la consulta recorre todos los eventos.
+        fecha_min = _fecha_minima(subdomain, conn)
         _marca('fecha_minima')
         piso_captura = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
         no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
-                                                piso_captura, sql_embudo, params_embudo, corte)
+                                                piso_captura, sql_embudo, params_embudo, corte,
+                                                conn=conn)
         _marca('no_respondidos')
         trabajados_hoy, atendidos_solo_bot = _leads_trabajados_hoy(
             subdomain, tz_offset, h_ini, h_fin, asesor_ids,
-            solo_abiertas, sql_embudo, params_embudo, corte)
+            solo_abiertas, sql_embudo, params_embudo, corte, conn=conn)
         _marca('trabajados_hoy')
         # Estas dos listas salen de leads_estado, que no tiene el nombre del
         # cliente. Sin esto las tarjetas muestran "Sin nombre" aunque el dato
         # este guardado, que es lo que reporto Ana.
-        _completar_nombres(subdomain, no_respondidos, trabajados_hoy, atendidos_solo_bot)
+        _completar_nombres(subdomain, no_respondidos, trabajados_hoy, atendidos_solo_bot,
+                           conn=conn)
         _marca('completar_nombres')
-        cobertura = _cobertura(subdomain, desde_str, hasta_str, dias_lab)
+        cobertura = _cobertura(subdomain, desde_str, hasta_str, dias_lab, conn=conn)
         _marca('cobertura')
         tiempos['total'] = round(sum(tiempos.values()), 3)
 
@@ -4744,6 +4831,8 @@ def pulse_data():
     except Exception as e:
         print(f'❌ PULSE /data procesamiento: {e}')
         return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 # ========================
 # MAIN

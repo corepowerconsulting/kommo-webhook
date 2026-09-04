@@ -2187,9 +2187,21 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) refrescarSnapshot();
 });
 
+// La primera carga muestra el "Cargando datos…" con la pagina vacia: no hay
+// nada mejor que mostrar. Las siguientes —cambiar el periodo, un filtro— NO
+// esconden el tablero: lo atenuan y lo dejan a la vista mientras llega lo
+// nuevo. Antes cada filtro dejaba la pagina en blanco unos segundos, y eso se
+// siente como el doble de lento que ver los numeros viejos atenuados.
+let PRIMERA_CARGA = true;
+
 async function cargarDatos() {
-  document.getElementById('loading').classList.remove('hidden');
-  document.getElementById('content').classList.add('hidden');
+  const content = document.getElementById('content');
+  if (PRIMERA_CARGA) {
+    document.getElementById('loading').classList.remove('hidden');
+    content.classList.add('hidden');
+  } else {
+    content.classList.add('opacity-50', 'pointer-events-none');
+  }
   document.getElementById('error-state').classList.add('hidden');
 
   // El navegador solo bloquea el calendario visual con min=, pero deja
@@ -2415,12 +2427,14 @@ async function cargarDatos() {
     renderExtremos();
 
     document.getElementById('loading').classList.add('hidden');
-    document.getElementById('content').classList.remove('hidden');
+    content.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
+    PRIMERA_CARGA = false;
 
   } catch(e) {
     document.getElementById('error-msg').textContent = 'Error de conexión: ' + e.message;
     document.getElementById('error-state').classList.remove('hidden');
     document.getElementById('loading').classList.add('hidden');
+    content.classList.remove('opacity-50', 'pointer-events-none');
   }
 }
 
