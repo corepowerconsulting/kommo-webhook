@@ -450,6 +450,26 @@
       </div>
     </div>
 
+    <!-- Detalle por asesor del AHORA (reunion del 31/08). Con varias personas
+         los dos totales de arriba no son accionables: 229 sin responder no
+         dice de quien. Esta tabla lo reparte, ordenada por CRITICOS —los que
+         llevan mas de la ultima franja esperando— porque el supervisor no
+         busca al mejor, busca al que necesita ayuda ahora.
+         Se arma en pantalla con los mismos leads que ya trae el snapshot, asi
+         que se refresca con el, cada 90 segundos, sin pedir nada nuevo. -->
+    <div class="card" id="card-asesores-ahora">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="icon-chip bg-slate-100">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div>
+          <h2 class="section-title">Detalle por asesor</h2>
+          <div class="section-sub">Ahora mismo, ordenados por críticos: quién necesita ayuda primero</div>
+        </div>
+      </div>
+      <div id="tabla-asesores-ahora"></div>
+    </div>
+
     <!-- Corte entre las dos mitades de la pagina (reunion del 31/08). Arriba
          es el AHORA: el snapshot. De aca para abajo todo obedece al periodo
          elegido en la barra de filtros. Sin este titulo, Luis no sabia donde
@@ -1239,6 +1259,81 @@ function renderExtraLeads(containerId, leads) {
   });
 }
 
+// --- Detalle por asesor del AHORA --------------------------------------------
+// Reparte los dos totales del snapshot entre las personas. Sale de los mismos
+// leads que ya llegan —cada uno trae su asesor y su espera efectiva— asi que
+// no hay consulta nueva y se refresca junto con las tarjetas.
+//
+// Ordenado por CRITICOS: los leads que llevan esperando mas que la ultima
+// franja de la cuenta. Es la primera pregunta del supervisor: a quien ayudo
+// primero. Empate por sin responder, y despues por nombre para que el orden
+// no baile entre refrescos.
+//
+// Los leads que hoy atendio SOLO el bot van en una fila aparte: se los
+// acredita al bot y no al responsable del lead, y asi la tabla suma exactamente
+// lo que dice la tarjeta "Atendidos hoy" (que cuenta a los dos).
+const SOLO_BOT = 'Solo el bot';
+const SIN_ASIGNAR_UI = 'Sin asignar';
+
+function renderAsesoresAhora(noResp, trabajados, soloBot) {
+  const el = document.getElementById('tabla-asesores-ahora');
+  const franjas = FRANJAS || [];
+  const ultima = franjas.length - 1;
+  const esCritico = l => {
+    if (ultima < 1) return false;
+    const seg = l.espera_seg || 0;
+    return seg >= (franjas[ultima - 1].max_seg || 0);
+  };
+  const filas = {};
+  const fila = n => (filas[n] = filas[n] || { asesor: n, criticos: 0, sin_responder: 0, hoy: 0 });
+  (noResp || []).forEach(l => {
+    const f = fila(l.asesor || SIN_ASIGNAR_UI);
+    f.sin_responder += 1;
+    if (esCritico(l)) f.criticos += 1;
+  });
+  (trabajados || []).forEach(l => { fila(l.asesor || SIN_ASIGNAR_UI).hoy += 1; });
+  if ((soloBot || []).length) fila(SOLO_BOT).hoy += soloBot.length;
+
+  const lista = Object.values(filas);
+  if (lista.length === 0) {
+    el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads ahora mismo</div>';
+    return;
+  }
+  lista.sort((a, b) => b.criticos - a.criticos || b.sin_responder - a.sin_responder
+                    || a.asesor.localeCompare(b.asesor));
+
+  const cab = (txt, extra) => `<div class="kpi-label-sm !mt-0 ${extra || ''}">${txt}</div>`;
+  const num = (n, clase, estilo) => n
+    ? `<div class="t-base font-extrabold lh-corto ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
+    : `<div class="t-base font-extrabold lh-corto text-slate-300">0</div>`;
+  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 7.5rem';
+  el.innerHTML = `
+    <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
+      ${cab('Asesor')}
+      ${cab('Críticos', '')}
+      ${cab('Sin responder')}
+      ${cab('Atendidos hoy')}
+    </div>
+    <div class="divide-y divide-slate-50">
+      ${lista.map(f => {
+        const bot = f.asesor === SOLO_BOT;
+        const icono = bot
+          ? `<svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`
+          : `<svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+        return `
+        <div class="grid items-center gap-3 px-2 py-2.5 row-hover ${bot ? 'opacity-60' : ''}" style="${cols}">
+          <div class="flex items-center gap-2.5 min-w-0">
+            ${icono}
+            <span class="t-chico font-semibold text-slate-700 truncate">${f.asesor}</span>
+          </div>
+          ${num(f.criticos, '', 'color:var(--franja-' + ultima + '-texto)')}
+          ${num(f.sin_responder)}
+          ${num(f.hoy)}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
 // --- Sin responder: accionable ---------------------------------------------
 // La lista venia ordenada por fecha del mensaje, del mas nuevo al mas viejo, y
 // sin ninguna marca. Con 229 leads no habia forma de saber a cual atender
@@ -2011,6 +2106,7 @@ function pintarSnapshot(d) {
     todosHoy.length.toLocaleString('es');
   renderNoRespondidos(d.no_respondidos);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
+  renderAsesoresAhora(d.no_respondidos, d.trabajados_hoy, d.atendidos_solo_bot || []);
   ULTIMO_SNAPSHOT = Date.now();
   marcarFrescura();
 }
