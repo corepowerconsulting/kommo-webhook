@@ -2058,6 +2058,15 @@ function renderAsesores(porAsesor, minMuestra) {
   // leyenda: son los mismos cuatro colores del grafico de dos tarjetas arriba.
   // Ademas se juzga solo — "8% critico" con el total al lado avisa cuando son
   // una o dos conversaciones, cosa que una mediana nunca hace.
+  // La fila mostraba ademas "N por canal": cuantas respuestas se le atribuian
+  // por ser el RESPONSABLE del lead y no porque se lo haya visto contestar.
+  // Se saco a pedido de Juan (04/09): en las cuentas donde el equipo contesta
+  // desde el telefono era casi el total —216 de 242— y ese renglon competia
+  // con el nombre sin cambiar ninguna decision. El dato se sigue calculando y
+  // viaja en 'por_canal' de /pulse/data, por si hace falta medirlo.
+  //
+  // OJO al escribir aca abajo: los comentarios HTML dentro de la plantilla se
+  // renderizan en la pagina. Las notas van en JS, como esta.
   let puesto = 0;
   el.innerHTML = porAsesor.map(a => {
     // La mediana sigue en rojo cuando pasa el objetivo: es el veredicto de esa
@@ -2117,17 +2126,6 @@ function renderAsesores(porAsesor, minMuestra) {
           <svg class="flex-shrink-0 text-slate-300" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span class="t-chico font-semibold text-slate-700 truncate">${a.asesor}</span>
           <span class="t-micro text-slate-500 whitespace-nowrap">${a.total} ${a.total === 1 ? 'respuesta' : 'respuestas'}</span>
-          <!-- Cuantas se le atribuyen por ser el RESPONSABLE del lead y no
-               porque se lo haya visto contestar: la respuesta salio por un
-               canal compartido —WhatsApp Lite, Wazzup, la app de WhatsApp— y
-               Kommo no dice quien la mando.
-               No cambia el numero, pero hay que poder decirlo: un tiempo
-               medido y uno inferido no valen lo mismo, y en algunas cuentas
-               esto es el 78% de las respuestas. -->
-          ${a.por_canal ? `<span class="t-micro text-slate-300 whitespace-nowrap"
-                 data-tip="1" data-tip-color="${COLOR.otros}"
-                 data-tip-label="Salieron por un canal compartido"
-                 data-tip-detalle="se le cuentan por ser el responsable del lead, no porque Kommo diga quién las mandó">${a.por_canal} por canal</span>` : ''}
           ${aviso}
         </div>
         <div class="text-right flex-shrink-0 pl-3">
