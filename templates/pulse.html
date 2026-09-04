@@ -615,29 +615,34 @@
            recuadro vacio a la derecha y el numero no se leia como el centro de
            la pantalla, que es lo que es. Las tres lineas —cifra, etiqueta y
            los tres percentiles— comparten eje vertical. -->
-      <div id="card-mediana" class="card kpi-franja lg:col-span-2 flex flex-col justify-center items-center text-center">
-        <div class="flex items-center justify-center gap-3 flex-wrap">
-          <!-- En tinta, no en azul. Un numero azul al lado de una etiqueta
-               roja dice dos cosas distintas sobre el mismo dato, y el veredicto
-               lo da la etiqueta. -->
-          <span class="kpi-num-xl" id="kpi-promedio">—</span>
-          <!-- Esta etiqueta es lo unico del dashboard que dice si el numero
-               esta BIEN o MAL. Existia hace tiempo, pero a 10px al lado de un
-               numero de 38 no la veia nadie. Con .tag-kpi pasa a leerse. -->
-          <span id="kpi-badge-prom" class="tag-kpi hidden"></span>
-        </div>
-        <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
-        <div class="mt-2 t-micro text-slate-500">
-          p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
-          <span class="text-slate-300">·</span>
-          prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
-          <span class="text-slate-300">·</span>
-          máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
+      <!-- Dos zonas: el numero, centrado en el espacio que sobra; y la
+           leyenda, abajo a la izquierda y justificada (pedido de Juan, 04/09).
+           Antes la leyenda iba centrada bajo el numero y se mezclaba con el. -->
+      <div id="card-mediana" class="card kpi-franja lg:col-span-2 flex flex-col">
+        <div class="flex-1 flex flex-col justify-center items-center text-center">
+          <div class="flex items-center justify-center gap-3 flex-wrap">
+            <!-- En tinta, no en azul. Un numero azul al lado de una etiqueta
+                 roja dice dos cosas distintas sobre el mismo dato, y el veredicto
+                 lo da la etiqueta. -->
+            <span class="kpi-num-xl" id="kpi-promedio">—</span>
+            <!-- Esta etiqueta es lo unico del dashboard que dice si el numero
+                 esta BIEN o MAL. Existia hace tiempo, pero a 10px al lado de un
+                 numero de 38 no la veia nadie. Con .tag-kpi pasa a leerse. -->
+            <span id="kpi-badge-prom" class="tag-kpi hidden"></span>
+          </div>
+          <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
+          <div class="mt-2 t-micro text-slate-500">
+            p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
+            <span class="text-slate-300">·</span>
+            prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
+            <span class="text-slate-300">·</span>
+            máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
+          </div>
         </div>
         <!-- Leyenda pedida en la reunion del 31/08: quien mira el tablero no
              es estadista. Dos renglones en micro, para que el numero siga
-             mandando. -->
-        <div class="mt-3 t-micro text-slate-500 lh-corto max-w-md" style="opacity:.85">
+             mandando. Abajo a la izquierda, justificada: es texto, no cifra. -->
+        <div class="self-start text-left mt-4 t-micro text-slate-500 lh-corto max-w-md" style="opacity:.85;text-align:justify">
           <strong>Mediana</strong>: lo que esperó el cliente típico — el promedio lo arrastran los casos extremos.
           <strong>p90</strong>: lo que esperó el 10% que más esperó.
         </div>
