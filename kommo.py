@@ -81,6 +81,15 @@ def pulse_password(subdomain):
 def pulse_autorizado(subdomain):
     return bool(session.get(f'pulse_ok_{subdomain}'))
 
+def _token_admin_ok():
+    """El ADMIN_TOKEN tambien abre /pulse/data, ademas de la sesion.
+
+    Para medir cuanto tarda el tablero desde afuera —scripts, el perfil de
+    tiempos— sin tener que loguearse con la clave de cada cliente. El token
+    ya abre /data y los backfills, que exponen mas que esto."""
+    entregado = request.args.get('token', '')
+    return bool(ADMIN_TOKEN) and bool(entregado) and secrets.compare_digest(entregado, ADMIN_TOKEN)
+
 # Contadores de carga en memoria, para /health/carga. Se reinician con cada
 # deploy; alcanza, porque lo que se busca es el pico durante una rafaga.
 _CARGA = {
@@ -4293,8 +4302,20 @@ def pulse_data():
     subdomain = request.args.get('subdomain', '').strip()
     if not subdomain or subdomain not in PULSE_CONFIG:
         return jsonify({'error': f'Subdomain "{subdomain}" no configurado en PULSE'}), 400
-    if not pulse_autorizado(subdomain):
+    if not pulse_autorizado(subdomain) and not _token_admin_ok():
         return jsonify({'error': 'No autorizado'}), 401
+
+    # Perfil de tiempos: cuanto tarda cada tramo de esta respuesta, medido en
+    # el servidor. Se devuelve con ?perfil=1. Existe porque "el tablero tarda"
+    # no dice si es la base, la red, el calculo o el navegador, y cada uno se
+    # arregla distinto. Se mide siempre (cuesta nada) y se muestra si se pide.
+    perfil = request.args.get('perfil') == '1'
+    tiempos = {}
+    _t = [time.perf_counter()]
+    def _marca(nombre):
+        ahora = time.perf_counter()
+        tiempos[nombre] = round(ahora - _t[0], 3)
+        _t[0] = ahora
 
     cfg       = PULSE_CONFIG[subdomain]
     tz_offset = cfg['tz_offset']
@@ -4349,11 +4370,14 @@ def pulse_data():
     desde_ts = _local_date_to_ts(desde_str, tz_offset) if desde_str else None
     hasta_ts = (_local_date_to_ts(hasta_str, tz_offset) + 86399) if hasta_str else None
 
+    _marca('parametros')
     conn = get_conn()
+    _marca('conexion')
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         # Frontera entre los dos metodos de medicion. Ver _corte_salientes.
         corte = _corte_salientes(c, subdomain)
+        _marca('corte')
         # DISTINCT ON: si el asesor manda varios mensajes seguidos respondiendo
         # al MISMO mensaje del cliente, cada uno actualiza f_ult_msj_asesor y
         # generaba una fila "respuesta" separada, inflando el conteo. Nos
@@ -4426,13 +4450,16 @@ def pulse_data():
         # DISTINCT ON ... ORDER BY ts DESC toma el nombre mas reciente: si el
         # contacto se renombro en Kommo, vale el ultimo.
         # Lo que ocurrio DESDE el corte se mide con los mensajes propios.
+        _marca('consulta_campos')
         registros_msj = _registros_de_mensajes(
             c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
             fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre,
             embudos_sel, etapas_sel)
+        _marca('registros_mensajes')
 
         # Lo que se ofrece en el selector: solo embudos con leads de verdad.
         lista_embudos = _embudos_con_leads(c, subdomain)
+        _marca('embudos')
 
         nombres_cliente = {}
         faltantes = list(
@@ -4444,6 +4471,7 @@ def pulse_data():
             # tiene una.
             c.execute(SQL_NOMBRES_CLIENTE, (subdomain, faltantes))
             nombres_cliente = {r['lead_id']: r['cliente_nombre'] for r in c.fetchall()}
+        _marca('nombres_cliente')
     except Exception as e:
         print(f'❌ PULSE /data query: {e}')
         return jsonify({'error': str(e)}), 500
@@ -4626,21 +4654,30 @@ def pulse_data():
                 for i, nombre in enumerate(nombres)
             ]
 
+        _marca('calculo')
         # Una sola vez: _fecha_minima hace un MIN sobre toda la tabla eventos.
         fecha_min = _fecha_minima(subdomain)
+        _marca('fecha_minima')
         piso_captura = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
         no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
                                                 piso_captura, sql_embudo, params_embudo, corte)
+        _marca('no_respondidos')
         trabajados_hoy, atendidos_solo_bot = _leads_trabajados_hoy(
             subdomain, tz_offset, h_ini, h_fin, asesor_ids,
             solo_abiertas, sql_embudo, params_embudo, corte)
+        _marca('trabajados_hoy')
         # Estas dos listas salen de leads_estado, que no tiene el nombre del
         # cliente. Sin esto las tarjetas muestran "Sin nombre" aunque el dato
         # este guardado, que es lo que reporto Ana.
         _completar_nombres(subdomain, no_respondidos, trabajados_hoy, atendidos_solo_bot)
+        _marca('completar_nombres')
+        cobertura = _cobertura(subdomain, desde_str, hasta_str, dias_lab)
+        _marca('cobertura')
+        tiempos['total'] = round(sum(tiempos.values()), 3)
 
         return jsonify({
+            **({'tiempos': tiempos} if perfil else {}),
             'config': {
                 'nombre':      cfg['nombre'],
                 'horario_fmt': _fmt_horario(h_ini, h_fin),
@@ -4666,7 +4703,7 @@ def pulse_data():
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
                 # Solo para explicar una lista vacia en pantalla.
                 'min_respuestas_extremos': MIN_RESPUESTAS_EXTREMOS,
-                'cobertura': _cobertura(subdomain, desde_str, hasta_str, dias_lab),
+                'cobertura': cobertura,
                 # Que porcion de los registros mide desde el PRIMER mensaje sin
                 # responder. El resto cae al ultimo mensaje del cliente y por lo
                 # tanto subestima la espera: sirve para saber desde que fecha
