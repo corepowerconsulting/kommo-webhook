@@ -1358,7 +1358,13 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   lista.sort((a, b) => b.criticos - a.criticos || b.sin_responder - a.sin_responder
                     || a.asesor.localeCompare(b.asesor));
 
-  const cab = (txt, extra) => `<div class="kpi-label-sm !mt-0 ${extra || ''}">${txt}</div>`;
+  // Los encabezados de las dos columnas que vienen del snapshot llevan el
+  // MISMO icono que su tarjeta de arriba (reunion del 31/08): el signo de
+  // admiracion para "Sin responder" y el check para "Atendidos hoy". Es lo
+  // que ata la tabla con las tarjetas sin tener que explicarlo.
+  const ICO_ALERTA = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+  const ICO_CHECK  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--marca)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+  const cab = (txt, icono) => `<div class="kpi-label-sm !mt-0 flex items-center gap-1.5">${icono || ''}${txt}</div>`;
   const num = (n, clase, estilo) => n
     ? `<div class="t-base font-extrabold lh-corto ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
     : `<div class="t-base font-extrabold lh-corto text-slate-300">0</div>`;
@@ -1366,9 +1372,9 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   el.innerHTML = `
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
       ${cab('Asesor')}
-      ${cab('Críticos', '')}
-      ${cab('Sin responder')}
-      ${cab('Atendidos hoy')}
+      ${cab('Críticos')}
+      ${cab('Sin responder', ICO_ALERTA)}
+      ${cab('Atendidos hoy', ICO_CHECK)}
     </div>
     <div class="divide-y divide-slate-50">
       ${lista.map(f => {
