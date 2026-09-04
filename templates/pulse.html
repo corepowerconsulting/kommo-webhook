@@ -450,6 +450,20 @@
       </div>
     </div>
 
+    <!-- Corte entre las dos mitades de la pagina (reunion del 31/08). Arriba
+         es el AHORA: el snapshot. De aca para abajo todo obedece al periodo
+         elegido en la barra de filtros. Sin este titulo, Luis no sabia donde
+         terminaba una cosa y empezaba la otra. -->
+    <div class="flex items-center gap-3 pt-6 border-t border-slate-200">
+      <div class="icon-chip bg-slate-100">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div>
+        <h2 class="section-title">Análisis del periodo</h2>
+        <div class="section-sub">Lo que ya pasó: cómo se atendió entre las fechas elegidas</div>
+      </div>
+    </div>
+
     <!-- Barra de filtros en UNA linea, con cada grupo en su subrecuadro:
          periodo / vista / personas. Las etiquetas van adentro del recuadro y
          no encima, que es lo que hacia que la barra ocupara dos alturas. -->
@@ -577,6 +591,13 @@
           <span class="text-slate-300">·</span>
           máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
         </div>
+        <!-- Leyenda pedida en la reunion del 31/08: quien mira el tablero no
+             es estadista. Dos renglones en micro, para que el numero siga
+             mandando. -->
+        <div class="mt-3 t-micro text-slate-500 lh-corto max-w-md" style="opacity:.85">
+          <strong>Mediana</strong>: lo que esperó el cliente típico — el promedio lo arrastran los casos extremos.
+          <strong>p90</strong>: lo que esperó el 10% que más esperó.
+        </div>
       </div>
       <!-- Las dos secundarias comparten la tercera columna, apiladas. -->
       <div class="grid grid-cols-2 lg:grid-cols-1 gap-4">
@@ -662,6 +683,13 @@
         </div>
       </div>
       <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
+      <!-- A quien se le cuenta cada respuesta. Pedido en la reunion del 31/08:
+           un nombre de canal (WhatsApp Lite) en esta lista desconcierta si
+           nadie explica por que esta ahi. Describe la regla REAL de
+           asesor_de_registro, no la deseada: si cambia una, cambia la otra. -->
+      <div class="mt-3 pt-3 border-t border-slate-100 t-micro text-slate-500 lh-corto">
+        Cada respuesta se cuenta, en este orden: al <strong>campo Asesor</strong> del lead; si está vacío, a <strong>quien la mandó</strong> desde el CRM; si Kommo no dice quién, al <strong>responsable</strong> del lead; y sin ninguno, queda como <em>Sin asignar</em>. Las del bot van al bot.
+      </div>
     </div>
 
     <!-- Tendencia -->
@@ -672,12 +700,12 @@
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
           </div>
           <div>
-            <h2 class="section-title">Tendencia diaria</h2>
+            <h2 class="section-title">Tendencia diaria del tiempo de respuesta</h2>
             <!-- Dos paneles en vez de dos escalas en un dibujo. Antes las
                  barras y la linea usaban ejes distintos y donde se cruzaban
                  parecia que significaba algo: no significaba nada, era un
                  artefacto de como habia quedado escalado cada eje. -->
-            <div class="section-sub" id="leyenda-linea">Arriba el tiempo · abajo el volumen</div>
+            <div class="section-sub" id="leyenda-linea">Mediana del equipo, por día</div>
           </div>
         </div>
         <span id="trend-rango" class="t-chico text-slate-500 mt-1"></span>
@@ -690,13 +718,17 @@
       </div>
       <!-- Panel de abajo: el volumen, como apoyo. Comparte el eje de dias con
            el de arriba, asi que se lee en vertical sin traducir nada. -->
+      <!-- Rotulo propio, pegado al grafico que describe. La nota del titulo
+           es solo del panel de arriba: decir "arriba... abajo..." en un
+           renglon no le sirvio a nadie en la reunion del 31/08. -->
+      <div class="kpi-label-sm mt-3 mb-1">Respuestas del día</div>
       <div class="mt-1" style="height:5.6rem">
         <canvas id="chart-trend-vol"></canvas>
       </div>
     </div>
 
-    <!-- Conversaciones mas lentas / mas rapidas: una sola tarjeta con un
-         interruptor, en vez de dos tarjetas que ocupaban el doble. -->
+    <!-- Solo las mas lentas. El interruptor "mas rapidas" se saco en la
+         reunion del 31/08: no aportaba nada accionable y nadie lo miraba. -->
     <div class="card">
       <div class="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <!-- El titulo dice las dos cosas que la gente asumia mal: que la lista
@@ -709,10 +741,6 @@
             <h2 class="section-title" id="titulo-extremos">Conversaciones más lentas del período</h2>
             <div class="section-sub" id="sub-extremos">Ya respondidas · no son pendientes</div>
           </div>
-        </div>
-        <div class="inline-flex bg-slate-100 rounded-xl p-1">
-          <button id="btn-lentos"  onclick="cambiarExtremos('lentos')"  class="px-3.5 py-1.5 rounded-lg t-chico font-semibold transition">Más lentos</button>
-          <button id="btn-rapidos" onclick="cambiarExtremos('rapidos')" class="px-3.5 py-1.5 rounded-lg t-chico font-semibold transition">Más rápidos</button>
         </div>
       </div>
       <div id="tabla-extremos"></div>
@@ -764,9 +792,7 @@ let RANGO_AJUSTADO = false;
 let fpDesde = null;
 let fpHasta = null;
 let MODO = 'laboral';
-let EXTREMOS = 'lentos';
 let TOP_LENTOS = [];
-let TOP_RAPIDOS = [];
 let MIN_EXTREMOS = 1;
 let TREND_DATOS = null;
 // El objetivo de respuesta, en segundos. Sale de la primera franja configurada
@@ -935,34 +961,16 @@ document.addEventListener('click', e => {
   }
 });
 
-// Los dos Top 10 vivian en tarjetas separadas y ocupaban 1782px, el 60% de la
-// pagina, empujando hacia abajo lo que el dashboard viene a mostrar. Son el
-// mismo dato ordenado al reves: una tarjeta con toggle alcanza.
-function cambiarExtremos(cual) {
-  if (EXTREMOS === cual) return;
-  EXTREMOS = cual;
-  renderExtremos();
-}
-
 
 // Se muestran 5, no 10: para ver "los extremos" con cinco alcanza, y quien
 // necesite mas puede hacer clic en cualquier franja de la Distribucion y ver
 // hasta 50 leads. Diez filas hacian de esta la tarjeta mas alta de la pagina.
 const TOP_N_EXTREMOS = 5;
 
+// Solo las mas lentas. Hubo un interruptor para ver tambien las mas rapidas;
+// se saco en la reunion del 31/08 porque no habia nada que hacer con ellas.
 function renderExtremos() {
-  const esLento = EXTREMOS === 'lentos';
-  const activo   = 'px-3.5 py-1.5 rounded-lg t-chico font-semibold transition bg-white text-blue-600 shadow-sm';
-  const inactivo = 'px-3.5 py-1.5 rounded-lg t-chico font-semibold transition text-slate-500 hover:text-slate-700';
-  document.getElementById('btn-lentos').className  = esLento ? activo : inactivo;
-  document.getElementById('btn-rapidos').className = esLento ? inactivo : activo;
-  document.getElementById('punto-extremos').className =
-    'w-2 h-2 rounded-full ' + (esLento ? 'bg-red-400' : 'bg-green-400');
-  document.getElementById('titulo-extremos').textContent = esLento
-    ? 'Conversaciones más lentas del período'
-    : 'Conversaciones más rápidas del período';
-  const datos = (esLento ? TOP_LENTOS : TOP_RAPIDOS).slice(0, TOP_N_EXTREMOS);
-  renderTabla('tabla-extremos', datos, esLento ? 'lento' : 'rapido');
+  renderTabla('tabla-extremos', TOP_LENTOS.slice(0, TOP_N_EXTREMOS), 'lento');
 }
 
 // Con msgId y msgTs, el link abre la conversacion PARADA en la respuesta que
@@ -1192,24 +1200,120 @@ function toggleExtra(key) {
   _avisarAbierto(panel, !hidden);
 }
 
-function renderExtraLeads(containerId, leads) {
-  const el = document.getElementById(containerId);
-  if (!leads || leads.length === 0) {
-    el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
-    return;
-  }
-  el.innerHTML = `<div class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
-    ${leads.map(l => `
+// Cuanto se habia bajado dentro de la lista, para volver a dejarlo igual
+// despues de redibujarla. El snapshot se refresca solo cada 90 segundos y
+// reemplaza el HTML del panel: la lista volvia arriba sola mientras alguien
+// la estaba recorriendo. Es lo que Luis describio en la reunion del 31/08 como
+// "ya se volvio a mover el asunto este". No es un salto de la pagina: es el
+// scroll interno del recuadro, que nace en cero cada vez que se lo redibuja.
+function _conScrollGuardado(el, dibujar) {
+  const lista = el.querySelector('[data-lista]');
+  const arriba = lista ? lista.scrollTop : 0;
+  dibujar();
+  const nueva = el.querySelector('[data-lista]');
+  if (nueva && arriba) nueva.scrollTop = arriba;
+}
+
+function _filaLead(l, extra) {
+  return `
       <a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
         <div class="min-w-0 flex-1">
           <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
           <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
           <div class="t-micro text-slate-500 mt-0.5 truncate">${l.asesor || ''}</div>
         </div>
-        <span class="t-micro text-slate-500 flex-shrink-0">${l.fecha}</span>
-      </a>
-    `).join('')}
-  </div>`;
+        ${extra}
+      </a>`;
+}
+
+function renderExtraLeads(containerId, leads) {
+  const el = document.getElementById(containerId);
+  if (!leads || leads.length === 0) {
+    el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
+    return;
+  }
+  _conScrollGuardado(el, () => {
+    el.innerHTML = `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
+      ${leads.map(l => _filaLead(l, `<span class="t-micro text-slate-500 flex-shrink-0">${l.fecha}</span>`)).join('')}
+    </div>`;
+  });
+}
+
+// --- Sin responder: accionable ---------------------------------------------
+// La lista venia ordenada por fecha del mensaje, del mas nuevo al mas viejo, y
+// sin ninguna marca. Con 229 leads no habia forma de saber a cual atender
+// primero (reunion del 31/08). Ahora cada lead lleva la franja segun cuanto
+// lleva esperando —en horario laboral, la misma regla del numero grande— y la
+// lista va del que mas espera al que menos: el problema, arriba.
+//
+// Los chips filtran por franja. "Todos" es el default y no "Critico" a
+// proposito: quien abre la lista tiene que ver el conjunto entero primero,
+// con los criticos arriba; filtrar es el segundo gesto, no el primero.
+let FRANJA_SEL = null;          // null = todas
+let ULTIMOS_NO_RESP = [];       // lo ultimo que llego, para refiltrar sin pedir de nuevo
+
+function filtrarNoResp(idx) {
+  FRANJA_SEL = (idx === null || idx === FRANJA_SEL) ? null : idx;
+  renderNoRespondidos(ULTIMOS_NO_RESP);
+}
+
+function renderNoRespondidos(leads) {
+  ULTIMOS_NO_RESP = leads || [];
+  const el = document.getElementById('panel-no-respondidos');
+  if (ULTIMOS_NO_RESP.length === 0) {
+    el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
+    return;
+  }
+  const franjas = FRANJAS || [];
+  // Indice de franja de cada lead, calculado una vez. Sin franjas
+  // configuradas (no deberia pasar) todo cae en -1 y la lista sale sin
+  // viñetas, pero sale.
+  const idxDe = l => {
+    const seg = l.espera_seg || 0;
+    for (let i = 0; i < franjas.length; i++) {
+      const f = franjas[i];
+      if (!f.max_seg || seg < f.max_seg) return i;
+    }
+    return franjas.length - 1;
+  };
+  const conFranja = ULTIMOS_NO_RESP.map(l => ({ ...l, _f: idxDe(l) }));
+  // Del que mas espera al que menos.
+  conFranja.sort((a, b) => (b.espera_seg || 0) - (a.espera_seg || 0));
+
+  const conteo = franjas.map((_, i) => conFranja.filter(l => l._f === i).length);
+  const visibles = FRANJA_SEL === null ? conFranja : conFranja.filter(l => l._f === FRANJA_SEL);
+
+  const chip = (label, n, activo, color, onclick) => `
+    <button type="button" onclick="${onclick}"
+            class="flex items-center gap-1.5 px-3 py-1 rounded-full t-chico font-semibold transition whitespace-nowrap ${activo ? 'text-white' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}"
+            style="${activo ? 'background:var(--tinta)' : ''}">
+      ${color ? `<span class="tip-punto" style="background:${color}"></span>` : ''}
+      <span>${label}</span>
+      <span class="font-normal ${activo ? 'text-slate-300' : 'text-slate-500'}">${n}</span>
+    </button>`;
+  // Chips en orden de urgencia —critico primero— porque es el orden de la
+  // lista de abajo y el orden en que se mira esta tarjeta.
+  const chips = [chip('Todos', conFranja.length, FRANJA_SEL === null, null, 'filtrarNoResp(null)')]
+    .concat(franjas.map((f, i) => chip(f.tag, conteo[i], FRANJA_SEL === i, f.color, `filtrarNoResp(${i})`)).reverse())
+    .join('');
+
+  _conScrollGuardado(el, () => {
+    el.innerHTML = `
+      <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+        <div class="flex items-center gap-2 flex-wrap">${chips}</div>
+        <span class="t-micro text-slate-500">los que más esperan, primero · espera en horario laboral</span>
+      </div>
+      ${visibles.length === 0
+        ? '<div class="t-chico text-slate-500 text-center py-4">Ninguno en esta franja</div>'
+        : `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
+          ${visibles.map(l => {
+            const f = franjas[l._f];
+            const pill = f ? `<span class="tag ${tagClass(f.tag)} flex-shrink-0">${f.tag}</span>` : '';
+            const espera = `<span class="t-chico ${l._f >= franjas.length - 1 ? 'font-semibold text-slate-800' : 'text-slate-600'} flex-shrink-0 whitespace-nowrap">esperando ${fmtSeg(l.espera_seg)}</span>`;
+            return _filaLead(l, espera + pill);
+          }).join('')}
+        </div>`}`;
+  });
 }
 
 function renderDist(distribucion) {
@@ -1414,12 +1518,15 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
   // 'tiempo real' cuando se miran los mensajes de fuera de horario: ahi el
   // reloj no salta las horas no laborables y el numero es otro.
   const real = (typeof MODO !== 'undefined' && MODO === 'fuera_horario') ? ' real' : '';
+  // La nota describe SOLO el grafico de arriba; el de abajo tiene su rotulo
+  // en el markup. Antes era un renglon "arriba... abajo..." y en la reunion
+  // del 31/08 nadie supo a cual de los dos se referia.
+  // Cuando hay reparto por persona se avisa que esta en el tooltip: dejo de
+  // estar a la vista al sacar las barras apiladas, y sin decirlo nadie lo
+  // busca ahi.
   document.getElementById('leyenda-linea').textContent = porTiempo
-    ? `Arriba: mediana${real} de cada persona elegida · abajo las respuestas del día`
-    // Cuando hay reparto por persona se avisa que esta en el tooltip: dejo de
-    // estar a la vista al sacar las barras apiladas, y sin decirlo nadie lo
-    // busca ahi.
-    : `Arriba: mediana${real} del equipo · abajo las respuestas del día${apilado ? ' (pasá el mouse para ver quién)' : ''}`;
+    ? `Mediana${real} de cada persona elegida, por día · la línea punteada es el objetivo`
+    : `Mediana${real} del equipo, por día · la línea punteada es el objetivo${apilado ? ' · pasá el mouse para ver quién' : ''}`;
   // El panel de abajo: volumen, SIEMPRE en un solo gris.
   //
   // Antes se apilaba por persona: hasta seis colores en barras de 20px y sin
@@ -1802,14 +1909,20 @@ function renderAsesores(porAsesor, minMuestra) {
                data-tip-detalle="${f.count} ${f.count === 1 ? 'respuesta' : 'respuestas'} · ${fmtPct(f.pct, f.count)}"></span>`
       : '').join('');
 
-    // El ultimo tramo es el critico. Se escribe al lado de la tira porque un
-    // tramo chico contra el borde derecho no se mide a ojo, y ese numero es el
-    // que dice si esta persona necesita ayuda.
-    const critico = (a.distribucion || [])[(a.distribucion || []).length - 1];
-    const criticoTxt = critico && critico.count > 0
-      ? `<div class="t-micro text-slate-500 mt-1 ml-[42px]">
-           <span class="font-semibold" style="color:${critico.color}">${fmtPct(critico.pct, critico.count)}</span>
-           ${critico.tag.toLowerCase()} · ${critico.count} de ${a.total}
+    // Las CUATRO franjas escritas, no solo la critica (reunion del 31/08):
+    // Luis leia "22% critico" y tenia que pasar el mouse por la tira para
+    // saber cuanto era ideal. Con las cuatro se lee de un vistazo, y el
+    // "36 de 164" se va: el total ya esta al lado del nombre.
+    // El texto va en el tono oscuro de cada franja (--franja-N-texto), no en
+    // el pleno: el amarillo pleno sobre blanco no se lee.
+    const franjasTxt = (a.distribucion || []).some(f => f.count > 0)
+      ? `<div class="t-micro text-slate-500 mt-1 ml-[42px] flex flex-wrap gap-x-4 gap-y-1">
+           ${(a.distribucion || []).map((f, i) => `
+             <span class="flex items-center gap-1.5 whitespace-nowrap">
+               <span class="tip-punto" style="background:${f.color}"></span>
+               <span class="font-semibold" style="color:var(--franja-${i}-texto)">${fmtPct(f.pct, f.count)}</span>
+               ${f.tag.toLowerCase()}
+             </span>`).join('')}
          </div>`
       : '';
     // Solo llevan puesto los comparables: rankear a alguien con 3 respuestas
@@ -1859,10 +1972,9 @@ function renderAsesores(porAsesor, minMuestra) {
            empiecen en la misma vertical: si cada una arrancara donde termina su
            nombre, no se podrian comparar los tramos entre filas. -->
       <div class="tira-franjas mt-2 ml-[42px]">${tira}</div>
-      <!-- El porcentaje critico, escrito. La tira lo muestra pero un tramo
-           chico contra el borde derecho es dificil de medir a ojo, y ese
-           numero es el que decide si esta persona necesita ayuda. -->
-      ${criticoTxt}
+      <!-- Las cuatro franjas, escritas. La tira las muestra pero un tramo
+           chico contra el borde no se mide a ojo. -->
+      ${franjasTxt}
     </div>`;
   }).join('');
 }
@@ -1897,7 +2009,7 @@ function pintarSnapshot(d) {
   const todosHoy = d.trabajados_hoy.concat(d.atendidos_solo_bot || []);
   document.getElementById('kpi-trabajados-hoy').textContent =
     todosHoy.length.toLocaleString('es');
-  renderExtraLeads('panel-no-respondidos', d.no_respondidos);
+  renderNoRespondidos(d.no_respondidos);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
   ULTIMO_SNAPSHOT = Date.now();
   marcarFrescura();
@@ -2061,20 +2173,12 @@ async function cargarDatos() {
     // un hueco de captura se lee como si fuera un dato.
     const cob = d.config.cobertura;
     const avisoCob = document.getElementById('aviso-cobertura');
-    if (cob && cob.pct < 95) {
-      const faltan = cob.dias_laborables - cob.dias_con_datos;
-      // Eran tres oraciones para decir una cosa, y no se entendia. El detalle
-      // de POR QUE pasa queda en el title, para quien lo quiera; el cartel
-      // dice solo lo accionable.
-      const dias = faltan === 1 ? 'día hábil' : 'días hábiles';
-      document.getElementById('texto-cobertura').innerHTML =
-        `<strong>Faltan ${faltan} ${dias} de ${cob.dias_laborables}.</strong>
-         Los números de esos días están incompletos.
-         <span class="text-amber-700/70 cursor-help" title="Esos días el webhook de Kommo estuvo caído y no recibimos mensajes. Los leads que igual aparecen son los que volvieron a moverse después, así que son una muestra parcial.">¿por qué?</span>`;
-      avisoCob.classList.remove('hidden');
-    } else {
-      avisoCob.classList.add('hidden');
-    }
+    // Oculto a pedido de Luis (reunion del 31/08): "faltan 2 dias habiles de
+    // 21" es diagnostico nuestro y al cliente no le dice nada. El dato sigue
+    // viajando en d.config.cobertura y se ve en /health/actividad, que es
+    // donde corresponde mirarlo.
+    void cob;
+    avisoCob.classList.add('hidden');
 
     pintarSnapshot(d);
 
@@ -2171,7 +2275,6 @@ async function cargarDatos() {
 
     // Lentas y rapidas: se guardan las dos listas y se muestra la elegida
     TOP_LENTOS  = d.top_lentos;
-    TOP_RAPIDOS = d.top_rapidos;
     // El minimo se usa solo para explicar una lista vacia. En el subtitulo
     // sobraba: sumaba ruido a una tarjeta que ya venia costando entender.
     MIN_EXTREMOS = d.config.min_respuestas_extremos || 1;

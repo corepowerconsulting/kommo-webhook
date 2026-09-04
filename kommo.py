@@ -3909,7 +3909,28 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         rows = c.fetchall()
     finally:
         conn.close()
-    return [_fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente') for r in rows]
+
+    # Cuanto lleva esperando cada uno, en segundos EFECTIVOS (horario laboral
+    # de la cuenta), para que el tablero le ponga la misma franja que usa el
+    # analisis del periodo. Pedido en la reunion del 31/08: la lista tenia 229
+    # leads ordenados por fecha y no habia forma de saber a cual atender
+    # primero. Con la espera se ordena y se pinta; sin ella es una lista.
+    #
+    # Efectivo y no real a proposito: un cliente que escribio a las 19:00 y
+    # son las 8:05 lleva 13 horas reales pero 5 minutos laborales, y la franja
+    # "Critico" sobre las 13 horas diria que el equipo fallo cuando estaba
+    # cerrado. Es el mismo criterio del numero grande.
+    cfg = PULSE_CONFIG.get(subdomain, {})
+    h_ini, h_fin = cfg.get('horario', (0, 24))
+    dias_lab = cfg.get('dias_laborables', [0, 1, 2, 3, 4, 5, 6])
+    ahora = int(time.time())
+    salida = []
+    for r in rows:
+        fila = _fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente')
+        fila['espera_seg'] = _calc_tiempo_efectivo(
+            r['f_ult_msj_cliente'], ahora, tz_offset, h_ini, h_fin, dias_lab)
+        salida.append(fila)
+    return salida
 
 def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None,
                           solo_abiertas=False, sql_embudo='', params_embudo=(),
