@@ -162,6 +162,14 @@
     .kpi-label-sm{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.05em; color:var(--apagado); margin-top:5px; }
     .section-title { font-size:var(--t-titulo); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.01em; }
     .section-sub   { font-size:var(--t-chico); color:var(--apagado); margin-top:2px; }
+    /* Las DOS partes de la pagina —el ahora y el periodo— llevan un titulo un
+       escalon mas grande que el de las tarjetas, con un rotulo numerado
+       encima. Antes el corte era una linea fina y un titulo del mismo tamaño
+       que los de las tarjetas, y se leia como una tarjeta mas: Juan pidio
+       que se entienda que son dos cosas distintas (04/09). Tres niveles:
+       parte > tarjeta > fila. */
+    .parte-titulo  { font-size:var(--t-cifra); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.02em; line-height:var(--lh-corto); }
+    .parte-num     { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.1em; color:var(--apagado); margin-bottom:4px; }
     .tag { font-size:var(--t-micro); font-weight:var(--p-medio); letter-spacing:.05em; padding:2px 8px; border-radius:99px; }
     /* Version grande de .tag para el veredicto del numero principal. */
     .tag-kpi { font-size:var(--t-base); font-weight:var(--p-fuerte); letter-spacing:.02em; padding:5px 14px; border-radius:99px; }
@@ -373,10 +381,13 @@
     <div>
       <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
         <div>
-          <div class="flex items-center gap-2 flex-wrap">
+          <!-- Rotulo numerado: dice que la pagina tiene dos partes y esta es
+               la primera. El de la segunda esta en el corte, mas abajo. -->
+          <div class="parte-num">Parte 1 · Ahora mismo</div>
+          <div class="flex items-center gap-3 flex-wrap">
             <!-- "Operacion en tiempo real" y no "Snapshot" (04/09): nombra lo
                  que es, sin jerga, y hace de par con "Analisis del periodo". -->
-            <h2 class="section-title">Operación en tiempo real</h2>
+            <h2 class="section-title parte-titulo">Operación en tiempo real</h2>
             <!-- Se refresca solo cada minuto y medio. Decirlo importa: sin
                  esto, un numero quieto se lee como un numero viejo y la gente
                  recarga la pagina por las dudas. -->
@@ -479,14 +490,18 @@
          es el AHORA: el snapshot. De aca para abajo todo obedece al periodo
          elegido en la barra de filtros. Sin este titulo, Luis no sabia donde
          terminaba una cosa y empezaba la otra. -->
-    <div class="flex items-center gap-3 pt-6 border-t border-slate-200">
-      <div class="icon-chip bg-slate-100">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <!-- El corte, visible: mas aire arriba, una linea mas gruesa que las de
+         las tarjetas, y el mismo rotulo numerado y titulo grande que la parte
+         1. Sin esto se leia como una tarjeta mas (04/09). -->
+    <div class="!mt-12 pt-8" style="border-top:2px solid var(--linea)">
+      <div class="parte-num">Parte 2 · Lo que ya pasó</div>
+      <div class="flex items-center gap-3">
+        <div class="icon-chip bg-slate-100">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h2 class="section-title parte-titulo">Análisis del periodo</h2>
       </div>
-      <div>
-        <h2 class="section-title">Análisis del periodo</h2>
-        <div class="section-sub">Lo que ya pasó: cómo se atendió entre las fechas elegidas</div>
-      </div>
+      <div class="section-sub">Cómo se atendió entre las fechas elegidas en la barra de abajo · nada de esta parte depende del ahora</div>
     </div>
 
     <!-- Barra de filtros en UNA linea, con cada grupo en su subrecuadro:
