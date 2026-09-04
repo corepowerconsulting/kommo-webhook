@@ -427,6 +427,12 @@
             </span>
             <svg id="chev-no-respondidos" class="chevron flex-shrink-0 absolute right-0 top-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
+          <!-- Las cuatro franjas como cajas, a la vista (boceto de Juan,
+               04/09). Cuantos de los que esperan estan en cada franja, sin
+               abrir nada. Cada caja abre la lista filtrada a esa franja: es
+               lo que hacen los chips de adentro, pero visible de entrada.
+               Se rellena desde renderNoRespondidos, con el mismo conteo. -->
+          <div id="franjas-no-respondidos" class="grid grid-cols-2 gap-3 mt-4"></div>
           <div id="panel-no-respondidos" class="hidden mt-4"></div>
         </div>
         <div class="card border-l-4 !border-l-blue-400">
@@ -1352,14 +1358,45 @@ function filtrarNoResp(idx) {
   renderNoRespondidos(ULTIMOS_NO_RESP);
 }
 
+// Clic en una caja de franja: filtra a esa franja Y abre la lista si estaba
+// cerrada. Volver a tocar la misma caja saca el filtro pero deja la lista
+// abierta: cerrarla es el chevron, como siempre.
+function abrirFranjaNoResp(idx) {
+  FRANJA_SEL = (idx === FRANJA_SEL) ? null : idx;
+  const panel = document.getElementById('panel-no-respondidos');
+  if (panel.classList.contains('hidden')) toggleExtra('no-respondidos');
+  renderNoRespondidos(ULTIMOS_NO_RESP);
+}
+
+// Las cuatro cajas de la tarjeta. Van de la mas urgente a la menos —critico
+// primero— que es el orden en que se mira esta tarjeta. Usan las clases
+// kpi-fN, las mismas que pintan la tarjeta de la mediana: fondo suave y texto
+// oscuro de cada franja, asi el color significa lo mismo en toda la pagina.
+// La caja del filtro activo lleva un borde de tinta; sin leads, los ceros van
+// atenuados pero las cajas se quedan, para que la tarjeta no cambie de forma.
+function _cajasFranjas(franjas, conteo) {
+  const el = document.getElementById('franjas-no-respondidos');
+  if (!el) return;
+  el.innerHTML = franjas.map((f, i) => ({ f, i })).reverse().map(({ f, i }) => `
+    <button type="button" onclick="abrirFranjaNoResp(${i})"
+            class="kpi-franja kpi-f${i} rounded-xl px-4 py-3 text-left transition"
+            style="${FRANJA_SEL === i ? 'box-shadow:0 0 0 2px var(--tinta)' : ''}"
+            aria-label="${conteo[i]} sin responder en ${f.tag}">
+      <span class="block t-cifra font-extrabold lh-corto${conteo[i] ? '' : ' opacity-40'}">${conteo[i]}</span>
+      <span class="block t-micro font-semibold uppercase tracking-wider mt-0.5" style="opacity:.85">${f.tag}</span>
+      <span class="block t-micro mt-0.5" style="opacity:.7">${f.label}</span>
+    </button>`).join('');
+}
+
 function renderNoRespondidos(leads) {
   ULTIMOS_NO_RESP = leads || [];
   const el = document.getElementById('panel-no-respondidos');
+  const franjas = FRANJAS || [];
   if (ULTIMOS_NO_RESP.length === 0) {
+    _cajasFranjas(franjas, franjas.map(() => 0));
     el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
     return;
   }
-  const franjas = FRANJAS || [];
   // Indice de franja de cada lead, calculado una vez. Sin franjas
   // configuradas (no deberia pasar) todo cae en -1 y la lista sale sin
   // viñetas, pero sale.
@@ -1376,6 +1413,7 @@ function renderNoRespondidos(leads) {
   conFranja.sort((a, b) => (b.espera_seg || 0) - (a.espera_seg || 0));
 
   const conteo = franjas.map((_, i) => conFranja.filter(l => l._f === i).length);
+  _cajasFranjas(franjas, conteo);
   const visibles = FRANJA_SEL === null ? conFranja : conFranja.filter(l => l._f === FRANJA_SEL);
 
   const chip = (label, n, activo, color, onclick) => `
