@@ -247,6 +247,19 @@
     .franja-row { cursor:pointer; transition:background .15s; border-radius:10px; }
     .franja-row:hover { background:var(--carril); }
     .chevron { transition:transform .2s; }
+    /* Las tarjetas que se abren con clic tienen que PARECER botones (Juan,
+       04/09): un chevron gris casi invisible en la esquina y el cursor de
+       mano eran una pista, no un aviso. Tres señales, todas visuales:
+         - al pasar el mouse la tarjeta se levanta y marca el borde;
+         - la flecha va en un boton redondo al costado, que se enciende en
+           tinta al hover y gira al abrir;
+         - abierta, la tarjeta queda con el borde en el azul de marca. */
+    .card-clic { cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .15s; }
+    .card-clic:hover { border-color:var(--tenue); box-shadow:0 4px 12px rgba(15,23,42,.08); transform:translateY(-1px); }
+    .card-clic.abierta { border-color:var(--marca); }
+    .chev-chip { width:1.8rem; height:1.8rem; border-radius:99px; background:var(--carril); color:var(--apagado);
+                 display:flex; align-items:center; justify-content:center; transition:background .15s, color .15s; }
+    .card-clic:hover .chev-chip, .card-clic.abierta .chev-chip { background:var(--tinta); color:#fff; }
     /* Barra de una franja de la distribucion. El carril gris marca el 100%,
        asi que cada franja se lee contra el total sin tener que comparar el
        largo de una barra con el de otra. */
@@ -419,7 +432,7 @@
         </label>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="card border-l-4 !border-l-red-500">
+        <div class="card card-clic border-l-4 !border-l-red-500">
           <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
                con Tab ni se activa con Enter: quien no usa mouse no podia abrir
                esta lista. Cambia solo el elemento; los estilos son los mismos.
@@ -445,11 +458,13 @@
                 <span class="kpi-label block">Sin responder</span>
               </span>
             </span>
-            <svg id="chev-no-respondidos" class="chevron flex-shrink-0 absolute right-0 top-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
+              <svg id="chev-no-respondidos" class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
           </button>
           <div id="panel-no-respondidos" class="hidden mt-4"></div>
         </div>
-        <div class="card border-l-4 !border-l-blue-500">
+        <div class="card card-clic border-l-4 !border-l-blue-500">
           <button type="button" class="relative w-full text-center flex items-start justify-center"
                   aria-expanded="false" aria-controls="panel-trabajados-hoy"
                   onclick="toggleExtra('trabajados-hoy')">
@@ -462,7 +477,9 @@
                 <span class="kpi-label block">Atendidos hoy</span>
               </span>
             </span>
-            <svg id="chev-trabajados-hoy" class="chevron flex-shrink-0 absolute right-0 top-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--otros)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
+              <svg id="chev-trabajados-hoy" class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
           </button>
           <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
@@ -1245,6 +1262,11 @@ function toggleExtra(key) {
   const chevron = document.getElementById(`chev-${key}`);
   const hidden = panel.classList.toggle('hidden');
   chevron.style.transform = hidden ? '' : 'rotate(180deg)';
+  // La tarjeta que contiene el panel marca que esta abierta (borde en el azul
+  // de marca, chip de la flecha encendido). Es el estado que faltaba: la
+  // flecha girada sola no lo decia.
+  const tarjeta = panel.parentElement;
+  if (tarjeta && tarjeta.classList) tarjeta.classList.toggle('abierta', !hidden);
   _avisarAbierto(panel, !hidden);
 }
 
