@@ -301,11 +301,11 @@
       outline:2px solid var(--foco); outline-offset:2px; border-radius:10px;
     }
 
-    .btn-primary {
-      background:var(--marca); color:#fff; padding:9px 22px; border-radius:10px; font-size:var(--t-chico);
-      font-weight:var(--p-medio); transition:.15s; box-shadow:0 1px 2px rgba(37,99,235,.35); white-space:nowrap;
-    }
-    .btn-primary:hover { background:var(--marca-oscura); }
+    /* Aca vivia .btn-primary, del boton "Aplicar" de la barra de filtros. Se
+       saco el 04/09: el resto del tablero se aplica solo y tener un boton
+       para la mitad de los controles obligaba a recordar cual necesitaba
+       confirmarse. Sin usuarios, la regla se va con el: una clase definida
+       que nadie usa es una regla que no le pega a nada. */
     .icon-chip { width:2.35rem; height:2.35rem; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     /* Subrecuadros de la barra de filtros. Agrupan visualmente lo que va
        junto —periodo, vista, personas— para que la linea no se lea como seis
@@ -362,7 +362,7 @@
          en blanco y no dicen nada. */
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       /* Fuera lo que solo sirve en pantalla. */
-      .no-imprimir, .chevron, .btn-primary, .multi-panel { display: none !important; }
+      .no-imprimir, .chevron, .multi-panel { display: none !important; }
       /* Una tarjeta partida entre dos hojas no se puede leer. */
       .card { break-inside: avoid; box-shadow: none !important; border-color: var(--otros) !important; }
       /* El encabezado pegajoso, en papel, se imprimiria en cada hoja. */
@@ -641,6 +641,12 @@
 
 
 
+      </div>
+
+      <!-- El horario de la cuenta va al final de la fila: es contexto —de que
+           horas hablan estos numeros— y no un control. En gris y sin caja,
+           para que no se confunda con los selectores de al lado. -->
+      <div class="mt-3 flex items-center gap-2.5 flex-wrap">
         <div class="grupo">
           <div class="multi-wrap relative">
             <button type="button" onclick="multiToggle('asesor')" class="multi-btn">
@@ -650,7 +656,6 @@
             </button>
             <div id="multi-asesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
-
           <!-- Quien atendio de verdad, del campo custom de Kommo. Solo existe
                en las cuentas que comparten un usuario entre varias personas,
                asi que arranca oculto y se muestra si la cuenta lo tiene. -->
@@ -662,7 +667,6 @@
             </button>
             <div id="multi-asesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
-
           <!-- Embudos y etapas, anidado como en Kommo: el embudo es el padre y
                al abrirlo aparecen sus etapas. Arranca oculto y se muestra solo
                si la cuenta ya tiene pipeline_id cargado. -->
@@ -675,20 +679,11 @@
             <div id="multi-embudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-80 max-h-80 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
         </div>
-
-      </div>
-
-      <!-- Segunda linea de la tarjeta: a la izquierda el horario de la cuenta
-           —contexto, no un control— y a la derecha el boton. Comparten
-           renglon, asi que el "8:00 AM" y el "Aplicar" quedan a la misma
-           altura en vez de en dos filas sueltas. -->
-      <div class="mt-3 flex items-center justify-between gap-4 flex-wrap">
         <div class="t-micro text-slate-500">
           <span id="horario-txt" class="font-semibold text-slate-500"></span>
           <span class="text-slate-300 mx-1.5">·</span>
           <span id="dias-txt" class="font-semibold text-slate-500"></span>
         </div>
-        <button onclick="cargarDatos()" class="btn-primary !py-2">Aplicar</button>
       </div>
     </div>
 
@@ -985,7 +980,13 @@ function multiCambio(nombre) {
   const panel = document.getElementById(`multi-${nombre}-panel`);
   const marcados = Array.from(panel.querySelectorAll('input:checked')).map(i => i.value);
   MULTI[nombre].sel = new Set(marcados);
-  if (MULTI_SOLO_OPERACION.has(nombre) && typeof refrescarSnapshot === 'function') refrescarSnapshot();
+  // Los del bloque de operacion refrescan solo ese bloque; los del periodo
+  // recargan el analisis, con la espera de aplicarPronto.
+  if (MULTI_SOLO_OPERACION.has(nombre)) {
+    if (typeof refrescarSnapshot === 'function') refrescarSnapshot();
+  } else if (typeof aplicarPronto === 'function') {
+    aplicarPronto();
+  }
 
   // Con uno solo se muestra su nombre; con varios, el conteo. Enumerarlos no
   // entra en el ancho del control y termina cortado a la mitad de un nombre.
@@ -1095,6 +1096,9 @@ function embudoCambio() {
     txt.textContent = `${total} seleccionados`;
     txt.classList.remove('text-slate-500');
   }
+
+  // Se aplica solo, como el resto de la barra. Sin boton (Juan, 04/09).
+  if (typeof aplicarPronto === 'function') aplicarPronto();
 }
 
 function embudoValores() {
@@ -1194,11 +1198,34 @@ document.getElementById('desde').value = menosDias(HOY_CUENTA, 30);
 // altInput muestra 26/07/2026 y deja el ISO en el input real, que es lo que
 // viaja al servidor y lo que se compara contra FECHA_MINIMA. El formato ISO en
 // pantalla no lo lee nadie de corrido.
+// Sin boton "Aplicar" (Juan, 04/09). El resto del tablero se aplica solo —el
+// modo, la casilla de cerradas, los filtros de operacion— y tener un boton
+// para la mitad de los controles obliga a recordar cual necesita confirmarse.
+//
+// El boton existia por una razon real: cargarDatos() recalcula todo el
+// analisis del periodo, y tildar cinco responsables serian cinco recargas.
+// Se resuelve esperando: se aplica solo, pero recien cuando la persona deja
+// de tocar. Una sola carga por tanda de clics.
+let _tAplicar = null;
+function aplicarPronto() {
+  clearTimeout(_tAplicar);
+  _tAplicar = setTimeout(() => {
+    // A mitad de elegir un rango las fechas quedan dadas vuelta por un
+    // momento. Cargar eso muestra un tablero vacio hasta que se elige la otra
+    // punta; se espera a que el rango tenga sentido.
+    const d = document.getElementById('desde').value;
+    const h = document.getElementById('hasta').value;
+    if (d && h && d > h) return;
+    cargarDatos();
+  }, 700);
+}
+
 const OPTS_FECHA = {
   dateFormat: 'Y-m-d',
   altInput: true, altFormat: 'd/m/Y', altInputClass: 'fecha-in',
   locale: { firstDayOfWeek: 1 },
   onDayCreate: marcarPrimerDia,
+  onChange: aplicarPronto,
 };
 fpDesde = flatpickr('#desde', OPTS_FECHA);
 fpHasta = flatpickr('#hasta', OPTS_FECHA);
