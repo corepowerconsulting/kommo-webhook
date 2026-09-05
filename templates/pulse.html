@@ -552,6 +552,47 @@
           <h2 class="section-title">Detalle por asesor</h2>
           <div class="section-sub">Ahora mismo, ordenados por críticos: quién necesita ayuda primero</div>
         </div>
+
+        <!-- Filtro PROPIO de esta mitad (reunion del 31/08): responsables,
+             asesores y embudos, independiente del filtro del periodo. Asi se
+             puede mirar "que tiene Ivis ahora mismo" sin tocar el analisis de
+             abajo, y al reves.
+             Al cambiarlo se refresca solo el bloque de operacion, no la
+             pagina entera: el analisis del periodo no depende de esto. -->
+        <div class="grupo no-imprimir ml-auto">
+          <div class="multi-wrap relative">
+            <button type="button" onclick="multiToggle('opasesor')" class="multi-btn">
+              <span class="grupo-lbl">Responsables</span>
+              <span class="truncate font-normal" id="multi-opasesor-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-opasesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
+
+          <!-- Los nombres que muestra la tabla, con la cadena de atribucion ya
+               resuelta. Arranca oculto y se muestra si la cuenta tiene el
+               campo Asesor cargado. -->
+          <div class="multi-wrap relative hidden" id="filtro-op-asesor-campo">
+            <button type="button" onclick="multiToggle('opasesorcampo')" class="multi-btn">
+              <span class="grupo-lbl">Asesores</span>
+              <span class="truncate font-normal" id="multi-opasesorcampo-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-opasesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
+
+          <!-- Embudos, lista plana. El selector anidado con etapas es del
+               analisis del periodo: aca la pregunta es "de que embudo", no
+               "de que etapa". Arranca oculto si la cuenta no tiene embudos. -->
+          <div class="multi-wrap relative hidden" id="filtro-op-embudo">
+            <button type="button" onclick="multiToggle('opembudo')" class="multi-btn">
+              <span class="grupo-lbl">Embudos</span>
+              <span class="truncate font-normal" id="multi-opembudo-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-opembudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-72 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
+        </div>
       </div>
       <div id="tabla-asesores-ahora"></div>
     </div>
@@ -946,10 +987,16 @@ function multiValores(nombre) {
   return MULTI[nombre] ? Array.from(MULTI[nombre].sel) : [];
 }
 
+// Los tres selectores del bloque de operacion refrescan SOLO ese bloque: el
+// analisis del periodo no depende de ellos, y recargar la pagina entera por
+// un filtro de la mitad de arriba costaria segundos de mas.
+const MULTI_SOLO_OPERACION = new Set(['opasesor', 'opasesorcampo', 'opembudo']);
+
 function multiCambio(nombre) {
   const panel = document.getElementById(`multi-${nombre}-panel`);
   const marcados = Array.from(panel.querySelectorAll('input:checked')).map(i => i.value);
   MULTI[nombre].sel = new Set(marcados);
+  if (MULTI_SOLO_OPERACION.has(nombre) && typeof refrescarSnapshot === 'function') refrescarSnapshot();
 
   // Con uno solo se muestra su nombre; con varios, el conteo. Enumerarlos no
   // entra en el ancho del control y termina cortado a la mitad de un nombre.
@@ -2309,6 +2356,12 @@ function filtrosComunes() {
   if (dia) params.append('dia', dia);
   const cmp = diaComparar();
   if (cmp) params.append('comparar', cmp);
+  // Filtros propios del bloque de operacion. Van con prefijo op_ para que el
+  // backend no los confunda con los del periodo: son independientes.
+  multiValores('opasesor').forEach(v => params.append('op_asesor', v));
+  multiValores('opembudo').forEach(v => params.append('op_embudo', v));
+  const opNombres = multiValores('opasesorcampo');
+  if (opNombres.length) params.append('op_asesorcampo', opNombres.join('||'));
   // Un parametro por elegido; sin ninguno, el backend no filtra.
   multiValores('asesor').forEach(v => params.append('asesor', v));
   // Embudos tildados enteros y etapas sueltas van por separado: el backend los
@@ -2500,6 +2553,20 @@ async function cargarDatos() {
       if (campo.length) {
         multiInit('asesorcampo', campo.map(n => ({ value: n, label: n })), 'Todos');
         document.getElementById('filtro-asesor-campo').classList.remove('hidden');
+      }
+      // Los mismos tres, para el bloque de operacion. Son listas iguales pero
+      // selecciones INDEPENDIENTES: mirar a una persona arriba no tiene por
+      // que cambiar el analisis del periodo de abajo (reunion del 31/08).
+      multiInit('opasesor', d.config.asesores.map(a => ({ value: a.id, label: a.nombre })), 'Todos');
+      if (campo.length) {
+        multiInit('opasesorcampo', campo.map(n => ({ value: n, label: n })), 'Todos');
+        document.getElementById('filtro-op-asesor-campo').classList.remove('hidden');
+      }
+      const emb = d.config.embudos || [];
+      if (emb.length) {
+        // Lista plana, sin etapas: aca la pregunta es de que embudo.
+        multiInit('opembudo', emb.map(e => ({ value: e.id, label: e.nombre })), 'Todos');
+        document.getElementById('filtro-op-embudo').classList.remove('hidden');
       }
       asesoresListados = true;
     }

@@ -4146,6 +4146,32 @@ def _ayer_de(tz_offset, fecha=None):
         base = datetime.utcnow() + timedelta(hours=tz_offset)
     return (base - timedelta(days=1)).strftime('%Y-%m-%d')
 
+def _ids_de(param):
+    """Enteros de un parametro repetido y/o separado por comas."""
+    fuera = []
+    for crudo in request.args.getlist(param):
+        for p in str(crudo).split(','):
+            p = p.strip()
+            if p.lstrip('-').isdigit():
+                fuera.append(int(p))
+    return sorted(set(fuera))
+
+def _nombres_de(param):
+    """Nombres de un parametro repetido. Separador '||' y no coma: hay
+    apellidos compuestos y nombres de canal con coma."""
+    return sorted({p.strip() for crudo in request.args.getlist(param)
+                   for p in str(crudo).split('||') if p.strip()})
+
+def _solo_estos_asesores(listas, nombres):
+    """Deja en cada lista solo los leads de esos asesores.
+
+    Se filtra por el nombre YA RESUELTO —el que muestra la tabla, con toda la
+    cadena de atribucion aplicada— y no por una columna de la base: quien
+    elige un nombre del selector lo eligio porque lo vio en la tabla, y tiene
+    que quedarse con esas mismas filas."""
+    sel = set(nombres)
+    return [[l for l in lst if (l.get('asesor') or SIN_ASIGNAR) in sel] for lst in listas]
+
 def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                   asesor_ids=None, solo_abiertas=False, sql_embudo='', params_embudo=()):
     """Todo el bloque de operacion: las dos listas y su comparativo.
@@ -4157,7 +4183,19 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
 
     El corte por hora solo aplica cuando la base es hoy: hoy va por la mitad
     y compararlo contra un dia entero infla la diferencia. Entre dos dias
-    pasados se toman enteros los dos."""
+    pasados se toman enteros los dos.
+
+    FILTROS PROPIOS: op_asesor (responsables), op_embudo y op_asesorcampo
+    (nombres de la tabla). Son independientes de los del periodo —pedido de
+    la reunion del 31/08— asi que se puede mirar 'que tiene Ivis ahora mismo'
+    sin tocar el analisis de abajo, y al reves. Si no vienen, no se filtra:
+    los del periodo NO se heredan."""
+    op_asesores  = _ids_de('op_asesor')
+    op_nombres   = _nombres_de('op_asesorcampo')
+    op_embudos   = _ids_de('op_embudo')
+    sql_embudo, params_embudo = _filtro_embudo(op_embudos, ())
+    asesor_ids = op_asesores or None
+
     dia = (request.args.get('dia') or '').strip()
     base_es_hoy = True
     if dia:
@@ -4180,10 +4218,19 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                                                      sql_embudo, params_embudo, corte, conn=conn)
         _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
 
+    # El filtro por nombre se aplica sobre las listas ya armadas, no en SQL:
+    # el nombre que muestra la tabla sale de la cadena de atribucion completa
+    # —campo Asesor, quien mando el mensaje, responsable— y no de una sola
+    # columna, asi que en SQL no se puede pedir.
+    if op_nombres:
+        no_respondidos, trabajados, solo_bot = _solo_estos_asesores(
+            [no_respondidos, trabajados, solo_bot], op_nombres)
+
     contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
     comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, contra,
                                   corte, conn, asesor_ids, solo_abiertas,
-                                  sql_embudo, params_embudo, base_es_hoy=base_es_hoy)
+                                  sql_embudo, params_embudo, base_es_hoy=base_es_hoy,
+                                  nombres=op_nombres)
     return {
         'no_respondidos':     no_respondidos,
         'trabajados_hoy':     trabajados,
@@ -4195,11 +4242,14 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
 
 def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
                       asesor_ids=None, solo_abiertas=False,
-                      sql_embudo='', params_embudo=(), base_es_hoy=True):
+                      sql_embudo='', params_embudo=(), base_es_hoy=True, nombres=()):
     """Los dos numeros del snapshot en un dia pasado, para el comparativo.
 
     Con base_es_hoy se corta a la MISMA hora que lleva hoy; entre dos dias
-    pasados se toman los dias enteros. Ver estado_de_dia."""
+    pasados se toman los dias enteros. Ver estado_de_dia.
+
+    'nombres' acota a esos asesores, con el mismo criterio que el bloque: sin
+    esto, con un filtro puesto se compararia una parte contra el total."""
     inicio = _dia_valido(subdomain, tz_offset, fecha, corte, conn)
     if inicio is None:
         return None
@@ -4209,6 +4259,10 @@ def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
                         hasta_ts=hasta)
     if est is None:
         return None
+    if nombres:
+        est['no_respondidos'], est['trabajados_hoy'], est['atendidos_solo_bot'] = \
+            _solo_estos_asesores([est['no_respondidos'], est['trabajados_hoy'],
+                                  est['atendidos_solo_bot']], nombres)
     return {
         'fecha':          fecha,
         'no_respondidos': len(est['no_respondidos']),
