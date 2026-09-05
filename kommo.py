@@ -4067,50 +4067,152 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         salida.append(fila)
     return salida
 
-def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
-                      asesor_ids=None, solo_abiertas=False,
-                      sql_embudo='', params_embudo=()):
-    """Los dos numeros del snapshot, pero en un dia PASADO y a esta misma hora.
+def _dia_valido(subdomain, tz_offset, fecha, corte, conn):
+    """(inicio, fin_del_dia) de esa fecha, o None si no se puede reconstruir.
 
-    No hace falta ninguna foto guardada: tenemos cada mensaje entrante y
-    saliente con su timestamp, asi que el estado de cualquier momento se
-    reconstruye mirando solo lo que habia llegado hasta entonces. Esto se
-    creyo imposible por un rato y no lo es.
-
-    "A esta misma hora" y no el dia entero: hoy va por la mitad, y compararlo
-    contra un dia completo de ayer infla la diferencia.
-
-    Devuelve None cuando la comparacion no seria honesta:
+    Se niega cuando el numero no seria honesto:
       - antes del corte no teniamos los salientes, asi que todo pareceria sin
         responder;
-      - un dia con captura parcial —el apagon del 31/08— da lo mismo.
-    Es preferible no mostrar el comparativo a mostrar uno que miente."""
+      - un dia con captura parcial —el apagon del 31/08— da lo mismo;
+      - una fecha futura no existe.
+    Es preferible no mostrar un numero a mostrar uno que miente."""
     if not fecha or not corte:
         return None
     try:
         inicio = _local_date_to_ts(fecha, tz_offset)
     except (ValueError, TypeError):
         return None
-    ahora = int(time.time())
+    # HOY no cuenta como dia reconstruible: todavia no termino. Para el ahora
+    # esta el camino en vivo, y como referencia del comparativo seria injusto
+    # —medio dia contra un dia entero—.
     hoy_inicio, _ = _hoy_rango_ts(tz_offset)
-    # El mismo tramo del dia que lleva hoy: de la medianoche de esa fecha hasta
-    # la hora que es ahora.
-    corte_hora = inicio + (ahora - hoy_inicio)
-    if inicio < corte or corte_hora >= ahora:
+    if inicio < corte or inicio >= hoy_inicio:
         return None
     if fecha in dias_parciales(subdomain, conn):
         return None
+    return inicio, inicio + 86400
+
+def estado_de_dia(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
+                  asesor_ids=None, solo_abiertas=False,
+                  sql_embudo='', params_embudo=(), hasta_ts=None):
+    """El estado del snapshot en un dia PASADO: las mismas dos listas.
+
+    No hace falta ninguna foto guardada: tenemos cada mensaje entrante y
+    saliente con su timestamp, asi que el estado de cualquier momento se
+    reconstruye mirando solo lo que habia llegado hasta entonces. Esto se
+    creyo imposible por un rato y no lo es.
+
+    'hasta_ts' corta el dia a una hora. Se usa cuando el otro lado de la
+    comparacion es HOY, que va por la mitad: comparar medio dia contra un dia
+    entero infla la diferencia. Entre dos dias pasados no se corta nada,
+    porque los dos terminaron.
+
+    Devuelve las listas completas y no solo los conteos: son las mismas que
+    dibujan los paneles, asi que elegir una fecha cambia todo el bloque sin
+    codigo nuevo."""
+    rango = _dia_valido(subdomain, tz_offset, fecha, corte, conn)
+    if rango is None:
+        return None
+    inicio, fin = rango
+    tope = min(hasta_ts, fin) if hasta_ts else fin
 
     sin_responder = _leads_no_respondidos(
         subdomain, tz_offset, asesor_ids, solo_abiertas, corte,
-        sql_embudo, params_embudo, corte, conn=conn, hasta_ts=corte_hora)
+        sql_embudo, params_embudo, corte, conn=conn, hasta_ts=tope)
     trabajados, solo_bot = _leads_trabajados_hoy(
         subdomain, tz_offset, h_ini, h_fin, asesor_ids, solo_abiertas,
-        sql_embudo, params_embudo, corte, conn=conn, rango=(inicio, corte_hora))
+        sql_embudo, params_embudo, corte, conn=conn, rango=(inicio, tope))
+    _completar_nombres(subdomain, sin_responder, trabajados, solo_bot, conn=conn)
+    return {
+        'fecha':              fecha,
+        'no_respondidos':     sin_responder,
+        'trabajados_hoy':     trabajados,
+        'atendidos_solo_bot': solo_bot,
+    }
+
+def _hora_del_dia(tz_offset):
+    """Cuantos segundos lleva el dia de hoy, en la zona de la cuenta."""
+    hoy_inicio, _ = _hoy_rango_ts(tz_offset)
+    return int(time.time()) - hoy_inicio
+
+def _ayer_de(tz_offset, fecha=None):
+    """El dia anterior a 'fecha', o a hoy si no se pasa ninguna."""
+    if fecha:
+        try:
+            base = datetime.strptime(fecha, '%Y-%m-%d')
+        except (ValueError, TypeError):
+            base = datetime.utcnow() + timedelta(hours=tz_offset)
+    else:
+        base = datetime.utcnow() + timedelta(hours=tz_offset)
+    return (base - timedelta(days=1)).strftime('%Y-%m-%d')
+
+def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
+                  asesor_ids=None, solo_abiertas=False, sql_embudo='', params_embudo=()):
+    """Todo el bloque de operacion: las dos listas y su comparativo.
+
+    Por defecto es el AHORA. Con ?dia=YYYY-MM-DD pasa a ser el estado de ese
+    dia —los dos numeros, las listas y la tabla por asesor, todo—, porque son
+    las mismas listas. Con ?comparar=YYYY-MM-DD se elige contra que dia se
+    compara; por defecto, el dia anterior al que se este mirando.
+
+    El corte por hora solo aplica cuando la base es hoy: hoy va por la mitad
+    y compararlo contra un dia entero infla la diferencia. Entre dos dias
+    pasados se toman enteros los dos."""
+    dia = (request.args.get('dia') or '').strip()
+    base_es_hoy = True
+    if dia:
+        est = estado_de_dia(subdomain, tz_offset, h_ini, h_fin, dia, corte, conn,
+                            asesor_ids, solo_abiertas, sql_embudo, params_embudo)
+        if est is not None:
+            base_es_hoy = False
+            no_respondidos = est['no_respondidos']
+            trabajados     = est['trabajados_hoy']
+            solo_bot       = est['atendidos_solo_bot']
+    if base_es_hoy:
+        # La fecha pedida no sirve (antes del corte, dia parcial, futura): se
+        # cae al ahora y se dice cual se uso, para que la pantalla no muestre
+        # una fecha elegida y numeros de otra.
+        dia = None
+        no_respondidos = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
+                                               piso, sql_embudo, params_embudo, corte, conn=conn)
+        trabajados, solo_bot = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
+                                                     asesor_ids, solo_abiertas,
+                                                     sql_embudo, params_embudo, corte, conn=conn)
+        _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
+
+    contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
+    comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, contra,
+                                  corte, conn, asesor_ids, solo_abiertas,
+                                  sql_embudo, params_embudo, base_es_hoy=base_es_hoy)
+    return {
+        'no_respondidos':     no_respondidos,
+        'trabajados_hoy':     trabajados,
+        'atendidos_solo_bot': solo_bot,
+        'comparado':          comparado,
+        # Que dia se esta mirando de verdad. None = hoy, en vivo.
+        'dia': dia,
+    }
+
+def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
+                      asesor_ids=None, solo_abiertas=False,
+                      sql_embudo='', params_embudo=(), base_es_hoy=True):
+    """Los dos numeros del snapshot en un dia pasado, para el comparativo.
+
+    Con base_es_hoy se corta a la MISMA hora que lleva hoy; entre dos dias
+    pasados se toman los dias enteros. Ver estado_de_dia."""
+    inicio = _dia_valido(subdomain, tz_offset, fecha, corte, conn)
+    if inicio is None:
+        return None
+    hasta = inicio[0] + _hora_del_dia(tz_offset) if base_es_hoy else None
+    est = estado_de_dia(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
+                        asesor_ids, solo_abiertas, sql_embudo, params_embudo,
+                        hasta_ts=hasta)
+    if est is None:
+        return None
     return {
         'fecha':          fecha,
-        'no_respondidos': len(sin_responder),
-        'trabajados_hoy': len(trabajados) + len(solo_bot),
+        'no_respondidos': len(est['no_respondidos']),
+        'trabajados_hoy': len(est['trabajados_hoy']) + len(est['atendidos_solo_bot']),
     }
 
 def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None,
@@ -4498,29 +4600,11 @@ def pulse_snapshot():
         fecha_min = _fecha_minima(subdomain, conn)
         piso = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
-        no_respondidos = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
-                                               piso, sql_embudo, params_embudo, corte, conn=conn)
-        trabajados, solo_bot = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
-                                                     asesor_ids, solo_abiertas,
-                                                     sql_embudo, params_embudo, corte, conn=conn)
-        _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
-        # Contra que dia se compara. Por defecto ayer; ?comparar=YYYY-MM-DD
-        # para otro. Devuelve None si esa fecha no da un numero honesto.
-        pedida = (request.args.get('comparar') or '').strip()
-        if not pedida:
-            ayer = (datetime.utcnow() + timedelta(hours=tz_offset) - timedelta(days=1))
-            pedida = ayer.strftime('%Y-%m-%d')
-        comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, pedida,
-                                      corte, conn, asesor_ids, solo_abiertas,
-                                      sql_embudo, params_embudo)
+        bloque = _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
+                               asesor_ids, solo_abiertas, sql_embudo, params_embudo)
     finally:
         conn.close()
-    return jsonify({
-        'no_respondidos':     no_respondidos,
-        'trabajados_hoy':     trabajados,
-        'atendidos_solo_bot': solo_bot,
-        'comparado':          comparado,
-    })
+    return jsonify(bloque)
 
 @app.route('/pulse/data')
 def pulse_data():
@@ -4904,28 +4988,18 @@ def pulse_data():
         _marca('fecha_minima')
         piso_captura = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
-        no_respondidos  = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
-                                                piso_captura, sql_embudo, params_embudo, corte,
-                                                conn=conn)
-        _marca('no_respondidos')
-        trabajados_hoy, atendidos_solo_bot = _leads_trabajados_hoy(
-            subdomain, tz_offset, h_ini, h_fin, asesor_ids,
-            solo_abiertas, sql_embudo, params_embudo, corte, conn=conn)
-        _marca('trabajados_hoy')
-        # Estas dos listas salen de leads_estado, que no tiene el nombre del
-        # cliente. Sin esto las tarjetas muestran "Sin nombre" aunque el dato
-        # este guardado, que es lo que reporto Ana.
-        _completar_nombres(subdomain, no_respondidos, trabajados_hoy, atendidos_solo_bot,
-                           conn=conn)
-        _marca('completar_nombres')
-        pedida = (request.args.get('comparar') or '').strip()
-        if not pedida:
-            ayer = (datetime.utcnow() + timedelta(hours=tz_offset) - timedelta(days=1))
-            pedida = ayer.strftime('%Y-%m-%d')
-        comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, pedida,
-                                      corte, conn, asesor_ids, solo_abiertas,
-                                      sql_embudo, params_embudo)
-        _marca('comparativo')
+        # Todo el bloque de operacion —las dos listas, su comparativo y que
+        # dia se esta mirando— en una sola funcion, la misma que usa
+        # /pulse/snapshot. Con ?dia= el bloque entero pasa a esa fecha.
+        # Las listas salen de leads_estado, que no tiene el nombre del
+        # cliente; _bloque_ahora lo completa adentro.
+        bloque = _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso_captura, conn,
+                               asesor_ids, solo_abiertas, sql_embudo, params_embudo)
+        no_respondidos     = bloque['no_respondidos']
+        trabajados_hoy     = bloque['trabajados_hoy']
+        atendidos_solo_bot = bloque['atendidos_solo_bot']
+        comparado          = bloque['comparado']
+        _marca('bloque_ahora')
         cobertura = _cobertura(subdomain, desde_str, hasta_str, dias_lab, conn=conn)
         _marca('cobertura')
         tiempos['total'] = round(sum(tiempos.values()), 3)
@@ -4953,6 +5027,9 @@ def pulse_data():
                 'embudos_elegidos':  embudos_sel,
                 'etapas_elegidas':   etapas_sel,
                 'fecha_minima': fecha_min,
+                # Dias que no se pueden reconstruir: el selector no los ofrece,
+                # porque el numero de esos dias seria falso.
+                'dias_parciales': sorted(dias_parciales(subdomain, conn)),
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
                 # Solo para explicar una lista vacia en pantalla.
@@ -4997,6 +5074,7 @@ def pulse_data():
             # Mismo comparativo que en /pulse/snapshot, para que la primera
             # carga ya lo traiga y no haya que esperar al refresco.
             'comparado': comparado,
+            'dia': bloque['dia'],
         })
     except Exception as e:
         print(f'❌ PULSE /data procesamiento: {e}')

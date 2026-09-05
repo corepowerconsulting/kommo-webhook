@@ -408,11 +408,15 @@
           <div class="flex items-center gap-3 flex-wrap">
             <!-- "Operacion en tiempo real" y no "Snapshot" (04/09): nombra lo
                  que es, sin jerga, y hace de par con "Analisis del periodo". -->
-            <h2 class="section-title parte-titulo">Operación en tiempo real</h2>
+            <!-- El titulo cambia con la fecha elegida: "Operacion en tiempo
+                 real" cuando es el ahora, "Estado del 02/09" cuando se mira
+                 un dia pasado. Sin eso, un dia viejo se leeria como el ahora. -->
+            <h2 class="section-title parte-titulo" id="titulo-ahora">Operación en tiempo real</h2>
             <!-- Se refresca solo cada minuto y medio. Decirlo importa: sin
                  esto, un numero quieto se lee como un numero viejo y la gente
-                 recarga la pagina por las dudas. -->
-            <span class="flex items-center gap-2 t-chico font-normal text-slate-600">
+                 recarga la pagina por las dudas. Con un dia pasado elegido se
+                 apaga: ahi no hay nada en vivo. -->
+            <span id="chip-vivo" class="flex items-center gap-2 t-chico font-normal text-slate-600">
               <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
               <span id="frescura">en vivo</span>
             </span>
@@ -421,7 +425,17 @@
                tenian chevron y cursor de mano, pero eso es una pista, no un
                aviso. La de Distribucion si lo dice desde siempre, asi que se
                usa la misma forma en el mismo lugar. -->
-          <div class="section-sub">Qué está pasando ahora · clic en una tarjeta para ver los leads</div>
+          <div class="section-sub" id="sub-ahora">Qué está pasando ahora · clic en una tarjeta para ver los leads</div>
+        </div>
+
+        <!-- Que dia se mira y contra cual se compara. Los dos son fechas: la
+             primera acepta ademas "Hoy", que es el estado en vivo. Todo el
+             bloque —numeros, listas y tabla por asesor— obedece a la primera. -->
+        <div class="grupo no-imprimir">
+          <span class="grupo-lbl">Ver</span>
+          <select id="dia-base" class="fecha-in" onchange="cambiarDia()"></select>
+          <span class="grupo-lbl">comparar con</span>
+          <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
         </div>
         <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
           <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
@@ -1447,6 +1461,23 @@ function fmtDiaCorto(iso) {
   return p.length === 3 ? `${p[2]}/${p[1]}` : String(iso || '');
 }
 
+// El encabezado dice de que dia son los numeros. Sin esto, un dia pasado se
+// leeria como el ahora: los mismos recuadros, los mismos colores.
+// 'dia' viene del BACKEND, no del selector: si la fecha pedida no se podia
+// reconstruir, el backend devuelve null —cayo al ahora— y el selector vuelve
+// a Hoy. Asi nunca queda una fecha elegida con numeros de otra.
+function pintarDiaElegido(dia) {
+  const vivo = !dia;
+  document.getElementById('titulo-ahora').textContent =
+    vivo ? 'Operación en tiempo real' : `Estado del ${fmtDiaCorto(dia)}`;
+  document.getElementById('sub-ahora').textContent = vivo
+    ? 'Qué está pasando ahora · clic en una tarjeta para ver los leads'
+    : `Cómo estaba el día completo · clic en una tarjeta para ver los leads`;
+  document.getElementById('chip-vivo').classList.toggle('hidden', !vivo);
+  const sel = document.getElementById('dia-base');
+  if (sel && sel.value !== (dia || '')) sel.value = dia || '';
+}
+
 // --- Sin responder: accionable ---------------------------------------------
 // La lista venia ordenada por fecha del mensaje, del mas nuevo al mas viejo, y
 // sin ninguna marca. Con 229 leads no habia forma de saber a cual atender
@@ -2189,8 +2220,51 @@ function renderAsesores(porAsesor, minMuestra) {
 // Los filtros que comparten el dashboard y el refresco del snapshot. Estan en
 // un solo lugar a proposito: si el snapshot se pidiera con otros filtros, el
 // numero de la tarjeta dejaria de coincidir con la lista que se abre debajo.
+// --- Que dia se mira, y contra cual se compara --------------------------------
+// Los dos selectores mandan 'dia' y 'comparar' al backend. 'dia' vacio = hoy,
+// en vivo. El backend se niega a reconstruir un dia que no puede: antes del
+// corte o de captura parcial. Cuando eso pasa devuelve dia:null y la pantalla
+// vuelve a Hoy sola, para no mostrar una fecha elegida con numeros de otra.
+function diaBase()     { const s = document.getElementById('dia-base');     return s ? s.value : ''; }
+function diaComparar() { const s = document.getElementById('dia-comparar'); return s ? s.value : ''; }
+
+function cambiarDia() {
+  // Al mirar un dia pasado, el comparativo por defecto es el dia anterior a
+  // ESE, no ayer: comparar el 02/09 contra ayer no dice nada.
+  refrescarSnapshot();
+}
+
+// Las opciones salen del piso de captura de la cuenta hasta ayer, salteando
+// los dias que el backend no puede reconstruir. Se arman una sola vez.
+let diasListados = false;
+function diasInit(fechaMinima, parciales) {
+  if (diasListados) return;
+  const base = document.getElementById('dia-base');
+  const cmp  = document.getElementById('dia-comparar');
+  if (!base || !cmp) return;
+  const malos = new Set(parciales || []);
+  const hoy = new Date(HOY_CUENTA + 'T00:00:00');
+  const opciones = [];
+  for (let i = 1; i <= 60; i++) {
+    const d = new Date(hoy); d.setDate(d.getDate() - i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (fechaMinima && iso < fechaMinima) break;
+    if (malos.has(iso)) continue;      // dia sin captura completa: no se ofrece
+    opciones.push(iso);
+  }
+  base.innerHTML = '<option value="">Hoy</option>' +
+    opciones.map(f => `<option value="${f}">${fmtDiaCorto(f)}</option>`).join('');
+  cmp.innerHTML = opciones.map((f, i) =>
+    `<option value="${f}"${i === 0 ? ' selected' : ''}>${fmtDiaCorto(f)}</option>`).join('');
+  diasListados = true;
+}
+
 function filtrosComunes() {
   const params = new URLSearchParams({ subdomain: SUBDOMAIN });
+  const dia = diaBase();
+  if (dia) params.append('dia', dia);
+  const cmp = diaComparar();
+  if (cmp) params.append('comparar', cmp);
   // Un parametro por elegido; sin ninguno, el backend no filtra.
   multiValores('asesor').forEach(v => params.append('asesor', v));
   // Embudos tildados enteros y etapas sueltas van por separado: el backend los
@@ -2219,6 +2293,7 @@ function pintarSnapshot(d) {
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
   renderAsesoresAhora(d.no_respondidos, d.trabajados_hoy, d.atendidos_solo_bot || []);
   pintarComparativo(d.comparado, d.no_respondidos.length, todosHoy.length);
+  pintarDiaElegido(d.dia);
   ULTIMO_SNAPSHOT = Date.now();
   marcarFrescura();
 }
@@ -2367,6 +2442,11 @@ async function cargarDatos() {
         fpHasta.redraw();
       }
     }
+
+    // Los dos selectores de dia, tambien una sola vez. Solo se ofrecen dias
+    // que el backend puede reconstruir: desde el piso de captura y salteando
+    // los de captura parcial.
+    diasInit(d.config.fecha_minima, d.config.dias_parciales);
 
     // Selector de responsables: se puebla una sola vez, si no cada recarga
     // borraria lo que la persona acaba de tildar.
