@@ -425,7 +425,7 @@
          porque es lo accionable: que quedo sin responder. El resto de la
          pagina es analisis del periodo elegido. -->
     <div class="parte-ahora space-y-5">
-      <div class="flex items-end justify-between gap-4 flex-wrap mb-3">
+      <div class="mb-3">
         <div>
           <div class="flex items-center gap-3 flex-wrap">
             <!-- "Operacion en tiempo real" y no "Snapshot" (04/09): nombra lo
@@ -449,18 +449,6 @@
                usa la misma forma en el mismo lugar. -->
           <div class="section-sub" id="sub-ahora">Qué está pasando ahora · clic en una tarjeta para ver los leads</div>
         </div>
-
-        <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
-          <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
-               dejo abierto es lo que le debe respuesta; un lead ganado o
-               perdido hace meses no es un pendiente de atencion. Asi que el
-               estado normal —solo abiertas— es el de la casilla sin marcar, y
-               quien quiera ver ademas las cerradas la marca.
-               En Camara China son 34.906 leads cerrados de 44.387: con las
-               cerradas adentro el numero deja de ser accionable. -->
-          <input type="checkbox" id="chk-incluir-cerradas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
-          Incluir conversaciones cerradas
-        </label>
       </div>
 
       <!-- Que dia se mira y contra cual se compara. Va ARRIBA de las dos
@@ -469,7 +457,7 @@
            La primera acepta "Hoy", que es el estado en vivo; todo el
            bloque —numeros, listas y tabla por asesor— obedece a esa
            eleccion. -->
-      <div class="flex no-imprimir">
+      <div class="flex items-center justify-between gap-4 flex-wrap no-imprimir">
         <div class="grupo">
           <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="grupo-lbl">Ver</span>
@@ -477,6 +465,19 @@
           <span class="grupo-lbl">comparar con</span>
           <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
         </div>
+        <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
+             dejo abierto es lo que le debe respuesta; un lead ganado o
+             perdido hace meses no es un pendiente de atencion. Asi que el
+             estado normal —solo abiertas— es el de la casilla sin marcar, y
+             quien quiera ver ademas las cerradas la marca.
+             En Camara China son 34.906 leads cerrados de 44.387: con las
+             cerradas adentro el numero deja de ser accionable.
+             Comparte renglon con el filtro de dia (Juan, 04/09): las dos
+             cosas acotan lo mismo, asi que van juntas y a la misma altura. -->
+        <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
+          <input type="checkbox" id="chk-incluir-cerradas" onchange="cargarDatos()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"/>
+          Incluir conversaciones cerradas
+        </label>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div class="card card-clic border-l-4 !border-l-red-500">
