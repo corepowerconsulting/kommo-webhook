@@ -452,6 +452,22 @@
           Incluir conversaciones cerradas
         </label>
       </div>
+
+      <!-- Que dia se mira y contra cual se compara. Va ARRIBA de las dos
+           tarjetas y alineado a la izquierda (Juan, 04/09): es lo primero
+           que se lee, y define de que dia son los numeros de abajo.
+           La primera acepta "Hoy", que es el estado en vivo; todo el
+           bloque —numeros, listas y tabla por asesor— obedece a esa
+           eleccion. -->
+      <div class="flex no-imprimir">
+        <div class="grupo">
+          <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="grupo-lbl">Ver</span>
+          <select id="dia-base" class="fecha-in" onchange="cambiarDia()"></select>
+          <span class="grupo-lbl">comparar con</span>
+          <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
+        </div>
+      </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div class="card card-clic border-l-4 !border-l-red-500">
           <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
@@ -507,21 +523,6 @@
           <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
 
-      </div>
-
-      <!-- Que dia se mira y contra cual se compara. Va DEBAJO de las tarjetas
-           y no en el encabezado (Juan, 04/09): primero se ven los numeros y
-           despues se decide de que dia son. La primera acepta "Hoy", que es el
-           estado en vivo; todo el bloque —numeros, listas y tabla por asesor—
-           obedece a esa eleccion. -->
-      <div class="flex justify-center no-imprimir">
-        <div class="grupo">
-          <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span class="grupo-lbl">Ver</span>
-          <select id="dia-base" class="fecha-in" onchange="cambiarDia()"></select>
-          <span class="grupo-lbl">comparar con</span>
-          <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
-        </div>
       </div>
 
     <!-- Detalle por asesor del AHORA (reunion del 31/08). Con varias personas
