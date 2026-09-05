@@ -615,23 +615,17 @@
       <div class="section-sub">Cómo se atendió entre las fechas elegidas en la barra de abajo · nada de esta parte depende del ahora</div>
     </div>
 
-    <!-- Barra de filtros en UNA linea, con cada grupo en su subrecuadro:
-         periodo / vista / personas. Las etiquetas van adentro del recuadro y
-         no encima, que es lo que hacia que la barra ocupara dos alturas. -->
+    <!-- Barra de filtros en UNA fila, con cada grupo en su subrecuadro:
+         cuando / quien. Las etiquetas van adentro del recuadro y no encima,
+         que es lo que hacia que la barra ocupara dos alturas.
+         UNA fila y no dos columnas (Juan, 04/09): con el grid de dos, la
+         columna de la derecha —tres selectores— no entraba y se partia en
+         varias lineas, asi que las palabras quedaban desalineadas entre si.
+         En una fila que envuelve, todos los controles comparten la misma
+         horizontal mientras haya lugar. -->
     <div class="card !p-4 no-imprimir">
-      <!-- El mismo grid que las dos tarjetas del snapshot: dos columnas y el
-           mismo gap. Asi la columna de QUIEN arranca exactamente donde arranca
-           "Atendidos hoy".
-           El padding de la tarjeta no lo estorba, aunque lo parezca: corre el
-           inicio del grid Y le achica el ancho por igual, asi que se cancela.
-           Con W de contenido, gap g y padding p, la columna 2 arranca en
-           W/2 + g/2 en los dos casos. Verificado con numeros, no a ojo. -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-      <!-- Columna 1 — CUANDO. El horario va antes que las fechas: primero se
-           decide si se miran las horas laborales o las de fuera, y recien
-           despues que dias. Al reves obliga a volver sobre lo ya elegido. -->
       <div class="flex items-center gap-2.5 flex-wrap">
+
 
         <div class="grupo !p-1 !gap-0">
           <button type="button" id="btn-modo-laboral" onclick="cambiarModo('laboral')" class="px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap">Horario laboral</button>
@@ -645,11 +639,7 @@
           <input type="text" id="hasta" readonly class="fecha-in"/>
         </div>
 
-      </div>
 
-      <!-- Columna 2 — QUIEN. Arranca en la misma vertical que "Atendidos
-           hoy", que es la segunda tarjeta del snapshot. -->
-      <div class="flex items-center gap-2.5 flex-wrap">
 
         <div class="grupo">
           <div class="multi-wrap relative">
@@ -686,7 +676,6 @@
           </div>
         </div>
 
-      </div>
       </div>
 
       <!-- Segunda linea de la tarjeta: a la izquierda el horario de la cuenta
