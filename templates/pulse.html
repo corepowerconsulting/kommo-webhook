@@ -1481,22 +1481,30 @@ function pintarComparativo(cmp, sinResponderHoy, atendidosHoy, hayDiaElegido) {
   }
 }
 
-// La linea de dos puntos: de donde venia a donde esta. Sube o baja, y con
-// cuanta pendiente. El color es el del veredicto —el mismo del porcentaje—
-// asi que una linea que sube en rojo se entiende sin leer una palabra.
+// La FLECHA: de donde venia a donde esta, con la punta en la direccion en que
+// fue. Es la flecha de crecimiento de toda la vida, y por eso no necesita
+// leyenda: sube o baja y se entiende antes de leer el porcentaje.
 //
 // El eje vertical se estira entre los dos valores: no es una escala absoluta,
-// es "de aca a aca". Con dos puntos iguales la linea queda horizontal, que es
-// exactamente lo que hay que ver.
+// es "de aca a aca". Con dos valores iguales la flecha queda horizontal, que
+// es exactamente lo que hay que ver.
+//
+// El color es el del VEREDICTO, no el de la direccion: mas sin responder es
+// malo aunque la flecha suba, asi que una flecha que sube en rojo dice lo
+// correcto. Verde y rojo por direccion serian una mentira de la mitad de los
+// casos.
 function sparkline(antes, hoy, color) {
-  const ALTO = 30, PAD = 7;
+  const ALTO = 30, PAD = 8, X1 = 6, X2 = 86;
   const max = Math.max(antes, hoy), min = Math.min(antes, hoy);
   const y = v => max === min ? ALTO / 2 : PAD + (max - v) / (max - min) * (ALTO - 2 * PAD);
   const yA = y(antes), yB = y(hoy);
+  // La punta se rota con el angulo de la linea, asi queda en linea con ella y
+  // no pegada como un simbolo aparte.
+  const ang = Math.round(Math.atan2(yB - yA, X2 - X1) * 180 / Math.PI);
   return `<svg viewBox="0 0 100 30" style="width:4.6rem;height:1.4rem;flex-shrink:0" aria-hidden="true">
-      <line x1="8" y1="${yA}" x2="92" y2="${yB}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-      <circle cx="8" cy="${yA}" r="3" fill="var(--otros)"/>
-      <circle cx="92" cy="${yB}" r="4.5" fill="${color}"/>
+      <line x1="${X1}" y1="${yA}" x2="${X2}" y2="${yB}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="${X1}" cy="${yA}" r="3" fill="var(--otros)"/>
+      <polygon points="0,-5.5 12,0 0,5.5" fill="${color}" transform="translate(${X2},${yB}) rotate(${ang})"/>
     </svg>`;
 }
 
