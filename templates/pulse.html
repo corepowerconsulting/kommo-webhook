@@ -1409,14 +1409,19 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   // que ata la tabla con las tarjetas sin tener que explicarlo.
   const ICO_ALERTA = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
   const ICO_CHECK  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--marca)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
-  const cab = (txt, icono) => `<div class="kpi-label-sm !mt-0 flex items-center gap-1.5">${icono || ''}${txt}</div>`;
+  // Las tres columnas de numeros van CENTRADAS, encabezado y cifra sobre el
+  // mismo eje (Juan, 04/09). Alineadas a la izquierda no coincidian: el
+  // encabezado arranca en el icono y la cifra en el digito, asi que cada
+  // columna se leia corrida respecto de su titulo. La de "Asesor" sigue a la
+  // izquierda, que es texto y se lee desde el margen.
+  const cab = (txt, icono, izq) => `<div class="kpi-label-sm !mt-0 flex items-center gap-1.5 ${izq ? '' : 'justify-center'}">${icono || ''}${txt}</div>`;
   const num = (n, clase, estilo) => n
-    ? `<div class="t-base font-extrabold lh-corto ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
-    : `<div class="t-base font-extrabold lh-corto text-slate-300">0</div>`;
+    ? `<div class="t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
+    : `<div class="t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
   const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 7.5rem';
   el.innerHTML = `
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
-      ${cab('Asesor')}
+      ${cab('Asesor', '', true)}
       ${cab('Críticos')}
       ${cab('Sin responder', ICO_ALERTA)}
       ${cab('Atendidos hoy', ICO_CHECK)}
