@@ -264,21 +264,16 @@
     .chev-chip { width:1.8rem; height:1.8rem; border-radius:99px; background:var(--carril); color:var(--apagado);
                  display:flex; align-items:center; justify-content:center; transition:background .15s, color .15s; }
 
-    /* El comparativo, dibujado (Juan, 04/09): dos barras a la misma escala,
-       hoy y el dia con el que se compara. Un porcentaje solo obliga a hacer
-       la cuenta de cabeza; dos barras se leen de un vistazo.
-       PESOS DISTINTOS a proposito: hoy va gruesa y en el color de su tarjeta,
-       el dia pasado fino y en gris. La referencia no puede pesar lo mismo que
-       el dato, o las dos compiten y no se sabe cual es cual.
+    /* El comparativo, dibujado (Juan, 04/09): una LINEA de dos puntos —el dia
+       con el que se compara y hoy— que sube o baja. Un porcentaje obliga a
+       hacer la cuenta de cabeza; la pendiente se lee sin leer.
+       Pesos distintos a proposito: el punto de hoy es mas grande y va en el
+       color del veredicto, el del dia pasado chico y gris. La referencia no
+       puede pesar lo mismo que el dato.
        Todo en <span>: esto vive dentro de un <button>, y el contenido de un
        boton tiene que ser texto. */
-    .cmp-par   { display:block; width:100%; max-width:11rem; margin:0 auto; }
-    .cmp-fila  { display:flex; align-items:center; gap:8px; }
-    .cmp-carril{ display:block; flex:1; background:var(--carril); border-radius:99px; overflow:hidden; }
-    .cmp-barra { display:block; height:100%; border-radius:99px; transition:width .3s; }
-    .cmp-hoy   { height:0.42rem; }
-    .cmp-antes { height:0.26rem; background:var(--otros); }
-    .cmp-val   { font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--texto); min-width:2.2rem; text-align:right; }
+    .cmp-spark { display:flex; align-items:center; justify-content:center; gap:8px; }
+    .cmp-val   { font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--texto); }
     .cmp-val-tenue { font-weight:var(--p-normal); color:var(--apagado); }
     .card-clic:hover .chev-chip, .card-clic.abierta .chev-chip { background:var(--marca); color:#fff; }
     /* Barra de una franja de la distribucion. El carril gris marca el 100%,
@@ -1460,38 +1455,49 @@ function deltaEstilo(pct, subirEsBueno) {
 // argumento de deltaEstilo.
 function pintarComparativo(cmp, sinResponderHoy, atendidosHoy, hayDiaElegido) {
   const filas = [
-    ['cmp-no-respondidos', sinResponderHoy, cmp && cmp.no_respondidos, false, COLOR.alerta],
-    ['cmp-trabajados-hoy', atendidosHoy,    cmp && cmp.trabajados_hoy, true,  COLOR.marca],
+    ['cmp-no-respondidos', sinResponderHoy, cmp && cmp.no_respondidos, false],
+    ['cmp-trabajados-hoy', atendidosHoy,    cmp && cmp.trabajados_hoy, true],
   ];
-  for (const [id, hoy, antes, subirEsBueno, colorBarra] of filas) {
+  for (const [id, hoy, antes, subirEsBueno] of filas) {
     const el = document.getElementById(id);
     if (!el) continue;
     if (!cmp || antes === null || antes === undefined) { el.innerHTML = ''; continue; }
-    // Las dos barras a la MISMA escala: sin eso, dos barras llenas dirian que
-    // los dos numeros son iguales. El maximo es 1 como piso para no dividir
-    // por cero cuando los dos son cero.
-    const max = Math.max(hoy, antes, 1);
     const pct = antes ? Math.round((hoy - antes) / antes * 100) : null;
     const { color, signo } = deltaEstilo(pct, subirEsBueno);
     const dia = fmtDiaCorto(cmp.fecha);
     // "a esta hora" solo cuando se mira HOY: entre dos dias pasados se
     // comparan enteros, y decir "a esta hora" seria mentira.
     const cuando = hayDiaElegido ? dia : `${dia} a esta hora`;
-    const barra = (valor, ancho, claseBarra, claseVal, etiqueta, estilo) => `
-      <span class="cmp-fila">
-        <span class="cmp-carril"><span class="cmp-barra ${claseBarra}" style="width:${ancho}%${estilo || ''}"></span></span>
-        <span class="cmp-val ${claseVal}">${valor.toLocaleString('es')}</span>
-      </span>`;
     el.innerHTML = `
-      <span class="cmp-par">
-        ${barra(hoy,   Math.round(hoy / max * 100),   'cmp-hoy',   '', '', `;background:${colorBarra}`)}
-        ${barra(antes, Math.round(antes / max * 100), 'cmp-antes', 'cmp-val-tenue', '')}
+      <span class="cmp-spark">
+        <span class="cmp-val cmp-val-tenue">${antes.toLocaleString('es')}</span>
+        ${sparkline(antes, hoy, color)}
+        <span class="cmp-val" style="color:${color}">${hoy.toLocaleString('es')}</span>
       </span>
-      <span class="block mt-1.5">
+      <span class="block mt-1">
         ${pct === null ? '' : `<span style="color:${color};font-weight:var(--p-medio)">${signo}${Math.abs(pct)}%</span> `}
         <span class="text-slate-500">vs ${cuando}</span>
       </span>`;
   }
+}
+
+// La linea de dos puntos: de donde venia a donde esta. Sube o baja, y con
+// cuanta pendiente. El color es el del veredicto —el mismo del porcentaje—
+// asi que una linea que sube en rojo se entiende sin leer una palabra.
+//
+// El eje vertical se estira entre los dos valores: no es una escala absoluta,
+// es "de aca a aca". Con dos puntos iguales la linea queda horizontal, que es
+// exactamente lo que hay que ver.
+function sparkline(antes, hoy, color) {
+  const ALTO = 30, PAD = 7;
+  const max = Math.max(antes, hoy), min = Math.min(antes, hoy);
+  const y = v => max === min ? ALTO / 2 : PAD + (max - v) / (max - min) * (ALTO - 2 * PAD);
+  const yA = y(antes), yB = y(hoy);
+  return `<svg viewBox="0 0 100 30" style="width:4.6rem;height:1.4rem;flex-shrink:0" aria-hidden="true">
+      <line x1="8" y1="${yA}" x2="92" y2="${yB}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="8" cy="${yA}" r="3" fill="var(--otros)"/>
+      <circle cx="92" cy="${yB}" r="4.5" fill="${color}"/>
+    </svg>`;
 }
 
 // '2026-09-03' -> '03/09'. Sin Date() a proposito: new Date('2026-09-03') lo
