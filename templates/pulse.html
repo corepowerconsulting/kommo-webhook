@@ -272,8 +272,11 @@
        puede pesar lo mismo que el dato.
        Todo en <span>: esto vive dentro de un <button>, y el contenido de un
        boton tiene que ser texto. */
-    .cmp-graf  { display:block; width:100%; max-width:13rem; margin:0 auto; }
-    .cmp-pie   { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; }
+    /* Sin dibujo: se probo una linea y despues un grafico de area, y las dos
+       confundian mas de lo que explicaban (Juan, 04/09). Dos puntos no son
+       una tendencia, y dibujarlos como si lo fueran promete algo que el dato
+       no tiene. Queda el veredicto en una pildora y la referencia al lado. */
+    .cmp-graf  { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; }
     .cmp-val   { font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--texto); }
     .cmp-val-tenue { font-weight:var(--p-normal); color:var(--apagado); }
     /* El veredicto en una pildora, no en texto suelto: es la conclusion del
@@ -1482,46 +1485,11 @@ function pintarComparativo(cmp, sinResponderHoy, atendidosHoy, hayDiaElegido) {
       : `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><polygon points="${pct > 0 ? '5,0 10,9 0,9' : '5,10 10,1 0,1'}" fill="currentColor"/></svg>`;
     el.innerHTML = `
       <span class="cmp-graf">
-        ${sparkline(antes, hoy, color)}
-        <span class="cmp-pie">
-          <span class="cmp-val cmp-val-tenue">${cuando} · ${antes.toLocaleString('es')}</span>
-          ${pct === null ? '' :
-            `<span class="cmp-pill" style="background:${conAlfa(color, 0.13)};color:${color}">${tri}${signo}${Math.abs(pct)}%</span>`}
-        </span>
+        ${pct === null ? '' :
+          `<span class="cmp-pill" style="background:${conAlfa(color, 0.13)};color:${color}">${tri}${signo}${Math.abs(pct)}%</span>`}
+        <span class="cmp-val cmp-val-tenue">${cuando} · ${antes.toLocaleString('es')}</span>
       </span>`;
   }
-}
-
-// La FLECHA: de donde venia a donde esta, con la punta en la direccion en que
-// fue. Es la flecha de crecimiento de toda la vida, y por eso no necesita
-// leyenda: sube o baja y se entiende antes de leer el porcentaje.
-//
-// El eje vertical se estira entre los dos valores: no es una escala absoluta,
-// es "de aca a aca". Con dos valores iguales la flecha queda horizontal, que
-// es exactamente lo que hay que ver.
-//
-// El color es el del VEREDICTO, no el de la direccion: mas sin responder es
-// malo aunque la flecha suba, asi que una flecha que sube en rojo dice lo
-// correcto. Verde y rojo por direccion serian una mentira de la mitad de los
-// casos.
-function sparkline(antes, hoy, color) {
-  const ALTO = 34, PAD = 9, X1 = 7, X2 = 87, PISO = ALTO - 2;
-  const max = Math.max(antes, hoy), min = Math.min(antes, hoy);
-  const y = v => max === min ? ALTO / 2 : PAD + (max - v) / (max - min) * (ALTO - 2 * PAD);
-  const yA = y(antes), yB = y(hoy);
-  // La punta se rota con el angulo de la linea, asi queda en linea con ella y
-  // no pegada como un simbolo aparte.
-  const ang = Math.round(Math.atan2(yB - yA, X2 - X1) * 180 / Math.PI);
-  // El area bajo la linea: es lo que hace que se lea como un grafico y no
-  // como un adorno. Tenue, para que la linea siga mandando.
-  const area = `${X1},${yA} ${X2},${yB} ${X2},${PISO} ${X1},${PISO}`;
-  return `<svg viewBox="0 0 100 34" style="display:block;width:100%;height:2.4rem" aria-hidden="true">
-      <line x1="0" y1="${PISO}" x2="100" y2="${PISO}" stroke="var(--linea)" stroke-width="1"/>
-      <polygon points="${area}" fill="${conAlfa(color, 0.15)}"/>
-      <line x1="${X1}" y1="${yA}" x2="${X2}" y2="${yB}" stroke="${color}" stroke-width="3.5" stroke-linecap="round"/>
-      <circle cx="${X1}" cy="${yA}" r="4" fill="#fff" stroke="${color}" stroke-width="2.5"/>
-      <polygon points="0,-6.5 14,0 0,6.5" fill="${color}" transform="translate(${X2},${yB}) rotate(${ang})"/>
-    </svg>`;
 }
 
 // '2026-09-03' -> '03/09'. Sin Date() a proposito: new Date('2026-09-03') lo
