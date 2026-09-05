@@ -263,6 +263,23 @@
     .card-clic.abierta { border-color:var(--marca); }
     .chev-chip { width:1.8rem; height:1.8rem; border-radius:99px; background:var(--carril); color:var(--apagado);
                  display:flex; align-items:center; justify-content:center; transition:background .15s, color .15s; }
+
+    /* El comparativo, dibujado (Juan, 04/09): dos barras a la misma escala,
+       hoy y el dia con el que se compara. Un porcentaje solo obliga a hacer
+       la cuenta de cabeza; dos barras se leen de un vistazo.
+       PESOS DISTINTOS a proposito: hoy va gruesa y en el color de su tarjeta,
+       el dia pasado fino y en gris. La referencia no puede pesar lo mismo que
+       el dato, o las dos compiten y no se sabe cual es cual.
+       Todo en <span>: esto vive dentro de un <button>, y el contenido de un
+       boton tiene que ser texto. */
+    .cmp-par   { display:block; width:100%; max-width:11rem; margin:0 auto; }
+    .cmp-fila  { display:flex; align-items:center; gap:8px; }
+    .cmp-carril{ display:block; flex:1; background:var(--carril); border-radius:99px; overflow:hidden; }
+    .cmp-barra { display:block; height:100%; border-radius:99px; transition:width .3s; }
+    .cmp-hoy   { height:0.42rem; }
+    .cmp-antes { height:0.26rem; background:var(--otros); }
+    .cmp-val   { font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--texto); min-width:2.2rem; text-align:right; }
+    .cmp-val-tenue { font-weight:var(--p-normal); color:var(--apagado); }
     .card-clic:hover .chev-chip, .card-clic.abierta .chev-chip { background:var(--marca); color:#fff; }
     /* Barra de una franja de la distribucion. El carril gris marca el 100%,
        asi que cada franja se lee contra el total sin tener que comparar el
@@ -428,15 +445,6 @@
           <div class="section-sub" id="sub-ahora">Qué está pasando ahora · clic en una tarjeta para ver los leads</div>
         </div>
 
-        <!-- Que dia se mira y contra cual se compara. Los dos son fechas: la
-             primera acepta ademas "Hoy", que es el estado en vivo. Todo el
-             bloque —numeros, listas y tabla por asesor— obedece a la primera. -->
-        <div class="grupo no-imprimir">
-          <span class="grupo-lbl">Ver</span>
-          <select id="dia-base" class="fecha-in" onchange="cambiarDia()"></select>
-          <span class="grupo-lbl">comparar con</span>
-          <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
-        </div>
         <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
           <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
                dejo abierto es lo que le debe respuesta; un lead ganado o
@@ -504,6 +512,21 @@
           <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
         </div>
 
+      </div>
+
+      <!-- Que dia se mira y contra cual se compara. Va DEBAJO de las tarjetas
+           y no en el encabezado (Juan, 04/09): primero se ven los numeros y
+           despues se decide de que dia son. La primera acepta "Hoy", que es el
+           estado en vivo; todo el bloque —numeros, listas y tabla por asesor—
+           obedece a esa eleccion. -->
+      <div class="flex justify-center no-imprimir">
+        <div class="grupo">
+          <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="grupo-lbl">Ver</span>
+          <select id="dia-base" class="fecha-in" onchange="cambiarDia()"></select>
+          <span class="grupo-lbl">comparar con</span>
+          <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
+        </div>
       </div>
 
     <!-- Detalle por asesor del AHORA (reunion del 31/08). Con varias personas
@@ -1435,22 +1458,39 @@ function deltaEstilo(pct, subirEsBueno) {
 //
 // Menos sin responder es bueno; mas atendidos es bueno. De ahi el segundo
 // argumento de deltaEstilo.
-function pintarComparativo(cmp, sinResponderHoy, atendidosHoy) {
+function pintarComparativo(cmp, sinResponderHoy, atendidosHoy, hayDiaElegido) {
   const filas = [
-    ['cmp-no-respondidos', sinResponderHoy, cmp && cmp.no_respondidos, false],
-    ['cmp-trabajados-hoy', atendidosHoy,    cmp && cmp.trabajados_hoy, true],
+    ['cmp-no-respondidos', sinResponderHoy, cmp && cmp.no_respondidos, false, COLOR.alerta],
+    ['cmp-trabajados-hoy', atendidosHoy,    cmp && cmp.trabajados_hoy, true,  COLOR.marca],
   ];
-  for (const [id, hoy, antes, subirEsBueno] of filas) {
+  for (const [id, hoy, antes, subirEsBueno, colorBarra] of filas) {
     const el = document.getElementById(id);
     if (!el) continue;
-    if (!cmp || antes === null || antes === undefined) { el.textContent = ''; continue; }
+    if (!cmp || antes === null || antes === undefined) { el.innerHTML = ''; continue; }
+    // Las dos barras a la MISMA escala: sin eso, dos barras llenas dirian que
+    // los dos numeros son iguales. El maximo es 1 como piso para no dividir
+    // por cero cuando los dos son cero.
+    const max = Math.max(hoy, antes, 1);
     const pct = antes ? Math.round((hoy - antes) / antes * 100) : null;
     const { color, signo } = deltaEstilo(pct, subirEsBueno);
     const dia = fmtDiaCorto(cmp.fecha);
-    el.innerHTML = pct === null
-      ? `<span class="text-slate-500">${dia}: ${antes.toLocaleString('es')}</span>`
-      : `<span style="color:${color};font-weight:var(--p-medio)">${signo}${Math.abs(pct)}%</span>
-         <span class="text-slate-500">vs ${dia} a esta hora (${antes.toLocaleString('es')})</span>`;
+    // "a esta hora" solo cuando se mira HOY: entre dos dias pasados se
+    // comparan enteros, y decir "a esta hora" seria mentira.
+    const cuando = hayDiaElegido ? dia : `${dia} a esta hora`;
+    const barra = (valor, ancho, claseBarra, claseVal, etiqueta, estilo) => `
+      <span class="cmp-fila">
+        <span class="cmp-carril"><span class="cmp-barra ${claseBarra}" style="width:${ancho}%${estilo || ''}"></span></span>
+        <span class="cmp-val ${claseVal}">${valor.toLocaleString('es')}</span>
+      </span>`;
+    el.innerHTML = `
+      <span class="cmp-par">
+        ${barra(hoy,   Math.round(hoy / max * 100),   'cmp-hoy',   '', '', `;background:${colorBarra}`)}
+        ${barra(antes, Math.round(antes / max * 100), 'cmp-antes', 'cmp-val-tenue', '')}
+      </span>
+      <span class="block mt-1.5">
+        ${pct === null ? '' : `<span style="color:${color};font-weight:var(--p-medio)">${signo}${Math.abs(pct)}%</span> `}
+        <span class="text-slate-500">vs ${cuando}</span>
+      </span>`;
   }
 }
 
@@ -2292,7 +2332,7 @@ function pintarSnapshot(d) {
   renderNoRespondidos(d.no_respondidos);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
   renderAsesoresAhora(d.no_respondidos, d.trabajados_hoy, d.atendidos_solo_bot || []);
-  pintarComparativo(d.comparado, d.no_respondidos.length, todosHoy.length);
+  pintarComparativo(d.comparado, d.no_respondidos.length, todosHoy.length, !!d.dia);
   pintarDiaElegido(d.dia);
   ULTIMO_SNAPSHOT = Date.now();
   marcarFrescura();
