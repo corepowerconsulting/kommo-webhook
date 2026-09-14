@@ -8,6 +8,8 @@ import time
 import threading
 import queue
 import atexit
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
 import calendar
@@ -1246,6 +1248,7 @@ def _asegurar_trabajadores():
 def _encolar_webhook(data):
     try:
         _asegurar_trabajadores()
+        _asegurar_vigia()
     except RuntimeError as e:
         # Sin capacidad para crear un hilo. El evento igual queda en la cola:
         # lo toma el trabajador que siga vivo o el que se reponga despues.
@@ -2195,6 +2198,293 @@ def health_carga():
                        'saturan el servidor; cerca de 10-20 lo descarta. '
                        'hilos_rechazados o errores_body arriba de 0 explican '
                        'las desactivaciones de Kommo.',
+    })
+
+# ========================
+# VIGIA DEL WEBHOOK EN KOMMO
+# ========================
+# Kommo apaga el webhook en silencio: de nuestro lado nada falla, simplemente
+# deja de llegar. Kommo avisa, pero a los administradores de la cuenta del
+# CLIENTE, no a nosotros. Ventas Directas estuvo apagada del 09/09 al 14/09 y
+# nos enteramos cinco dias despues mirando /health/actividad.
+#
+# Este vigia le pregunta a Kommo cada 5 minutos si nuestro webhook sigue activo
+# en cada cuenta y manda un correo cuando no. SOLO avisa: reactivarlo cambia la
+# configuracion del CRM del cliente, y eso lo decide una persona.
+#
+# El correo sale por un Google Apps Script (scripts/alerta_gmail.gs) y no por
+# SMTP: Render bloquea los puertos SMTP en los servicios gratuitos desde
+# septiembre de 2025, y asi tampoco se guarda en el servidor una contraseña con
+# acceso al correo.
+#
+# Variables de entorno en Render:
+#   KOMMO_TOKEN_<SUBDOMINIO>  token de larga duracion de cada cuenta
+#   ALERTA_GMAIL_URL          URL del Apps Script publicado como aplicacion web
+#   ALERTA_SECRETO            la misma clave que tiene el Apps Script
+#   ALERTA_PARA               opcional; sin esto le llega al dueño del script
+
+DESTINO_WEBHOOK = 'https://kommo-webhook-mp4u.onrender.com/webhook'
+VIGIA_CADA_SEG = 300
+# Mientras siga apagado se repite el aviso: un correo solo se pierde entre otros.
+RECORDATORIO_SEG = 6 * 3600
+# Un error de red suelto no es noticia: se avisa a la tercera revision seguida
+# que no pudo hablar con Kommo (15 minutos). Un token rechazado se avisa ya.
+FALLOS_RED_PARA_AVISAR = 3
+PROBLEMAS_WEBHOOK = ('apagado', 'no_encontrado', 'token')
+
+_vigia = {'hilo': None, 'pid': None, 'cuentas': {}, 'ultima_vuelta': None,
+          'correos_enviados': 0, 'ultimo_error_correo': None}
+_vigia_lock = threading.Lock()
+_vigia_vuelta_lock = threading.Lock()
+
+def _token_kommo(subdomain):
+    return (os.environ.get(f'KOMMO_TOKEN_{subdomain.upper()}') or '').strip() or None
+
+def _consultar_webhook_kommo(subdomain, token):
+    """Estado de NUESTRO webhook en la cuenta: (estado, detalle, cambiado_ts).
+
+    estado es 'activo', 'apagado', 'no_encontrado', 'token' (Kommo rechazo el
+    token) o 'red' (no se pudo preguntar). cambiado_ts es el updated_at de
+    Kommo: cuando lo apagan, es la hora exacta en que lo apago."""
+    req = urllib.request.Request(
+        f'https://{subdomain}.kommo.com/api/v4/webhooks',
+        headers={'Authorization': f'Bearer {token}'})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            crudo = r.read().decode('utf-8')
+        datos = json.loads(crudo) if crudo.strip() else {}
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return 'token', f'Kommo rechazo el token (HTTP {e.code})', None
+        return 'red', f'Kommo respondio HTTP {e.code}', None
+    except Exception as e:
+        return 'red', f'{type(e).__name__}: {e}', None
+    for w in (datos.get('_embedded') or {}).get('webhooks') or []:
+        if (w.get('destination') or '').rstrip('/') == DESTINO_WEBHOOK:
+            return ('apagado' if w.get('disabled') else 'activo'), None, w.get('updated_at')
+    return 'no_encontrado', 'La cuenta no tiene un webhook apuntando a PULSE', None
+
+def _aviso_para(previo, estado, ahora):
+    """Decide si esta revision merece correo.
+
+    No manda nada ni marca nada como avisado: eso lo hace quien llama, y SOLO si
+    el correo salio. Asi un correo que falla se reintenta en la vuelta siguiente
+    en vez de perderse.
+
+    Devuelve (registro, aviso), con aviso 'nuevo', 'recordatorio', 'volvio',
+    'red' o None."""
+    reg = dict(previo or {})
+    if estado == 'red':
+        reg['fallos_red'] = reg.get('fallos_red', 0) + 1
+        return reg, ('red' if reg['fallos_red'] == FALLOS_RED_PARA_AVISAR else None)
+    reg['fallos_red'] = 0
+    if estado != reg.get('estado'):
+        reg['estado'], reg['desde'] = estado, ahora
+    if estado in PROBLEMAS_WEBHOOK:
+        if reg.get('avisado') != estado:
+            return reg, 'nuevo'
+        if ahora - (reg.get('ultimo_aviso') or 0) >= RECORDATORIO_SEG:
+            return reg, 'recordatorio'
+        return reg, None
+    return reg, ('volvio' if reg.get('avisado') in PROBLEMAS_WEBHOOK else None)
+
+def _hora_de_cuenta(ts, subdomain):
+    try:
+        tz = PULSE_CONFIG.get(subdomain, {}).get('tz_offset', -5)
+        return f"{_ts_to_local(int(ts), tz).strftime('%d/%m/%Y %H:%M')} (UTC{tz:+d})"
+    except (TypeError, ValueError):
+        return 'hora desconocida'
+
+def _texto_aviso(subdomain, aviso, reg, detalle, ahora):
+    nombre = PULSE_CONFIG.get(subdomain, {}).get('nombre', subdomain)
+    if aviso == 'volvio':
+        return (f'PULSE: {nombre} vuelve a recibir datos',
+                f'El webhook de {nombre} ({subdomain}) está activo otra vez.\n\n'
+                'Lo que pasó mientras estuvo apagado no se recupera solo.')
+    if aviso == 'red':
+        return (f'PULSE: no se puede revisar {nombre}',
+                f'Hace {FALLOS_RED_PARA_AVISAR} revisiones seguidas que no se puede '
+                f'consultar a Kommo por {nombre} ({subdomain}).\n\n'
+                f'Último error: {detalle}\n\n'
+                'Puede ser algo pasajero de Kommo o de la red. Si sigue, revisar '
+                '/health/vigia.')
+
+    estado = reg.get('estado')
+    if estado == 'token':
+        asunto = f'PULSE: el token de Kommo de {nombre} ya no sirve'
+        cuerpo = (f'Kommo rechaza el token de {nombre} ({subdomain}): {detalle}.\n\n'
+                  'Mientras tanto no se puede saber si el webhook está activo. Hay '
+                  'que crear un token nuevo en Kommo y cargarlo en Render como '
+                  f'KOMMO_TOKEN_{subdomain.upper()}.')
+    elif estado == 'no_encontrado':
+        asunto = f'PULSE: {nombre} no tiene el webhook de PULSE'
+        cuerpo = (f'En {nombre} ({subdomain}) no hay ningún webhook apuntando a '
+                  f'{DESTINO_WEBHOOK}. Alguien lo borró o cambió la dirección, y sin '
+                  'eso no llega ningún dato al dashboard.')
+    else:
+        asunto = f'PULSE: Kommo apagó el webhook de {nombre}'
+        cuerpo = (f'Kommo apagó el webhook de {nombre} ({subdomain}) el '
+                  f'{_hora_de_cuenta(reg.get("kommo_cambio_ts"), subdomain)}. Desde '
+                  'entonces no llega ningún dato de esa cuenta al dashboard.\n\n'
+                  'Kommo lo apaga cuando en 2 horas recibe más de 100 respuestas '
+                  'lentas o con error. Hasta ahora la causa fueron operaciones '
+                  'masivas en el CRM: mover, reasignar o importar cientos de leads '
+                  'a la vez.\n\n'
+                  'Para reactivarlo: en el Kommo de la cuenta, Ajustes -> '
+                  f'Integraciones -> Webhooks -> el que apunta a {DESTINO_WEBHOOK} '
+                  '-> Guardar.')
+    if aviso == 'recordatorio':
+        inicio = reg.get('kommo_cambio_ts') if estado == 'apagado' else reg.get('desde')
+        try:
+            horas = max(0, (ahora - int(inicio)) / 3600)
+        except (TypeError, ValueError):
+            horas = 0
+        asunto = asunto.replace('PULSE:', f'PULSE (sigue, {horas:.0f} h):', 1)
+        cuerpo = f'Lleva {horas:.0f} horas así.\n\n' + cuerpo
+    return asunto, cuerpo
+
+def _enviar_aviso(asunto, cuerpo):
+    """Manda el correo por el Apps Script. True si el script confirmo con 'ok'.
+
+    El error se guarda en _vigia para que /health/vigia diga por que no llego,
+    en vez de que el aviso se pierda en los logs."""
+    url = (os.environ.get('ALERTA_GMAIL_URL') or '').strip()
+    secreto = (os.environ.get('ALERTA_SECRETO') or '').strip()
+    if not url or not secreto:
+        _vigia['ultimo_error_correo'] = 'Faltan ALERTA_GMAIL_URL o ALERTA_SECRETO en Render'
+        return False
+    datos = json.dumps({
+        'secreto': secreto,
+        'para':    (os.environ.get('ALERTA_PARA') or '').strip(),
+        'asunto':  asunto,
+        'cuerpo':  cuerpo,
+    }).encode('utf-8')
+    req = urllib.request.Request(url, data=datos, headers={'Content-Type': 'application/json'})
+    try:
+        # Google responde con una redireccion a la salida del script; urlopen
+        # la sigue y ahi esta el 'ok'. El correo ya salio en el POST.
+        with urllib.request.urlopen(req, timeout=30) as r:
+            respuesta = r.read().decode('utf-8', 'replace').strip()
+    except Exception as e:
+        _vigia['ultimo_error_correo'] = f'{type(e).__name__}: {e}'
+        print(f'❌ Vigia: no salio el correo: {e}')
+        return False
+    if respuesta != 'ok':
+        _vigia['ultimo_error_correo'] = f'El Apps Script respondio: {respuesta[:200]}'
+        print(f'❌ Vigia: el Apps Script no confirmo el envio')
+        return False
+    _vigia['correos_enviados'] += 1
+    _vigia['ultimo_error_correo'] = None
+    return True
+
+def _vuelta_vigia(ahora=None):
+    """Revisa todas las cuentas una vez y manda los avisos que correspondan."""
+    with _vigia_vuelta_lock:
+        ahora = ahora if ahora is not None else time.time()
+        for subdomain in PULSE_CONFIG:
+            token = _token_kommo(subdomain)
+            if not token:
+                _vigia['cuentas'][subdomain] = {'estado': 'sin_token', 'ultima_revision': ahora}
+                continue
+            previo = _vigia['cuentas'].get(subdomain)
+            if (previo or {}).get('estado') == 'sin_token':
+                previo = None
+            estado, detalle, cambiado_ts = _consultar_webhook_kommo(subdomain, token)
+            reg, aviso = _aviso_para(previo, estado, ahora)
+            reg['ultima_revision'] = ahora
+            reg['detalle'] = detalle
+            if cambiado_ts:
+                reg['kommo_cambio_ts'] = cambiado_ts
+            if aviso:
+                asunto, cuerpo = _texto_aviso(subdomain, aviso, reg, detalle, ahora)
+                if _enviar_aviso(asunto, cuerpo):
+                    if aviso in ('nuevo', 'recordatorio'):
+                        reg['avisado'], reg['ultimo_aviso'] = reg['estado'], ahora
+                    elif aviso == 'volvio':
+                        reg['avisado'], reg['ultimo_aviso'] = None, ahora
+            _vigia['cuentas'][subdomain] = reg
+        _vigia['ultima_vuelta'] = ahora
+
+def _bucle_vigia():
+    # Espera antes de la primera vuelta: en un deploy el proceso viejo y el
+    # nuevo conviven un rato y los dos mandarian el mismo aviso.
+    time.sleep(90)
+    while True:
+        try:
+            _vuelta_vigia()
+        except Exception as e:
+            print(f'❌ Vigia: {e}')
+        time.sleep(VIGIA_CADA_SEG)
+
+def _asegurar_vigia():
+    """Arranca el vigia dentro del proceso que atiende. Misma razon que
+    _asegurar_trabajadores para no arrancarlo al importar."""
+    def vivo():
+        return (_vigia['pid'] == os.getpid() and _vigia['hilo'] is not None
+                and _vigia['hilo'].is_alive())
+    if vivo():
+        return
+    with _vigia_lock:
+        if vivo():
+            return
+        hilo = threading.Thread(target=_bucle_vigia, daemon=True, name='vigia-kommo')
+        hilo.start()
+        _vigia['hilo'], _vigia['pid'] = hilo, os.getpid()
+
+def _fecha_iso(ts):
+    try:
+        return datetime.utcfromtimestamp(int(ts)).isoformat() + 'Z' if ts else None
+    except (TypeError, ValueError):
+        return None
+
+@app.route('/health/vigia')
+def health_vigia():
+    """Lo que vio el vigia en su ultima vuelta. No muestra tokens ni la URL ni
+    la clave del correo: solo si estan cargados."""
+    _asegurar_vigia()
+    cuentas = {
+        sub: {
+            'estado':              reg.get('estado'),
+            'desde':               _fecha_iso(reg.get('desde')),
+            'kommo_ultimo_cambio': _fecha_iso(reg.get('kommo_cambio_ts')),
+            'ultima_revision':     _fecha_iso(reg.get('ultima_revision')),
+            'avisado':             reg.get('avisado'),
+            'detalle':             reg.get('detalle'),
+        }
+        for sub, reg in _vigia['cuentas'].items()
+    }
+    return jsonify({
+        'vigia_vivo':          bool(_vigia['hilo'] is not None and _vigia['hilo'].is_alive()),
+        'revisa_cada_min':     VIGIA_CADA_SEG // 60,
+        'ultima_vuelta':       _fecha_iso(_vigia['ultima_vuelta']),
+        'correo_configurado':  bool((os.environ.get('ALERTA_GMAIL_URL') or '').strip()
+                                    and (os.environ.get('ALERTA_SECRETO') or '').strip()),
+        'cuentas_sin_token':   [s for s in PULSE_CONFIG if not _token_kommo(s)],
+        'correos_enviados':    _vigia['correos_enviados'],
+        'ultimo_error_correo': _vigia['ultimo_error_correo'],
+        'cuentas':             cuentas,
+    })
+
+@app.route('/health/vigia/prueba')
+@token_requerido
+def health_vigia_prueba():
+    """Revisa las cuentas AHORA y manda un correo de prueba con el resultado.
+    Sirve para confirmar la configuracion sin esperar a que Kommo apague algo."""
+    _asegurar_vigia()
+    _vuelta_vigia()
+    lineas = []
+    for sub in PULSE_CONFIG:
+        reg = _vigia['cuentas'].get(sub, {})
+        extra = f" ({reg['detalle']})" if reg.get('detalle') else ''
+        lineas.append(f"- {PULSE_CONFIG[sub].get('nombre', sub)}: {reg.get('estado')}{extra}")
+    enviado = _enviar_aviso(
+        'PULSE: prueba de alertas',
+        'Si llegó este correo, las alertas de PULSE funcionan.\n\n'
+        'Estado del webhook en cada cuenta:\n' + '\n'.join(lineas))
+    return jsonify({
+        'correo_enviado': enviado,
+        'error_correo':   _vigia['ultimo_error_correo'],
+        'cuentas':        {s: _vigia['cuentas'].get(s, {}).get('estado') for s in PULSE_CONFIG},
     })
 
 @app.route('/ping')
