@@ -6,6 +6,8 @@ import re
 import secrets
 import time
 import threading
+import queue
+import atexit
 from datetime import datetime, timedelta
 from functools import wraps
 import calendar
@@ -97,12 +99,18 @@ _CARGA = {
     'hilos_maximo': 0,
     'cuando_el_maximo': None,
     'arranque': datetime.utcnow().isoformat(),
-    # Las dos formas conocidas en que este endpoint puede fallarle a Kommo.
-    # Kommo dice textualmente "Webhook esta desactivado debido a una respuesta
-    # no valida", asi que cualquier cosa que no sea 200 lo desactiva. Si alguno
-    # de estos sube de 0, ahi esta la causa de las desactivaciones.
+    # Formas conocidas en que este endpoint puede fallarle a Kommo. Ojo: para
+    # Kommo tambien es "respuesta no valida" TARDAR mas de 2 segundos, no solo
+    # devolver un codigo distinto de 2xx (ver /webhook).
     'hilos_rechazados': 0,
     'errores_body': 0,
+    # La cola de webhooks (ver _encolar_webhook). cola_maxima es el pico de
+    # pendientes: si se acerca a COLA_WEBHOOKS_MAX, los trabajadores no dan
+    # abasto. descartados_cola_llena arriba de 0 son eventos perdidos.
+    'cola_maxima': 0,
+    'cuando_cola_maxima': None,
+    'descartados_cola_llena': 0,
+    'procesados_cola': 0,
     # Escrituras a la base. El 31/08/2026 Supabase entro en modo solo lectura y
     # estuvimos 43 horas recibiendo webhooks sin guardar uno solo. Nadie se
     # entero: cada fallo hacia un print y seguia, y este endpoint miraba hilos
@@ -165,7 +173,69 @@ def token_requerido(f):
 # ========================
 # BASE DE DATOS
 # ========================
+# Conexion propia de cada hilo trabajador de la cola de webhooks. Ver get_conn.
+_hilo_local = threading.local()
+
+# Una conexion que no se uso en este tiempo se prueba antes de prestarla:
+# Supabase corta las inactivas, y la primera escritura sobre una conexion
+# muerta falla y pierde ese evento.
+SEG_PARA_PROBAR_CONEXION = 60
+
+class _ConexionDelHilo:
+    """La conexion persistente del hilo, con un close() que NO la cierra.
+
+    Las funciones guardar_* hacen get_conn() ... conn.close() en cada evento.
+    Se escribieron asi cuando cada webhook tenia su propio hilo, y abrir una
+    conexion a Supabase cuesta ~0,35 s de saludo TLS: un lead_update abria tres
+    o cuatro. En una rafaga eran cientos de hilos abriendo conexiones a la vez.
+
+    Con esto esas funciones no cambian: en los trabajadores de la cola,
+    get_conn() entrega la conexion del hilo, y close() solo deshace lo que haya
+    quedado a medias para que el evento siguiente arranque limpio."""
+    def __init__(self, real):
+        object.__setattr__(self, '_real', real)
+
+    def __getattr__(self, nombre):
+        return getattr(self._real, nombre)
+
+    def __setattr__(self, nombre, valor):
+        setattr(self._real, nombre, valor)
+
+    def close(self):
+        try:
+            if not self._real.closed:
+                self._real.rollback()
+        except Exception:
+            try:
+                self._real.close()
+            except Exception:
+                pass
+        _hilo_local.ultimo_uso = time.monotonic()
+
+def _conexion_del_hilo():
+    real = getattr(_hilo_local, 'conn', None)
+    if real is not None and not real.closed:
+        inactiva = time.monotonic() - getattr(_hilo_local, 'ultimo_uso', time.monotonic())
+        if inactiva > SEG_PARA_PROBAR_CONEXION:
+            try:
+                c = real.cursor()
+                c.execute('SELECT 1')
+                c.close()
+                real.rollback()
+            except Exception:
+                try:
+                    real.close()
+                except Exception:
+                    pass
+                real = None
+    if real is None or real.closed:
+        real = psycopg2.connect(DATABASE_URL, sslmode='require')
+        _hilo_local.conn = real
+    return _ConexionDelHilo(real)
+
 def get_conn():
+    if getattr(_hilo_local, 'reusar', False):
+        return _conexion_del_hilo()
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 def _agregar_columna(c, tabla, columna, tipo):
@@ -1125,16 +1195,103 @@ def _escribir_cambios(cursor, subdomain, cambios):
 # ========================
 # WEBHOOK
 # ========================
+# Cuantos webhooks pueden quedar esperando. Un payload ocupa unos KB, asi que
+# 5.000 son decenas de MB. La rafaga mas grande medida (14/09, Ventas Directas)
+# fueron ~7.800 eventos de Kommo en dos minutos, y de esos nos llegan solo los
+# 5 tipos suscritos, a veces varios leads en un mismo POST.
+COLA_WEBHOOKS_MAX = 5000
+
+# Trabajadores que vacian la cola. Cada uno tiene una conexion abierta a
+# Supabase todo el tiempo, asi que no conviene que sean muchos.
+TRABAJADORES_WEBHOOK = 4
+
+_cola_webhooks = queue.Queue(maxsize=COLA_WEBHOOKS_MAX)
+_trabajadores = []
+_trabajadores_lock = threading.Lock()
+_trabajadores_pid = None
+
+def _trabajador_webhooks():
+    _hilo_local.reusar = True
+    while True:
+        data = _cola_webhooks.get()
+        try:
+            _procesar_webhook(data)
+            _CARGA['procesados_cola'] += 1
+        except Exception as e:
+            print(f"❌ Trabajador de webhooks: {e}")
+        finally:
+            _cola_webhooks.task_done()
+
+def _asegurar_trabajadores():
+    """Arranca los trabajadores la primera vez, DENTRO del proceso que atiende.
+
+    No se arrancan al importar: si gunicorn cargara la app antes del fork
+    (--preload), los hilos quedarian en el proceso padre y la cola no se
+    vaciaria nunca. Por eso tambien se compara el pid. Y si alguno murio, se
+    repone."""
+    global _trabajadores_pid
+    if _trabajadores_pid == os.getpid() and all(t.is_alive() for t in _trabajadores):
+        return
+    with _trabajadores_lock:
+        if _trabajadores_pid != os.getpid():
+            _trabajadores.clear()
+            _trabajadores_pid = os.getpid()
+        _trabajadores[:] = [t for t in _trabajadores if t.is_alive()]
+        while len(_trabajadores) < TRABAJADORES_WEBHOOK:
+            t = threading.Thread(target=_trabajador_webhooks, daemon=True,
+                                 name=f'webhook-{len(_trabajadores)}')
+            t.start()
+            _trabajadores.append(t)
+
+def _encolar_webhook(data):
+    try:
+        _asegurar_trabajadores()
+    except RuntimeError as e:
+        # Sin capacidad para crear un hilo. El evento igual queda en la cola:
+        # lo toma el trabajador que siga vivo o el que se reponga despues.
+        _CARGA['hilos_rechazados'] += 1
+        print(f"❌ No se pudo arrancar un trabajador de webhooks: {e}")
+    try:
+        _cola_webhooks.put_nowait(data)
+    except queue.Full:
+        # Se responde 200 igual: perder un evento es mucho mas barato que
+        # perder la cuenta entera con el webhook apagado.
+        _CARGA['descartados_cola_llena'] += 1
+        print("❌ Cola de webhooks llena, evento descartado")
+        return
+    n = _cola_webhooks.qsize()
+    if n > _CARGA['cola_maxima']:
+        _CARGA['cola_maxima'] = n
+        _CARGA['cuando_cola_maxima'] = datetime.utcnow().isoformat()
+
+@atexit.register
+def _vaciar_cola_al_salir():
+    """En un deploy el proceso viejo recibe la orden de terminar y lo que quede
+    en la cola se perderia. Se les dan unos segundos a los trabajadores."""
+    limite = time.monotonic() + 20
+    while (not _cola_webhooks.empty() and time.monotonic() < limite
+           and any(t.is_alive() for t in _trabajadores)):
+        time.sleep(0.2)
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    # Kommo desactiva el webhook si la respuesta tarda o falla, y el mensaje que
-    # muestra al hacerlo es siempre el mismo: "Webhook esta desactivado debido a
-    # una respuesta no valida". O sea que lo que lo dispara no es la lentitud
-    # sino el codigo de respuesta: cualquier cosa que no sea 200 lo apaga.
+    # Kommo apaga el webhook si en 2 horas recibe mas de 100 respuestas no
+    # validas y la ultima tambien lo es. No valida es un codigo que no sea 2xx
+    # O TARDAR MAS DE 2 SEGUNDOS (developers.kommo.com/docs/webhooks-general).
     #
-    # Por eso este endpoint NUNCA puede propagar una excepcion. Se responde 200
-    # pase lo que pase y el guardado corre aparte; perder un evento suelto es
-    # mucho mas barato que perder la cuenta entera por horas o dias.
+    # Lo segundo es lo que apagaba Ventas Directas: nunca respondimos error,
+    # tardabamos. Cada POST lanzaba un hilo sin limite y cada hilo abria tres o
+    # cuatro conexiones a Supabase. El 09/09 un usuario movio 519 leads de
+    # etapa en un minuto, se juntaron cientos de hilos peleando por la CPU, las
+    # respuestas pasaron de 2 s y Kommo apago el webhook cuatro minutos
+    # despues. Quedo apagado cinco dias.
+    #
+    # Ahora el POST solo se anota en una cola y se responde, sin tocar la base
+    # ni crear hilos. La vacian unos pocos trabajadores fijos, cada uno con su
+    # conexion. Una rafaga pasa a ser una fila de espera de un par de minutos
+    # en vez de un webhook apagado.
+    #
+    # Y este endpoint NUNCA puede propagar una excepcion: 200 pase lo que pase.
     try:
         data = request.form.to_dict()
     except Exception as e:
@@ -1142,24 +1299,10 @@ def webhook():
         print(f"❌ No se pudo leer el body del webhook: {e}")
         return jsonify({'status': 'ok'}), 200
 
-    try:
-        threading.Thread(target=_procesar_webhook, args=(data,), daemon=True).start()
-    except RuntimeError as e:
-        # No se pudo crear el hilo: el proceso se quedo sin memoria o llego al
-        # limite de hilos. Es el candidato mas directo a las desactivaciones,
-        # porque hasta ahora salia como 500 —justo lo que Kommo no tolera— y
-        # ademas ocurre precisamente en las rafagas, que es cuando se cayo.
-        _CARGA['hilos_rechazados'] += 1
-        print(f"❌ Sin capacidad para crear el hilo, evento descartado: {e}")
+    _encolar_webhook(data)
 
-    # Medicion de carga. Kommo desactivo el webhook cuatro veces en tres semanas
-    # (tucoytico, gruporegalado, ventasdirectas x2) y venimos suponiendo la
-    # causa sin medirla: que las rafagas crean cientos de hilos, se agotan las
-    # conexiones a Supabase y las respuestas se vuelven lentas.
-    #
-    # Como cada webhook lanza un hilo sin limite, el pico de hilos es la prueba
-    # directa. Si en una rafaga sube a cientos, la hipotesis se confirma; si se
-    # mantiene bajo, hay que buscar la causa en otro lado.
+    # Pico de hilos del proceso. Con la cola deberia quedar fijo: si vuelve a
+    # subir a cientos, algo esta creando hilos por evento otra vez.
     #
     # No se usa lock: son contadores de diagnostico y el costo de perder alguna
     # suma bajo carga es menor que el de agregar contencion al camino critico.
@@ -2003,7 +2146,8 @@ def backfill_cambios():
 def health_carga():
     """Cuantos hilos llega a tener el servidor. Es la prueba que falta.
 
-    Cada webhook lanza un hilo nuevo sin limite. La hipotesis de por que Kommo
+    Hasta el 14/09 cada webhook lanzaba un hilo sin limite (ahora van a una
+    cola, ver /webhook). La hipotesis de por que Kommo
     desactiva los webhooks es que en las rafagas —una operacion masiva en el CRM
     dispara cientos de POST juntos— se crean cientos de hilos, se agotan las
     conexiones a Supabase y las respuestas se vuelven lentas.
@@ -2026,6 +2170,14 @@ def health_carga():
         # desactivacion, la causa esta fuera de la aplicacion.
         'hilos_rechazados':           _CARGA['hilos_rechazados'],
         'errores_body':               _CARGA['errores_body'],
+        # La cola de /webhook. cola_ahora alta y creciendo = los trabajadores
+        # no dan abasto; descartados_cola_llena arriba de 0 = eventos perdidos.
+        'cola_ahora':                 _cola_webhooks.qsize(),
+        'cola_maxima':                _CARGA['cola_maxima'],
+        'cuando_cola_maxima':         _CARGA['cuando_cola_maxima'],
+        'descartados_cola_llena':     _CARGA['descartados_cola_llena'],
+        'procesados_cola':            _CARGA['procesados_cola'],
+        'trabajadores_vivos':         sum(1 for t in _trabajadores if t.is_alive()),
         # Lo PRIMERO que hay que mirar. Recibir no es guardar: el 31/08 se
         # recibieron 65.000 webhooks y no se guardo ninguno, y este endpoint
         # decia que todo estaba bien porque solo miraba las lineas de arriba.
