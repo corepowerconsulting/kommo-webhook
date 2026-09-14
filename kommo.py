@@ -4858,10 +4858,35 @@ def _fecha_minima_calc(subdomain, conn=None):
         conn = get_conn()
     try:
         c = conn.cursor()
-        c.execute(
-            'SELECT DISTINCT LEFT(capturado_at, 10) FROM eventos WHERE subdomain = %s',
-            (subdomain,)
-        )
+        # Salta de un dia al siguiente por el indice (subdomain, capturado_at)
+        # en vez de leer todos los eventos: una busqueda corta por dia con
+        # datos, ~46, contra ~600.000 filas en Camara China. El DISTINCT de
+        # antes tardaba 33 s y, con cache de una hora, alguien los pagaba cada
+        # hora y en cada deploy (medido el 14/09: 49 s de carga, 33 aca).
+        try:
+            c.execute('''
+                WITH RECURSIVE dias AS (
+                    SELECT LEFT(MIN(capturado_at), 10) AS dia
+                      FROM eventos WHERE subdomain = %s
+                    UNION ALL
+                    SELECT (SELECT LEFT(MIN(e.capturado_at), 10)
+                              FROM eventos e
+                             WHERE e.subdomain = %s
+                               AND e.capturado_at >= to_char(dias.dia::date + 1, 'YYYY-MM-DD'))
+                      FROM dias
+                     WHERE dias.dia IS NOT NULL
+                )
+                SELECT dia FROM dias WHERE dia IS NOT NULL
+            ''', (subdomain, subdomain))
+        except Exception as e:
+            # Un capturado_at con otro formato rompe el ::date. Mejor lento
+            # que sin fecha minima: se vuelve a la consulta de antes.
+            print(f'⚠️  fecha minima rapida fallo en {subdomain}: {e}')
+            conn.rollback()
+            c.execute(
+                'SELECT DISTINCT LEFT(capturado_at, 10) FROM eventos WHERE subdomain = %s',
+                (subdomain,)
+            )
         con_datos = {r[0] for r in c.fetchall() if r[0]}
     finally:
         if propia:
