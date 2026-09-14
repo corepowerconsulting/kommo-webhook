@@ -293,6 +293,31 @@ def init_db():
     # apareceria con dos nombres distintos en la misma pantalla.
     _agregar_columna(c, 'leads_estado', 'asesor_nombre', 'TEXT')
 
+    # La HISTORIA del lead: una fila cada vez que cambia el responsable, el
+    # campo Asesor, el embudo o la etapa, con desde cuando vale.
+    #
+    # leads_estado guarda un solo valor por lead y cada cambio pisa el
+    # anterior. Para "Sin responder" eso esta bien —importa de quien es el lead
+    # AHORA—, pero el analisis del periodo lo aplicaba a todas las respuestas:
+    # si el lead paso del Asesor 1 al Asesor 2, las respuestas que dio el 1
+    # quedaban a nombre del 2, y un filtro por etapa solo veia la etapa actual.
+    #
+    # Cada fila es el estado COMPLETO desde desde_ts, no solo lo que cambio:
+    # asi el valor vigente en un momento es la ultima fila anterior, sin tener
+    # que reconstruir nada. Un lead cambia pocas veces, asi que ocupa poco.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS leads_cambios (
+            subdomain TEXT,
+            lead_id TEXT,
+            desde_ts BIGINT,
+            responsible_user_id BIGINT,
+            asesor_nombre TEXT,
+            pipeline_id BIGINT,
+            status_id BIGINT,
+            PRIMARY KEY (subdomain, lead_id, desde_ts)
+        )
+    ''')
+
     # Mensajes SALIENTES: los que manda el asesor (o el bot) al cliente.
     #
     # Llegan bajo la clave 'outgoing_message[add][n]', no bajo 'message[add][n]'
@@ -359,7 +384,7 @@ def init_db():
     # no se ve afectada porque se conecta como dueño de las tablas y el dueño
     # salta RLS. Va en init_db para que un deploy futuro no lo deje sin activar.
     for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado',
-                  'mensajes_asesor', 'conversaciones'):
+                  'mensajes_asesor', 'conversaciones', 'leads_cambios'):
         try:
             _activar_rls(c, tabla)
         except Exception as e:
@@ -939,8 +964,163 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
         _CARGA['escrituras_ok'] += 1
     except Exception as e:
         _fallo_escritura('leads_estado', e)
+        conn.close()
+        return
+
+    # La historia va aparte y DESPUES del commit: si falla, el estado vigente
+    # ya quedo guardado, y "Sin responder" depende de ese y no de la historia.
+    # Reusa la misma conexion: cada conexion nueva a Supabase cuesta ~0,35 s.
+    try:
+        estado = _normalizar_estado(evento_ts, responsible_user_id, asesor_nombre,
+                                    pipeline_id, status_id)
+        historias = _historias_de(c, subdomain, [str(lead_id)])
+        _escribir_cambios(c, subdomain, _cambios_nuevos(historias, [(str(lead_id), estado)]))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        _fallo_escritura('leads_cambios', e)
     finally:
         conn.close()
+
+# ------------------------------------------------------------------------------
+# Historia del lead (tabla leads_cambios)
+# ------------------------------------------------------------------------------
+# Lo que se sigue en el tiempo. Son los cuatro datos con los que el dashboard
+# agrupa o filtra una respuesta: a quien se le atribuye y en que embudo estaba.
+CAMPOS_HISTORIA = ('responsible_user_id', 'asesor_nombre', 'pipeline_id', 'status_id')
+
+def _entero_o_none(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+def _normalizar_estado(desde_ts, responsible_user_id, asesor_nombre, pipeline_id, status_id):
+    """El estado de un lead_update con los tipos de la base.
+
+    Kommo manda los ids como texto y la base los devuelve como numero. Sin
+    normalizar, '123' != 123 y cada evento pareceria un cambio: la tabla se
+    llenaria con una fila por evento, que es justo lo que se quiere evitar."""
+    return {
+        'desde_ts':            _entero_o_none(desde_ts),
+        'responsible_user_id': _entero_o_none(responsible_user_id),
+        'asesor_nombre':       (str(asesor_nombre).strip() if asesor_nombre else '') or None,
+        'pipeline_id':         _entero_o_none(pipeline_id),
+        'status_id':           _entero_o_none(status_id),
+    }
+
+def _estado_de_evento(data, prefix, subdomain):
+    """_normalizar_estado leyendo directo del payload crudo de un lead_update."""
+    return _normalizar_estado(
+        data.get(f'{prefix}[updated_at]'),
+        data.get(f'{prefix}[responsible_user_id]'),
+        get_custom_field_texto(data, prefix, campo_quien_atendio_de(subdomain)),
+        data.get(f'{prefix}[pipeline_id]'),
+        data.get(f'{prefix}[status_id]'),
+    )
+
+def _vigente_en(historia, ts, claves=None):
+    """La fila de la historia que valia en 'ts': la ultima que empezo antes o en
+    ese mismo segundo. 'historia' va ordenada por desde_ts; 'claves' son sus
+    desde_ts ya extraidos, para no rearmarlos en cada llamada cuando se buscan
+    miles de respuestas.
+
+    Antes de la primera fila conocida devuelve la PRIMERA, no None. La historia
+    arranca con el primer lead_update que capturamos, pero ese estado ya valia
+    desde antes: el lead no nacio en ese momento. Y es mejor aproximacion que el
+    estado actual, que es lo que se usaba para todo hasta ahora."""
+    if not historia:
+        return None
+    if claves is None:
+        claves = [h['desde_ts'] for h in historia]
+    i = bisect.bisect_right(claves, ts)
+    return historia[i - 1] if i else historia[0]
+
+def _fila_de_cambio(vigente, nuevo):
+    """La fila a agregar a la historia por este evento, o None si no cambio nada.
+
+    Un valor que falta en el evento se completa con el vigente, igual que hace
+    leads_estado con COALESCE: Kommo no manda el campo Asesor cuando esta
+    vacio, y sin esto cualquier evento sin el campo "borraria" quien atendia."""
+    if not nuevo.get('desde_ts'):
+        return None
+    base = vigente or {}
+    fila = {k: nuevo[k] if nuevo.get(k) is not None else base.get(k)
+            for k in CAMPOS_HISTORIA}
+    if all(fila[k] is None for k in CAMPOS_HISTORIA):
+        return None
+    if vigente is not None and all(fila[k] == vigente.get(k) for k in CAMPOS_HISTORIA):
+        return None
+    fila['desde_ts'] = nuevo['desde_ts']
+    return fila
+
+def _cambios_nuevos(historias, eventos):
+    """Que filas hay que escribir para registrar estos eventos.
+
+    historias: {lead_id: [filas ordenadas por desde_ts]}, lo que ya esta en la
+               base. Se actualiza en el lugar, asi un evento ve los anteriores
+               del mismo lote.
+    eventos:   [(lead_id, estado)] en cualquier orden.
+
+    Cada evento se compara contra lo que valia EN SU MOMENTO, no contra la
+    ultima fila. Kommo no garantiza el orden de llegada, y el backfill escribe
+    eventos viejos cuando la historia ya tiene filas nuevas del webhook: si se
+    comparara contra la ultima, un cambio del pasado se perderia o quedaria
+    fechado mal.
+
+    Devuelve {(lead_id, desde_ts): fila}. La clave evita escribir dos veces la
+    misma fila en un INSERT, que Postgres rechaza con "cannot affect row a
+    second time" y tira el lote entero."""
+    escribir = {}
+    validos = [(str(l), e) for l, e in eventos if e.get('desde_ts')]
+    for lead_id, nuevo in sorted(validos, key=lambda x: (x[0], x[1]['desde_ts'])):
+        h = historias.setdefault(lead_id, [])
+        fila = _fila_de_cambio(_vigente_en(h, nuevo['desde_ts']), nuevo)
+        if fila is None:
+            continue
+        claves = [x['desde_ts'] for x in h]
+        i = bisect.bisect_left(claves, fila['desde_ts'])
+        if i < len(h) and h[i]['desde_ts'] == fila['desde_ts']:
+            h[i] = fila
+        else:
+            h.insert(i, fila)
+        escribir[(lead_id, fila['desde_ts'])] = fila
+    return escribir
+
+def _historias_de(cursor, subdomain, lead_ids):
+    """{lead_id: [filas ordenadas]} de la tabla leads_cambios.
+
+    Funciona con cursor comun o RealDictCursor: la consulta nombra las columnas
+    y se arma el dict aca, asi la usan tanto el webhook como el dashboard."""
+    if not lead_ids:
+        return {}
+    cols = ('lead_id', 'desde_ts') + CAMPOS_HISTORIA
+    cursor.execute(
+        f'SELECT {", ".join(cols)} FROM leads_cambios '
+        'WHERE subdomain = %s AND lead_id = ANY(%s) ORDER BY lead_id, desde_ts',
+        (subdomain, list(lead_ids)))
+    historias = defaultdict(list)
+    for r in cursor.fetchall():
+        fila = dict(r) if isinstance(r, dict) else dict(zip(cols, r))
+        historias[str(fila.pop('lead_id'))].append(fila)
+    return dict(historias)
+
+def _escribir_cambios(cursor, subdomain, cambios):
+    if not cambios:
+        return 0
+    execute_values(
+        cursor,
+        'INSERT INTO leads_cambios (subdomain, lead_id, desde_ts, responsible_user_id, '
+        'asesor_nombre, pipeline_id, status_id) VALUES %s '
+        'ON CONFLICT (subdomain, lead_id, desde_ts) DO UPDATE SET '
+        '    responsible_user_id = EXCLUDED.responsible_user_id, '
+        '    asesor_nombre       = EXCLUDED.asesor_nombre, '
+        '    pipeline_id         = EXCLUDED.pipeline_id, '
+        '    status_id           = EXCLUDED.status_id',
+        [(subdomain, lead_id, f['desde_ts'], f['responsible_user_id'],
+          f['asesor_nombre'], f['pipeline_id'], f['status_id'])
+         for (lead_id, _), f in cambios.items()])
+    return len(cambios)
 
 # ========================
 # WEBHOOK
@@ -1696,6 +1876,120 @@ def backfill_embudo():
             'pct':               round(cob['con_embudo'] / cob['total'] * 100, 1) if cob['total'] else 0,
             'por_embudo':        por_embudo,
             'siguiente': (f'/backfill-embudo?subdomain={subdomain}&offset={offset}'
+                          if hay_mas else None),
+            'listo': not hay_mas,
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+def _resumen_historia(cursor, subdomain):
+    """Cuantos leads tienen historia y cuantos cambiaron de cada cosa. Es lo que
+    dice cuanto se mueven los numeros del periodo al atribuir con la historia:
+    un lead que nunca cambio da lo mismo con el metodo viejo que con este."""
+    cursor.execute('''
+        SELECT COUNT(*)::bigint                            AS leads,
+               COALESCE(SUM(filas), 0)::bigint             AS filas,
+               COUNT(*) FILTER (WHERE n_asesor > 1)        AS cambiaron_asesor,
+               COUNT(*) FILTER (WHERE n_responsable > 1)   AS cambiaron_responsable,
+               COUNT(*) FILTER (WHERE n_embudo > 1)        AS cambiaron_embudo,
+               COUNT(*) FILTER (WHERE n_etapa > 1)         AS cambiaron_etapa
+          FROM (SELECT lead_id,
+                       COUNT(*)                            AS filas,
+                       COUNT(DISTINCT asesor_nombre)       AS n_asesor,
+                       COUNT(DISTINCT responsible_user_id) AS n_responsable,
+                       COUNT(DISTINCT pipeline_id)         AS n_embudo,
+                       COUNT(DISTINCT pipeline_id::text || ':' || status_id::text) AS n_etapa
+                  FROM leads_cambios
+                 WHERE subdomain = %s
+                 GROUP BY lead_id) x
+    ''', (subdomain,))
+    return dict(cursor.fetchone())
+
+@app.route('/backfill-cambios')
+@token_requerido
+def backfill_cambios():
+    """Reconstruye la historia de cada lead (leads_cambios) desde 'eventos'.
+
+    Cada lead_update que llego de Kommo esta guardado entero, con el
+    responsable, el campo Asesor, el embudo y la etapa de ESE momento. Leidos en
+    orden salen los cambios, sin pedirle nada a la API.
+
+    Hay que correrlo ANTES de cualquier limpieza de 'eventos': esos crudos son
+    la unica copia de la historia anterior a este deploy.
+
+    Se puede correr con el webhook andando y se puede repetir: cada evento se
+    compara contra lo que valia en su momento (ver _cambios_nuevos), asi que un
+    evento ya registrado no escribe nada y uno viejo se ubica antes de las filas
+    que el webhook ya haya escrito.
+
+    Pagina por id y no por OFFSET: 'eventos' tiene millones de filas y un
+    OFFSET grande obliga a recorrer todas las anteriores en cada pagina."""
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+    try:
+        desde_id = int(request.args.get('desde_id', 0))
+    except ValueError:
+        desde_id = 0
+    limit = 1000
+    PRESUPUESTO_SEG = 45
+
+    conn = get_conn()
+    try:
+        read_c  = conn.cursor(cursor_factory=RealDictCursor)
+        write_c = conn.cursor()
+
+        arranque = time.monotonic()
+        leidos = escritos = errores = 0
+        hay_mas = True
+        while hay_mas and time.monotonic() - arranque < PRESUPUESTO_SEG:
+            read_c.execute(
+                "SELECT id, lead_id, raw_data FROM eventos "
+                "WHERE subdomain = %s AND tipo_evento = 'lead_update' AND id > %s "
+                "ORDER BY id LIMIT %s",
+                (subdomain, desde_id, limit))
+            rows = read_c.fetchall()
+
+            eventos = []
+            for row in rows:
+                if not row['raw_data'] or not row['lead_id']:
+                    continue
+                try:
+                    data = json.loads(row['raw_data'])
+                    prefix = prefix_de_lead(data, row['lead_id'])
+                    if prefix is None:
+                        continue
+                    eventos.append((str(row['lead_id']),
+                                    _estado_de_evento(data, prefix, subdomain)))
+                except Exception as e:
+                    errores += 1
+                    print(f'⚠️ Backfill cambios: {e}')
+
+            if eventos:
+                historias = _historias_de(read_c, subdomain, {l for l, _ in eventos})
+                escritos += _escribir_cambios(write_c, subdomain,
+                                              _cambios_nuevos(historias, eventos))
+                # Commit por pagina: si la llamada se corta, lo hecho queda y
+                # la siguiente sigue desde 'desde_id' sin repetir trabajo.
+                conn.commit()
+
+            leidos += len(rows)
+            if rows:
+                desde_id = rows[-1]['id']
+            hay_mas = len(rows) == limit
+        conn.commit()
+
+        return jsonify({
+            'desde_id':        desde_id,
+            'eventos_leidos':  leidos,
+            'filas_escritas':  escritos,
+            'errores':         errores,
+            'segundos':        round(time.monotonic() - arranque, 1),
+            'historia':        _resumen_historia(read_c, subdomain),
+            'siguiente': (f'/backfill-cambios?subdomain={subdomain}&desde_id={desde_id}'
                           if hay_mas else None),
             'listo': not hay_mas,
         })
@@ -3689,35 +3983,51 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
     if not turnos:
         return []
 
-    # Responsable, nombre del lead y campo custom 'Asesor'. Sale de
-    # leads_estado, que ya tiene una fila por lead.
-    leads = sorted({t['lead_id'] for t in turnos})
-    sql_emb, par_emb = _filtro_embudo(embudos_sel, etapas_sel)
+    def en_periodo(t):
+        return ((desde_ts is None or t['inicio'] >= desde_ts)
+                and (hasta_ts is None or t['inicio'] <= hasta_ts))
+
+    # Solo los leads con respuestas en el periodo: con el rango por defecto son
+    # una fraccion de todos, y la historia se pide por lead.
+    leads = sorted({t['lead_id'] for t in turnos if en_periodo(t)})
+    if not leads:
+        return []
+
+    # Nombre del lead y estado ACTUAL. El estado actual solo se usa para los
+    # leads que todavia no tienen historia (ver _estado_por_turno).
     cursor.execute(
-        'SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre '
-        'FROM leads_estado WHERE subdomain = %s AND lead_id = ANY(%s)' + sql_emb,
-        tuple([subdomain, leads] + par_emb))
+        'SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre, '
+        '       pipeline_id, status_id '
+        'FROM leads_estado WHERE subdomain = %s AND lead_id = ANY(%s)',
+        (subdomain, leads))
     meta = {r['lead_id']: r for r in cursor.fetchall()}
 
-    registros = []
-    filtra_embudo = bool(embudos_sel or etapas_sel)
-    for t in turnos:
-        m = meta.get(t['lead_id'])
-        # Con filtro de embudo, la consulta de arriba ya devolvio SOLO los
-        # leads que pasan. Un lead que no esta en 'meta' quedo fuera y no
-        # puede colarse con los datos vacios.
-        if m is None:
-            if filtra_embudo:
-                continue
-            m = {}
+    # Responsable, Asesor, embudo y etapa de CADA respuesta, en el momento en
+    # que se envio. Antes salian de leads_estado, que tiene solo el valor de
+    # hoy: si el lead paso del Asesor 1 al Asesor 2, las respuestas del 1
+    # quedaban a nombre del 2, y el filtro por etapa solo veia la actual.
+    historias = _historias_de(cursor, subdomain, leads)
+    claves = {l: [f['desde_ts'] for f in fs] for l, fs in historias.items()}
 
-        if desde_ts is not None and t['inicio'] < desde_ts:
+    registros = []
+    embudos_set, etapas_set = set(embudos_sel), set(etapas_sel)
+    filtra_embudo = bool(embudos_set or etapas_set)
+    for t in turnos:
+        if not en_periodo(t):
             continue
-        if hasta_ts is not None and t['inicio'] > hasta_ts:
+        m = meta.get(t['lead_id']) or {}
+        # El momento que cuenta es el de la RESPUESTA ('fin'), no el del
+        # mensaje del cliente: la atencion es de quien contesto. Si el lead se
+        # reasigna mientras el cliente espera, esa espera la cierra el nuevo.
+        estado = _estado_por_turno(historias, claves, str(t['lead_id']), t['fin'], m)
+
+        # Un lead sin embudo conocido no pasa un filtro de embudo: no puede
+        # colarse con los datos vacios.
+        if filtra_embudo and not _pasa_embudo(estado, embudos_set, etapas_set):
             continue
-        if asesor_ids and m.get('responsible_user_id') not in asesor_ids:
+        if asesor_ids and estado.get('responsible_user_id') not in asesor_ids:
             continue
-        if asesores_nombre and (m.get('asesor_nombre') or '') not in asesores_nombre:
+        if asesores_nombre and (estado.get('asesor_nombre') or '') not in asesores_nombre:
             continue
 
         dt_cliente = _ts_to_local(t['inicio'], tz_offset)
@@ -3734,8 +4044,8 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
             'lead_nombre':         (m.get('lead_nombre') or '').strip() or None,
             'inicio_espera':       t['inicio'],
             'efectivo_seg':        efectivo,
-            'responsible_user_id': m.get('responsible_user_id'),
-            'asesor_nombre':       (m.get('asesor_nombre') or '').strip() or None,
+            'responsible_user_id': estado.get('responsible_user_id'),
+            'asesor_nombre':       (estado.get('asesor_nombre') or '').strip() or None,
             # Quien mando el mensaje de verdad, y si fue un bot. Los lee
             # asesor_de_registro para armar el ranking.
             'respondio_nombre':    t['autor'],
@@ -3753,6 +4063,27 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
             'respuesta_ts':        t['fin'],
         })
     return registros
+
+def _estado_por_turno(historias, claves, lead_id, ts, actual):
+    """Responsable, Asesor, embudo y etapa que valian en 'ts' para este lead.
+
+    Con historia, el que valia en ese momento. Sin historia —un lead que no
+    recibio ningun lead_update desde que existe la tabla, o antes de correr
+    /backfill-cambios— el estado actual, que es exactamente lo que se usaba
+    antes: en el peor caso da lo mismo que el metodo viejo, nunca algo peor."""
+    h = historias.get(lead_id)
+    if h:
+        return _vigente_en(h, ts, claves.get(lead_id))
+    return dict(actual) if actual else {}
+
+def _pasa_embudo(estado, embudos, etapas):
+    """La misma regla que _filtro_embudo, pero sobre un estado ya armado en vez
+    de en SQL: el embudo de cada respuesta sale de la historia y no se puede
+    filtrar en la consulta. Embudo entero O etapa suelta "pipeline:status"."""
+    pid = estado.get('pipeline_id')
+    if pid is None:
+        return False
+    return pid in embudos or f"{pid}:{estado.get('status_id')}" in etapas
 
 # Cuantas respuestas se promedian por lead en la lista de mas lentas/rapidas.
 TOP_ULTIMAS_RESPUESTAS = 5
@@ -4391,10 +4722,16 @@ def _lista_asesores_campo(subdomain, conn=None):
         conn = get_conn()
     try:
         c = conn.cursor()
+        # Tambien los de la historia: desde que cada respuesta se atribuye al
+        # Asesor de su momento, alguien que ya no figura en ningun lead actual
+        # puede tener respuestas en el periodo, y tiene que poder filtrarse.
         c.execute(
-            'SELECT DISTINCT asesor_nombre FROM tiempos_respuesta '
+            'SELECT asesor_nombre FROM tiempos_respuesta '
+            'WHERE subdomain = %s AND asesor_nombre IS NOT NULL '
+            'UNION '
+            'SELECT asesor_nombre FROM leads_cambios '
             'WHERE subdomain = %s AND asesor_nombre IS NOT NULL',
-            (subdomain,)
+            (subdomain, subdomain)
         )
         nombres = [row[0] for row in c.fetchall() if (row[0] or '').strip()]
     finally:
