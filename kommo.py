@@ -446,6 +446,30 @@ def init_db():
         )
     ''')
 
+    # Estado de cada conversacion (talk) de Kommo: abierta o CERRADA.
+    #
+    # "Sin responder" contaba leads cuya conversacion el asesor ya habia
+    # cerrado en Kommo —el cliente dijo "gracias", no hacia falta contestar—.
+    # Medido el 15/09/2026 en Camara China: 265 de 556 (48%), y 263 de 497
+    # criticos. Llega por los eventos add_talk / update_talk: is_in_work 1 es
+    # abierta, 0 cerrada (verificado contra el status de la API en 16 de 16).
+    #
+    # Una fila por talk y no por lead: cuando el cliente vuelve a escribir,
+    # Kommo abre una conversacion NUEVA, asi que la que manda es la ultima.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS conversaciones_estado (
+            subdomain TEXT,
+            talk_id BIGINT,
+            lead_id TEXT,
+            abierta BOOLEAN,
+            creada_ts BIGINT,
+            actualizada_ts BIGINT,
+            PRIMARY KEY (subdomain, talk_id)
+        )
+    ''')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_conv_estado_lead
+                 ON conversaciones_estado (subdomain, lead_id, talk_id)''')
+
     # Supabase expone una API REST publica ademas de la conexion Postgres. Esta
     # app no la usa —se conecta por DATABASE_URL— pero la API sigue abierta, y
     # sin RLS cualquiera con la URL del proyecto puede leer estas tablas. En
@@ -456,7 +480,8 @@ def init_db():
     # no se ve afectada porque se conecta como dueño de las tablas y el dueño
     # salta RLS. Va en init_db para que un deploy futuro no lo deje sin activar.
     for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado',
-                  'mensajes_asesor', 'conversaciones', 'leads_cambios'):
+                  'mensajes_asesor', 'conversaciones', 'leads_cambios',
+                  'conversaciones_estado'):
         try:
             _activar_rls(c, tabla)
         except Exception as e:
@@ -799,6 +824,82 @@ def guardar_conversaciones(subdomain, data):
     except Exception as e:
         conn.rollback()
         _fallo_escritura('conversaciones', e)
+        return 0
+    finally:
+        conn.close()
+
+def conversaciones_del_payload(data):
+    """Estado de cada conversacion de talk[add] y talk[update] del payload.
+
+    Solo las de un lead (entity_type = lead): las de un contacto suelto no
+    tienen a quien sacar de "Sin responder". Sin is_in_work se descarta: leerlo
+    como cerrada sacaria de la lista a alguien que espera respuesta, y es
+    preferible un lead de mas a uno escondido."""
+    filas = {}
+    for raiz in ('talk[add]', 'talk[update]'):
+        for i in get_batch_indices(data, raiz):
+            p = f'{raiz}[{i}]'
+            if str(data.get(f'{p}[entity_type]') or '').strip() != 'lead':
+                continue
+            talk = _entero_o_none(data.get(f'{p}[talk_id]'))
+            lead = _entero_o_none(data.get(f'{p}[entity_id]'))
+            actualizada = _entero_o_none(data.get(f'{p}[updated_at]'))
+            en_curso = data.get(f'{p}[is_in_work]')
+            if not talk or not lead or actualizada is None or en_curso is None:
+                continue
+            fila = {
+                'talk_id':        talk,
+                'lead_id':        str(lead),
+                'abierta':        str(en_curso).strip().lower() in ('1', 'true'),
+                'creada_ts':      _entero_o_none(data.get(f'{p}[created_at]')),
+                'actualizada_ts': actualizada,
+            }
+            previa = filas.get(talk)
+            if previa is None or actualizada >= previa['actualizada_ts']:
+                filas[talk] = fila
+    return list(filas.values())
+
+def insertar_conversaciones_estado(cursor, subdomain, filas):
+    """Upsert por talk. Un evento mas viejo no pisa uno mas nuevo: Kommo no
+    garantiza el orden, y la carga desde la API puede llegar despues de un
+    webhook reciente."""
+    if not filas:
+        return 0
+    # Un talk repetido en el mismo INSERT aborta la sentencia entera.
+    unicas = {}
+    for f in filas:
+        previa = unicas.get(f['talk_id'])
+        if previa is None or f['actualizada_ts'] >= previa['actualizada_ts']:
+            unicas[f['talk_id']] = f
+    execute_values(
+        cursor,
+        'INSERT INTO conversaciones_estado '
+        '(subdomain, talk_id, lead_id, abierta, creada_ts, actualizada_ts) VALUES %s '
+        'ON CONFLICT (subdomain, talk_id) DO UPDATE SET '
+        '    lead_id        = EXCLUDED.lead_id, '
+        '    abierta        = EXCLUDED.abierta, '
+        '    creada_ts      = COALESCE(conversaciones_estado.creada_ts, EXCLUDED.creada_ts), '
+        '    actualizada_ts = EXCLUDED.actualizada_ts '
+        'WHERE EXCLUDED.actualizada_ts >= conversaciones_estado.actualizada_ts',
+        [(subdomain, f['talk_id'], f['lead_id'], f['abierta'], f['creada_ts'], f['actualizada_ts'])
+         for f in unicas.values()])
+    return len(unicas)
+
+def guardar_conversaciones_estado(subdomain, data):
+    """Camino del webhook: guarda si cada conversacion quedo abierta o cerrada."""
+    filas = conversaciones_del_payload(data)
+    if not filas:
+        return 0
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        n = insertar_conversaciones_estado(c, subdomain, filas)
+        conn.commit()
+        _CARGA['escrituras_ok'] += 1
+        return n
+    except Exception as e:
+        conn.rollback()
+        _fallo_escritura('conversaciones_estado', e)
         return 0
     finally:
         conn.close()
@@ -1406,6 +1507,13 @@ def _procesar_webhook(data):
                 timestamp=data.get(f'leads[responsible][{i}][updated_at]'),
                 data=data
             )
+
+        # Conversaciones (add_talk / update_talk). No se guarda el crudo en
+        # 'eventos': de estos solo importa abierta o cerrada, y son muchos
+        # —cambian tambien al leer un mensaje—.
+        if get_batch_indices(data, 'talk[add]') or get_batch_indices(data, 'talk[update]'):
+            algo_procesado = True
+            guardar_conversaciones_estado(subdomain, data)
 
         if not algo_procesado:
             # Se GUARDA, no solo se loguea. Antes se imprimian las dos primeras
@@ -2144,6 +2252,53 @@ def backfill_cambios():
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
+
+@app.route('/cargar-conversaciones', methods=['POST'])
+@token_requerido
+def cargar_conversaciones():
+    """Carga el estado de conversaciones traido de la API de Kommo.
+
+    Lo llama scripts/bajar_conversaciones.py. Hace falta una vez por cuenta:
+    los eventos add_talk / update_talk llegan recien desde que se suscribe el
+    webhook, y una conversacion cerrada antes no vuelve a avisar.
+
+    Mismo upsert que el webhook: un dato mas viejo no pisa uno mas nuevo, asi
+    que se puede repetir sin miedo."""
+    datos = request.get_json(silent=True) or {}
+    subdomain = str(datos.get('subdomain') or '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+    crudas = datos.get('conversaciones')
+    if not isinstance(crudas, list) or len(crudas) > 5000:
+        return jsonify({'error': 'conversaciones tiene que ser una lista de hasta 5000'}), 400
+
+    filas, invalidas = [], 0
+    for c in crudas:
+        try:
+            # Estricto con abierta: "false" como texto seria True con bool().
+            if c['abierta'] not in (True, False):
+                raise ValueError('abierta')
+            filas.append({
+                'talk_id':        int(c['talk_id']),
+                'lead_id':        str(int(c['lead_id'])),
+                'abierta':        c['abierta'],
+                'creada_ts':      int(c['creada_ts']) if c.get('creada_ts') is not None else None,
+                'actualizada_ts': int(c['actualizada_ts']),
+            })
+        except (KeyError, TypeError, ValueError):
+            invalidas += 1
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        guardadas = insertar_conversaciones_estado(cur, subdomain, filas)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+    return jsonify({'recibidas': len(crudas), 'guardadas': guardadas, 'invalidas': invalidas})
 
 @app.route('/health/carga')
 def health_carga():
@@ -4631,6 +4786,29 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
 STATUS_CERRADOS = (142, 143)
 FILTRO_SOLO_ABIERTAS = 'AND (status_id IS NULL OR status_id NOT IN (142, 143))'
 
+# Fuera de "Sin responder" el lead cuya ULTIMA conversacion esta cerrada en
+# Kommo (ver la tabla conversaciones_estado). Cerrar no es responder: el lead
+# sale de la lista, pero no suma en "Atendidos hoy" ni en la mediana.
+#
+# La ultima es la de talk_id mas alto: Kommo abre una nueva cuando el cliente
+# vuelve a escribir, asi que un lead que escribio despues del cierre vuelve
+# solo a la lista. Sin conversacion conocida, el lead cuenta como antes.
+#
+# Con un dia pasado (hasta_ts) se mira lo que habia a esa hora: la ultima
+# conversacion creada hasta ahi, y cerrada solo si el cierre fue antes. Si la
+# conversacion se toco despues por otra cosa —un mensaje leido—, se la toma
+# como abierta ese dia: preferible un lead de mas a uno escondido.
+# Lleva cuatro parametros, todos hasta_ts.
+FILTRO_CONVERSACION_ABIERTA = '''
+    AND COALESCE((
+        SELECT ce.abierta OR (%s IS NOT NULL AND ce.actualizada_ts > %s)
+          FROM conversaciones_estado ce
+         WHERE ce.subdomain = le.subdomain AND ce.lead_id = le.lead_id
+           AND (%s IS NULL OR ce.creada_ts IS NULL OR ce.creada_ts <= %s)
+         ORDER BY ce.talk_id DESC
+         LIMIT 1
+    ), TRUE)'''
+
 def _filtro_embudo(embudos, etapas):
     """Fragmento SQL para acotar por embudo y por etapa. Se aplica sobre
     leads_estado, que es donde vive pipeline_id.
@@ -4794,7 +4972,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         else:
             query = '''
                 SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre, asesor_nombre
-                FROM leads_estado
+                FROM leads_estado le
                 WHERE subdomain = %s
                   AND f_ult_msj_cliente IS NOT NULL
                   AND (f_ult_msj_asesor IS NULL OR f_ult_msj_cliente > f_ult_msj_asesor)
@@ -4803,6 +4981,8 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             if desde_ts is not None:
                 query += ' AND f_ult_msj_cliente >= %s'
                 params.append(desde_ts)
+        query += FILTRO_CONVERSACION_ABIERTA
+        params.extend([hasta_ts] * 4)
         if responsible_user_ids:
             query += ' AND responsible_user_id = ANY(%s)'
             params.append(list(responsible_user_ids))

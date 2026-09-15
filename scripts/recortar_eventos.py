@@ -60,6 +60,11 @@ QUEDARSE = [
     'update_lead',
     'status_lead',
     'responsible_lead',
+    # Conversaciones (15/09/2026): saber si el chat esta cerrado. Sin esto
+    # "Sin responder" contaba conversaciones ya cerradas, el 48% en Camara
+    # China. Ver suscribir_conversaciones.py.
+    'add_talk',
+    'update_talk',
 ]
 
 # Sin estos tres el dashboard no tiene de donde sacar los numeros. Si el
