@@ -447,7 +447,11 @@
                tenian chevron y cursor de mano, pero eso es una pista, no un
                aviso. La de Distribucion si lo dice desde siempre, asi que se
                usa la misma forma en el mismo lugar. -->
-          <div class="section-sub" id="sub-ahora">Qué está pasando ahora · clic en una tarjeta para ver los leads</div>
+          <!-- Las listas arrancan ABIERTAS (Juan, 15/09): cerradas, nadie
+               descubria que la tarjeta se podia abrir, ni con el chevron ni
+               con el hover. Viendolas abiertas se sabe que estan; el clic
+               queda para ocultarlas. -->
+          <div class="section-sub" id="sub-ahora">Qué está pasando ahora · clic en una tarjeta para mostrar u ocultar sus leads</div>
         </div>
       </div>
 
@@ -480,7 +484,7 @@
         </label>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="card card-clic border-l-4 !border-l-red-500">
+        <div class="card card-clic abierta border-l-4 !border-l-red-500">
           <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
                con Tab ni se activa con Enter: quien no usa mouse no podia abrir
                esta lista. Cambia solo el elemento; los estilos son los mismos.
@@ -492,7 +496,7 @@
                a la izquierda para dejarle lugar y no queda centrado de verdad.
                Sacandolo del flujo, el contenido se centra contra la tarjeta. -->
           <button type="button" class="relative w-full text-center flex items-start justify-center"
-                  aria-expanded="false" aria-controls="panel-no-respondidos"
+                  aria-expanded="true" aria-controls="panel-no-respondidos"
                   onclick="toggleExtra('no-respondidos')">
             <span class="flex items-start gap-3.5">
               <span class="icon-chip bg-red-50">
@@ -508,14 +512,14 @@
               </span>
             </span>
             <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
-              <svg id="chev-no-respondidos" class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg id="chev-no-respondidos" class="chevron" style="transform:rotate(180deg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </button>
-          <div id="panel-no-respondidos" class="hidden mt-4"></div>
+          <div id="panel-no-respondidos" class="mt-4"></div>
         </div>
-        <div class="card card-clic border-l-4 !border-l-blue-500">
+        <div class="card card-clic abierta border-l-4 !border-l-blue-500">
           <button type="button" class="relative w-full text-center flex items-start justify-center"
-                  aria-expanded="false" aria-controls="panel-trabajados-hoy"
+                  aria-expanded="true" aria-controls="panel-trabajados-hoy"
                   onclick="toggleExtra('trabajados-hoy')">
             <span class="flex items-start gap-3.5">
               <span class="icon-chip bg-blue-50">
@@ -528,20 +532,13 @@
               </span>
             </span>
             <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
-              <svg id="chev-trabajados-hoy" class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg id="chev-trabajados-hoy" class="chevron" style="transform:rotate(180deg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </button>
-          <div id="panel-trabajados-hoy" class="hidden mt-4"></div>
+          <div id="panel-trabajados-hoy" class="mt-4"></div>
         </div>
 
       </div>
-
-      <!-- Los criticos A LA VISTA, sin hacer clic (Luis, 14/09, opcion C del
-           mockup). La tarjeta decia "38 criticos" y la lista estaba adentro,
-           detras de un clic que nadie encontraba: la pantalla se sentia vacia
-           justo donde estaba la respuesta. Los 5 que mas esperan, con enlace a
-           Kommo; el resto sigue en la tarjeta. -->
-      <div id="criticos-ahora"></div>
 
     <!-- Detalle por asesor del AHORA (reunion del 31/08). Con varias personas
          los dos totales de arriba no son accionables: 229 sin responder no
@@ -1626,8 +1623,8 @@ function pintarDiaElegido(dia) {
   document.getElementById('titulo-ahora').textContent =
     vivo ? 'Operación en tiempo real' : `Estado del ${fmtDiaCorto(dia)}`;
   document.getElementById('sub-ahora').textContent = vivo
-    ? 'Qué está pasando ahora · clic en una tarjeta para ver los leads'
-    : `Cómo estaba el día completo · clic en una tarjeta para ver los leads`;
+    ? 'Qué está pasando ahora · clic en una tarjeta para mostrar u ocultar sus leads'
+    : `Cómo estaba el día completo · clic en una tarjeta para mostrar u ocultar sus leads`;
   document.getElementById('chip-vivo').classList.toggle('hidden', !vivo);
   const sel = document.getElementById('dia-base');
   if (sel && sel.value !== (dia || '')) sel.value = dia || '';
@@ -1656,7 +1653,6 @@ function renderNoRespondidos(leads) {
   const el = document.getElementById('panel-no-respondidos');
   const franjas = FRANJAS || [];
   if (ULTIMOS_NO_RESP.length === 0) {
-    renderCriticosAhora([], franjas);
     el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
     return;
   }
@@ -1674,7 +1670,6 @@ function renderNoRespondidos(leads) {
   const conFranja = ULTIMOS_NO_RESP.map(l => ({ ...l, _f: idxDe(l) }));
   // Del que mas espera al que menos.
   conFranja.sort((a, b) => (b.espera_seg || 0) - (a.espera_seg || 0));
-  renderCriticosAhora(conFranja, franjas);
 
   const conteo = franjas.map((_, i) => conFranja.filter(l => l._f === i).length);
   const visibles = FRANJA_SEL === null ? conFranja : conFranja.filter(l => l._f === FRANJA_SEL);
@@ -1707,66 +1702,12 @@ function renderNoRespondidos(leads) {
   });
 }
 
-// Cuanto lleva esperando y en que franja cae. Lo usan la lista completa y la
-// de criticos a la vista, para que un mismo lead se lea igual en los dos
-// lugares.
+// Cuanto lleva esperando y en que franja cae, a la derecha de cada lead.
 function _esperaYFranja(l, franjas) {
   const f = franjas[l._f];
   const pill = f ? `<span class="tag ${tagClass(f.tag)} flex-shrink-0">${f.tag}</span>` : '';
   const fuerte = l._f >= franjas.length - 1 ? 'font-semibold text-slate-800' : 'text-slate-600';
   return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap">esperando ${fmtSeg(l.espera_seg)}</span>${pill}`;
-}
-
-// --- Criticos a la vista (Luis, 14/09, opcion C) ------------------------------
-// Cuantos se muestran sin abrir nada. Cinco: con mas, en una cuenta con decenas
-// de criticos la lista empuja fuera de la pantalla el detalle por asesor.
-const CRITICOS_A_LA_VISTA = 5;
-
-// 'conFranja' llega ordenado del que mas espera al que menos, con su indice de
-// franja ya calculado (ver renderNoRespondidos). Critico es la ultima franja.
-function renderCriticosAhora(conFranja, franjas) {
-  const el = document.getElementById('criticos-ahora');
-  if (!el) return;
-  const total = conFranja.length;
-  const ultima = franjas.length - 1;
-  const criticos = ultima >= 0 ? conFranja.filter(l => l._f === ultima) : [];
-
-  if (!total) { el.innerHTML = ''; return; }
-  // Sin criticos tambien se dice: el hueco vacio se leeria como que no cargo.
-  if (!criticos.length) {
-    el.innerHTML = `
-      <div class="flex items-center gap-2 t-chico text-slate-600 px-1">
-        <svg class="flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        Ningún lead crítico · los ${total.toLocaleString('es')} sin responder están dentro del tiempo
-      </div>`;
-    return;
-  }
-
-  const filas = criticos.slice(0, CRITICOS_A_LA_VISTA)
-    .map(l => _filaLead(l, _esperaYFranja(l, franjas))).join('');
-  el.innerHTML = `
-    <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
-      <div class="flex items-center gap-2">
-        <h3 class="t-chico font-semibold text-slate-800">Críticos · los que más esperan</h3>
-        <span class="tag tag-red">${criticos.length.toLocaleString('es')}</span>
-      </div>
-      <span class="t-micro text-slate-500">clic en un lead para abrir la conversación en Kommo</span>
-    </div>
-    <div class="bg-slate-50 rounded-xl overflow-hidden divide-y divide-white">${filas}</div>
-    <button type="button" onclick="verTodosCriticos()" class="no-imprimir mt-2 t-chico font-semibold text-blue-600 hover:underline">
-      Ver todos: ${criticos.length.toLocaleString('es')} críticos de ${total.toLocaleString('es')} sin responder →
-    </button>`;
-}
-
-// Abre la tarjeta Sin responder con el filtro Critico ya puesto y la trae a la
-// vista: es el segundo paso de la lista de arriba, sin tener que buscarlo.
-function verTodosCriticos() {
-  FRANJA_SEL = (FRANJAS || []).length - 1;
-  renderNoRespondidos(ULTIMOS_NO_RESP);
-  const panel = document.getElementById('panel-no-respondidos');
-  if (panel.classList.contains('hidden')) toggleExtra('no-respondidos');
-  const quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  panel.parentElement.scrollIntoView({ behavior: quieto ? 'auto' : 'smooth', block: 'start' });
 }
 
 function renderDist(distribucion) {
