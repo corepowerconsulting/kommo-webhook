@@ -469,13 +469,15 @@
           <span class="grupo-lbl">comparar con</span>
           <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
         </div>
-        <!-- La casilla dice lo EXCEPCIONAL, no lo normal. Lo que el cliente
-             dejo abierto es lo que le debe respuesta; un lead ganado o
-             perdido hace meses no es un pendiente de atencion. Asi que el
-             estado normal —solo abiertas— es el de la casilla sin marcar, y
-             quien quiera ver ademas las cerradas la marca.
-             En Camara China son 34.906 leads cerrados de 44.387: con las
-             cerradas adentro el numero deja de ser accionable.
+        <!-- La casilla dice lo EXCEPCIONAL, no lo normal (Juan, 15/09): sin
+             marcar, "Sin responder" muestra solo los leads con la conversacion
+             ABIERTA en Kommo; marcada, suma los que el asesor ya cerro.
+             Cerrar el chat es decir "esto no necesita respuesta": en Camara
+             China eran 265 de 556 leads, y con ellos adentro el numero deja
+             de ser accionable.
+             Hasta el 15/09 esta casilla filtraba la etapa del lead (ganado o
+             perdido) y se confundia justo con ese cierre. Ganados y perdidos
+             ahora quedan fuera siempre.
              Comparte renglon con el filtro de dia (Juan, 04/09): las dos
              cosas acotan lo mismo, asi que van juntas y a la misma altura. -->
         <label class="flex items-center gap-2 t-chico text-slate-500 cursor-pointer select-none">
@@ -2433,9 +2435,9 @@ function filtrosComunes() {
   const emb = embudosListados ? embudoValores() : { embudos: [], etapas: [] };
   emb.embudos.forEach(v => params.append('embudo', v));
   emb.etapas.forEach(v => params.append('etapa', v));
-  // El backend recibe "abiertas=1" = solo abiertas. La casilla dice lo
-  // contrario —incluir cerradas— asi que se manda cuando NO esta marcada.
-  if (!document.getElementById('chk-incluir-cerradas').checked) params.append('abiertas', '1');
+  // "Incluir conversaciones cerradas": marcada, "Sin responder" suma los leads
+  // cuya conversacion esta cerrada en Kommo. Sin marcar, solo las abiertas.
+  if (document.getElementById('chk-incluir-cerradas').checked) params.append('incluir_cerradas', '1');
   return params;
 }
 

@@ -4917,7 +4917,7 @@ def dias_parciales(subdomain, conn=None):
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None,
                           sql_embudo='', params_embudo=(), corte=None, conn=None,
-                          hasta_ts=None):
+                          hasta_ts=None, incluir_conv_cerradas=False):
     """Leads cuyo último mensaje es del cliente: nadie contestó después.
 
     Se calcula con los MENSAJES y desde el corte, no con los campos de fecha
@@ -4981,8 +4981,11 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             if desde_ts is not None:
                 query += ' AND f_ult_msj_cliente >= %s'
                 params.append(desde_ts)
-        query += FILTRO_CONVERSACION_ABIERTA
-        params.extend([hasta_ts] * 4)
+        # La casilla "Incluir conversaciones cerradas" (15/09): sin marcar,
+        # solo los leads con la conversacion abierta en Kommo.
+        if not incluir_conv_cerradas:
+            query += FILTRO_CONVERSACION_ABIERTA
+            params.extend([hasta_ts] * 4)
         if responsible_user_ids:
             query += ' AND responsible_user_id = ANY(%s)'
             params.append(list(responsible_user_ids))
@@ -5047,7 +5050,8 @@ def _dia_valido(subdomain, tz_offset, fecha, corte, conn):
 
 def estado_de_dia(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
                   asesor_ids=None, solo_abiertas=False,
-                  sql_embudo='', params_embudo=(), hasta_ts=None):
+                  sql_embudo='', params_embudo=(), hasta_ts=None,
+                  incluir_conv_cerradas=False):
     """El estado del snapshot en un dia PASADO: las mismas dos listas.
 
     No hace falta ninguna foto guardada: tenemos cada mensaje entrante y
@@ -5071,7 +5075,8 @@ def estado_de_dia(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
 
     sin_responder = _leads_no_respondidos(
         subdomain, tz_offset, asesor_ids, solo_abiertas, corte,
-        sql_embudo, params_embudo, corte, conn=conn, hasta_ts=tope)
+        sql_embudo, params_embudo, corte, conn=conn, hasta_ts=tope,
+        incluir_conv_cerradas=incluir_conv_cerradas)
     trabajados, solo_bot = _leads_trabajados_hoy(
         subdomain, tz_offset, h_ini, h_fin, asesor_ids, solo_abiertas,
         sql_embudo, params_embudo, corte, conn=conn, rango=(inicio, tope))
@@ -5126,7 +5131,8 @@ def _solo_estos_asesores(listas, nombres):
     return [[l for l in lst if (l.get('asesor') or SIN_ASIGNAR) in sel] for lst in listas]
 
 def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
-                  asesor_ids=None, solo_abiertas=False, sql_embudo='', params_embudo=()):
+                  asesor_ids=None, solo_abiertas=False, sql_embudo='', params_embudo=(),
+                  incluir_conv_cerradas=False):
     """Todo el bloque de operacion: las dos listas y su comparativo.
 
     Por defecto es el AHORA. Con ?dia=YYYY-MM-DD pasa a ser el estado de ese
@@ -5153,7 +5159,8 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
     base_es_hoy = True
     if dia:
         est = estado_de_dia(subdomain, tz_offset, h_ini, h_fin, dia, corte, conn,
-                            asesor_ids, solo_abiertas, sql_embudo, params_embudo)
+                            asesor_ids, solo_abiertas, sql_embudo, params_embudo,
+                            incluir_conv_cerradas=incluir_conv_cerradas)
         if est is not None:
             base_es_hoy = False
             no_respondidos = est['no_respondidos']
@@ -5165,7 +5172,8 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
         # una fecha elegida y numeros de otra.
         dia = None
         no_respondidos = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
-                                               piso, sql_embudo, params_embudo, corte, conn=conn)
+                                               piso, sql_embudo, params_embudo, corte, conn=conn,
+                                               incluir_conv_cerradas=incluir_conv_cerradas)
         trabajados, solo_bot = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
                                                      asesor_ids, solo_abiertas,
                                                      sql_embudo, params_embudo, corte, conn=conn)
@@ -5183,7 +5191,8 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
     comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, contra,
                                   corte, conn, asesor_ids, solo_abiertas,
                                   sql_embudo, params_embudo, base_es_hoy=base_es_hoy,
-                                  nombres=op_nombres)
+                                  nombres=op_nombres,
+                                  incluir_conv_cerradas=incluir_conv_cerradas)
     return {
         'no_respondidos':     no_respondidos,
         'trabajados_hoy':     trabajados,
@@ -5195,7 +5204,8 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
 
 def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
                       asesor_ids=None, solo_abiertas=False,
-                      sql_embudo='', params_embudo=(), base_es_hoy=True, nombres=()):
+                      sql_embudo='', params_embudo=(), base_es_hoy=True, nombres=(),
+                      incluir_conv_cerradas=False):
     """Los dos numeros del snapshot en un dia pasado, para el comparativo.
 
     Con base_es_hoy se corta a la MISMA hora que lleva hoy; entre dos dias
@@ -5209,7 +5219,7 @@ def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
     hasta = inicio[0] + _hora_del_dia(tz_offset) if base_es_hoy else None
     est = estado_de_dia(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
                         asesor_ids, solo_abiertas, sql_embudo, params_embudo,
-                        hasta_ts=hasta)
+                        hasta_ts=hasta, incluir_conv_cerradas=incluir_conv_cerradas)
     if est is None:
         return None
     if nombres:
@@ -5614,7 +5624,12 @@ def pulse_snapshot():
         int(p) for crudo in request.args.getlist('asesor')
         for p in str(crudo).split(',') if p.strip().lstrip('-').isdigit()
     })
-    solo_abiertas = request.args.get('abiertas', '').strip() == '1'
+    # Ganados y perdidos quedan SIEMPRE fuera del bloque de operacion (15/09).
+    # La casilla "Incluir conversaciones cerradas" controla el cierre del chat
+    # en Kommo, que es lo que dice su nombre: antes filtraba la etapa del lead
+    # y se confundia justo con ese cierre.
+    solo_abiertas = True
+    incluir_conv_cerradas = request.args.get('incluir_cerradas', '').strip() == '1'
     embudos_sel = sorted({
         int(p.strip()) for crudo in request.args.getlist('embudo')
         for p in str(crudo).split(',') if p.strip().isdigit()
@@ -5639,7 +5654,8 @@ def pulse_snapshot():
         piso = _local_date_to_ts(fecha_min, tz_offset) if fecha_min else None
 
         bloque = _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
-                               asesor_ids, solo_abiertas, sql_embudo, params_embudo)
+                               asesor_ids, solo_abiertas, sql_embudo, params_embudo,
+                               incluir_conv_cerradas=incluir_conv_cerradas)
     finally:
         conn.close()
     return jsonify(bloque)
@@ -5698,7 +5714,12 @@ def pulse_data():
         if p.strip()
     })
     fuera_horario = request.args.get('modo', 'laboral').strip() == 'fuera_horario'
-    solo_abiertas = request.args.get('abiertas', '').strip() == '1'
+    # Ganados y perdidos quedan SIEMPRE fuera del bloque de operacion (15/09).
+    # La casilla "Incluir conversaciones cerradas" controla el cierre del chat
+    # en Kommo, que es lo que dice su nombre: antes filtraba la etapa del lead
+    # y se confundia justo con ese cierre.
+    solo_abiertas = True
+    incluir_conv_cerradas = request.args.get('incluir_cerradas', '').strip() == '1'
 
     # Embudos tildados enteros, y etapas sueltas como "pipeline:status".
     embudos_sel = []
@@ -6032,7 +6053,8 @@ def pulse_data():
         # Las listas salen de leads_estado, que no tiene el nombre del
         # cliente; _bloque_ahora lo completa adentro.
         bloque = _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso_captura, conn,
-                               asesor_ids, solo_abiertas, sql_embudo, params_embudo)
+                               asesor_ids, solo_abiertas, sql_embudo, params_embudo,
+                               incluir_conv_cerradas=incluir_conv_cerradas)
         no_respondidos     = bloque['no_respondidos']
         trabajados_hoy     = bloque['trabajados_hoy']
         atendidos_solo_bot = bloque['atendidos_solo_bot']
