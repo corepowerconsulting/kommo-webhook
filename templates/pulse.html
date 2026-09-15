@@ -536,6 +536,13 @@
 
       </div>
 
+      <!-- Los criticos A LA VISTA, sin hacer clic (Luis, 14/09, opcion C del
+           mockup). La tarjeta decia "38 criticos" y la lista estaba adentro,
+           detras de un clic que nadie encontraba: la pantalla se sentia vacia
+           justo donde estaba la respuesta. Los 5 que mas esperan, con enlace a
+           Kommo; el resto sigue en la tarjeta. -->
+      <div id="criticos-ahora"></div>
+
     <!-- Detalle por asesor del AHORA (reunion del 31/08). Con varias personas
          los dos totales de arriba no son accionables: 229 sin responder no
          dice de quien. Esta tabla lo reparte, ordenada por CRITICOS —los que
@@ -637,6 +644,16 @@
           <input type="text" id="desde" readonly class="fecha-in"/>
           <span class="text-slate-300 t-chico">→</span>
           <input type="text" id="hasta" readonly class="fecha-in"/>
+        </div>
+
+        <!-- Atajos (Luis, 14/09, opcion C). Pidio que el periodo arrancara en
+             Hoy; no se hizo porque la mediana de un dia a primera hora sale de
+             un puñado de respuestas y no sirve para comparar. Queda en 30 dias,
+             pero Hoy esta a un clic y no a dos calendarios. -->
+        <div class="grupo !p-1 !gap-0" role="group" aria-label="Atajos de fecha">
+          <button type="button" id="atajo-0" onclick="atajoFechas(0)" class="px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap">Hoy</button>
+          <button type="button" id="atajo-7" onclick="atajoFechas(7)" class="px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap">7 días</button>
+          <button type="button" id="atajo-30" onclick="atajoFechas(30)" class="px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap">30 días</button>
         </div>
 
 
@@ -1153,14 +1170,15 @@ function cambiarModo(modo) {
   cargarDatos();
 }
 
+// Mismo tamaño y mismo padding que en el markup: quien marca el activo PISA la
+// clase entera, asi que si aca dice otra cosa el boton cambia de tamaño al
+// primer clic. Las usan el modo y los atajos de fecha, que son el mismo control.
+const SEG_ACTIVO   = 'px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap bg-white text-blue-600 shadow-sm';
+const SEG_INACTIVO = 'px-3 py-1.5 rounded-lg t-micro font-semibold transition whitespace-nowrap text-slate-500 hover:text-slate-700';
+
 function actualizarBotonesModo() {
-  // Mismo tamaño y mismo padding que en el markup: esta funcion PISA la clase
-  // entera al marcar el activo, asi que si aca dice otra cosa el boton cambia
-  // de tamaño al primer clic.
-  const activo   = 'px-3 py-1.5 rounded-lg t-micro font-semibold transition bg-white text-blue-600 shadow-sm';
-  const inactivo = 'px-3 py-1.5 rounded-lg t-micro font-semibold transition text-slate-500 hover:text-slate-700';
-  document.getElementById('btn-modo-laboral').className = MODO === 'laboral' ? activo : inactivo;
-  document.getElementById('btn-modo-fuera').className   = MODO === 'fuera_horario' ? activo : inactivo;
+  document.getElementById('btn-modo-laboral').className = MODO === 'laboral' ? SEG_ACTIVO : SEG_INACTIVO;
+  document.getElementById('btn-modo-fuera').className   = MODO === 'fuera_horario' ? SEG_ACTIVO : SEG_INACTIVO;
 }
 actualizarBotonesModo();
 
@@ -1220,15 +1238,45 @@ function aplicarPronto() {
   }, 700);
 }
 
+// Atajos Hoy / 7 dias / 30 dias. "N dias" es desde hace N dias hasta hoy, la
+// misma cuenta que el rango por defecto: asi "30 dias" queda encendido al
+// abrir la pagina.
+const ATAJOS_DIAS = [0, 7, 30];
+
+function atajoFechas(n) {
+  fpDesde.setDate(n ? menosDias(HOY_CUENTA, n) : HOY_CUENTA, false);
+  fpHasta.setDate(HOY_CUENTA, false);
+  marcarAtajo();
+  // Un clic es una sola eleccion: no hay que esperar a que termine de tocar.
+  clearTimeout(_tAplicar);
+  cargarDatos();
+}
+
+// Enciende el atajo que coincide con las fechas elegidas. Tambien corre al
+// elegir a mano en el calendario: si alguien marca de hoy a hoy, "Hoy" se
+// enciende; si elige otro rango, se apagan los tres.
+function marcarAtajo() {
+  const d = document.getElementById('desde').value;
+  const h = document.getElementById('hasta').value;
+  ATAJOS_DIAS.forEach(n => {
+    const boton = document.getElementById(`atajo-${n}`);
+    if (!boton) return;
+    const on = h === HOY_CUENTA && d === (n ? menosDias(HOY_CUENTA, n) : HOY_CUENTA);
+    boton.className = on ? SEG_ACTIVO : SEG_INACTIVO;
+    boton.setAttribute('aria-pressed', String(on));
+  });
+}
+
 const OPTS_FECHA = {
   dateFormat: 'Y-m-d',
   altInput: true, altFormat: 'd/m/Y', altInputClass: 'fecha-in',
   locale: { firstDayOfWeek: 1 },
   onDayCreate: marcarPrimerDia,
-  onChange: aplicarPronto,
+  onChange: () => { marcarAtajo(); aplicarPronto(); },
 };
 fpDesde = flatpickr('#desde', OPTS_FECHA);
 fpHasta = flatpickr('#hasta', OPTS_FECHA);
+marcarAtajo();
 
 function fmtSeg(seg) {
   // Decia "< 1 min" y solo salia con CERO segundos: cualquier otro valor
@@ -1608,6 +1656,7 @@ function renderNoRespondidos(leads) {
   const el = document.getElementById('panel-no-respondidos');
   const franjas = FRANJAS || [];
   if (ULTIMOS_NO_RESP.length === 0) {
+    renderCriticosAhora([], franjas);
     el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
     return;
   }
@@ -1625,6 +1674,7 @@ function renderNoRespondidos(leads) {
   const conFranja = ULTIMOS_NO_RESP.map(l => ({ ...l, _f: idxDe(l) }));
   // Del que mas espera al que menos.
   conFranja.sort((a, b) => (b.espera_seg || 0) - (a.espera_seg || 0));
+  renderCriticosAhora(conFranja, franjas);
 
   const conteo = franjas.map((_, i) => conFranja.filter(l => l._f === i).length);
   const visibles = FRANJA_SEL === null ? conFranja : conFranja.filter(l => l._f === FRANJA_SEL);
@@ -1652,14 +1702,71 @@ function renderNoRespondidos(leads) {
       ${visibles.length === 0
         ? '<div class="t-chico text-slate-500 text-center py-4">Ninguno en esta franja</div>'
         : `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
-          ${visibles.map(l => {
-            const f = franjas[l._f];
-            const pill = f ? `<span class="tag ${tagClass(f.tag)} flex-shrink-0">${f.tag}</span>` : '';
-            const espera = `<span class="t-chico ${l._f >= franjas.length - 1 ? 'font-semibold text-slate-800' : 'text-slate-600'} flex-shrink-0 whitespace-nowrap">esperando ${fmtSeg(l.espera_seg)}</span>`;
-            return _filaLead(l, espera + pill);
-          }).join('')}
+          ${visibles.map(l => _filaLead(l, _esperaYFranja(l, franjas))).join('')}
         </div>`}`;
   });
+}
+
+// Cuanto lleva esperando y en que franja cae. Lo usan la lista completa y la
+// de criticos a la vista, para que un mismo lead se lea igual en los dos
+// lugares.
+function _esperaYFranja(l, franjas) {
+  const f = franjas[l._f];
+  const pill = f ? `<span class="tag ${tagClass(f.tag)} flex-shrink-0">${f.tag}</span>` : '';
+  const fuerte = l._f >= franjas.length - 1 ? 'font-semibold text-slate-800' : 'text-slate-600';
+  return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap">esperando ${fmtSeg(l.espera_seg)}</span>${pill}`;
+}
+
+// --- Criticos a la vista (Luis, 14/09, opcion C) ------------------------------
+// Cuantos se muestran sin abrir nada. Cinco: con mas, en una cuenta con decenas
+// de criticos la lista empuja fuera de la pantalla el detalle por asesor.
+const CRITICOS_A_LA_VISTA = 5;
+
+// 'conFranja' llega ordenado del que mas espera al que menos, con su indice de
+// franja ya calculado (ver renderNoRespondidos). Critico es la ultima franja.
+function renderCriticosAhora(conFranja, franjas) {
+  const el = document.getElementById('criticos-ahora');
+  if (!el) return;
+  const total = conFranja.length;
+  const ultima = franjas.length - 1;
+  const criticos = ultima >= 0 ? conFranja.filter(l => l._f === ultima) : [];
+
+  if (!total) { el.innerHTML = ''; return; }
+  // Sin criticos tambien se dice: el hueco vacio se leeria como que no cargo.
+  if (!criticos.length) {
+    el.innerHTML = `
+      <div class="flex items-center gap-2 t-chico text-slate-600 px-1">
+        <svg class="flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Ningún lead crítico · los ${total.toLocaleString('es')} sin responder están dentro del tiempo
+      </div>`;
+    return;
+  }
+
+  const filas = criticos.slice(0, CRITICOS_A_LA_VISTA)
+    .map(l => _filaLead(l, _esperaYFranja(l, franjas))).join('');
+  el.innerHTML = `
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+      <div class="flex items-center gap-2">
+        <h3 class="t-chico font-semibold text-slate-800">Críticos · los que más esperan</h3>
+        <span class="tag tag-red">${criticos.length.toLocaleString('es')}</span>
+      </div>
+      <span class="t-micro text-slate-500">clic en un lead para abrir la conversación en Kommo</span>
+    </div>
+    <div class="bg-slate-50 rounded-xl overflow-hidden divide-y divide-white">${filas}</div>
+    <button type="button" onclick="verTodosCriticos()" class="no-imprimir mt-2 t-chico font-semibold text-blue-600 hover:underline">
+      Ver todos: ${criticos.length.toLocaleString('es')} críticos de ${total.toLocaleString('es')} sin responder →
+    </button>`;
+}
+
+// Abre la tarjeta Sin responder con el filtro Critico ya puesto y la trae a la
+// vista: es el segundo paso de la lista de arriba, sin tener que buscarlo.
+function verTodosCriticos() {
+  FRANJA_SEL = (FRANJAS || []).length - 1;
+  renderNoRespondidos(ULTIMOS_NO_RESP);
+  const panel = document.getElementById('panel-no-respondidos');
+  if (panel.classList.contains('hidden')) toggleExtra('no-respondidos');
+  const quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  panel.parentElement.scrollIntoView({ behavior: quieto ? 'auto' : 'smooth', block: 'start' });
 }
 
 function renderDist(distribucion) {
