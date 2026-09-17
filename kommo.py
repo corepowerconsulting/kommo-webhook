@@ -3829,6 +3829,32 @@ def health_conversacion():
                 'vinculado_por': via,
             })
 
+    # Avisos de CONVERSACION (talk[add] / talk[update]) del lead, con todos
+    # sus campos menos los ids de chat y contacto. Sirve para ver que manda
+    # Kommo cuando alguien toca la conversacion sin escribir —cerrarla,
+    # marcarla como contestada— y si eso deja algun rastro en el aviso. El
+    # LIKE de arriba ya los trae porque llevan el lead en entity_id.
+    avisos_conv, vistos_conv = [], set()
+    for row in rows_sal:
+        try:
+            data = json.loads(row['raw_data'] or '{}')
+        except (ValueError, TypeError):
+            continue
+        for raiz in ('talk[add]', 'talk[update]'):
+            for i in get_batch_indices(data, raiz):
+                p = f'{raiz}[{i}]'
+                if str(data.get(f'{p}[entity_id]') or '') != str(lead_id):
+                    continue
+                campos = {k[len(p) + 1:-1]: v for k, v in data.items()
+                          if k.startswith(p + '[') and not k.endswith(('[chat_id]', '[contact_id]'))}
+                clave = (raiz, campos.get('talk_id'), campos.get('updated_at'))
+                if clave in vistos_conv:
+                    continue
+                vistos_conv.add(clave)
+                avisos_conv.append({'evento': raiz, 'hora': local(campos.get('updated_at')),
+                                    'ts': campos.get('updated_at'), **campos})
+    avisos_conv.sort(key=lambda a: int(a['ts'] or 0))
+
     linea = sorted(entrantes + salientes, key=lambda m: int(m['ts'] or 0))
     for m in linea:
         m['hora'] = local(m['ts'])
@@ -3861,6 +3887,7 @@ def health_conversacion():
             'chat_ids': sorted(chats), 'talk_ids': sorted(talks),
         },
         'respuestas_reales_del_asesor': turnos,
+        'avisos_de_conversacion': avisos_conv,
         'lo_que_mide_el_dashboard_hoy': [{
             'cliente': local(r['f_ult_msj_cliente']),
             'asesor':  local(r['f_ult_msj_asesor']),
