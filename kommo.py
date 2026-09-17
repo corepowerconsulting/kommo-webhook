@@ -3897,6 +3897,70 @@ def health_conversacion():
         'conversacion': linea,
     })
 
+@app.route('/health/ventana')
+@token_requerido
+def health_ventana():
+    """Todo lo que Kommo mando de una cuenta entre dos horas, agrupado.
+
+    Sirve para responder "que llego cuando alguien hizo X en Kommo": se toma
+    la hora de la accion, se pide la ventana de unos minutos alrededor y se
+    ve que tipos de aviso entraron y cuales mencionan el lead o la
+    conversacion (?buscar=id). Solo devuelve nombres de campo e ids, nunca
+    textos, asi que se puede mirar sin exponer mensajes de clientes.
+
+    Las horas son las de CAPTURA (capturado_at, UTC del servidor), no las del
+    evento: es lo que dice cuando nos llego. Antes del 02/09/2026 se guardaba
+    todo; desde entonces, de los tipos que no usamos quedan 3 ejemplos por
+    forma, asi que una ventana reciente puede verse mas vacia de lo que fue."""
+    subdomain = request.args.get('subdomain', '').strip()
+    desde = request.args.get('desde', '').strip()
+    hasta = request.args.get('hasta', '').strip()
+    buscar = request.args.get('buscar', '').strip()
+    if subdomain not in PULSE_CONFIG or not desde or not hasta:
+        return jsonify({'error': 'faltan subdomain, desde y hasta (ISO, UTC)'}), 400
+    SEGUROS = ('id', 'talk_id', 'entity_id', 'entity_type', 'element_id', 'element_type',
+               'created_at', 'updated_at', 'date_create', 'last_modified', 'is_in_work',
+               'is_read', 'note_type', 'type', 'status', 'action', 'status_id',
+               'old_status_id', 'responsible_user_id', 'created_by', 'modified_user_id')
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('SELECT id, tipo_evento, capturado_at, raw_data FROM eventos '
+                  'WHERE subdomain = %s AND capturado_at >= %s AND capturado_at < %s '
+                  'ORDER BY id LIMIT 3000', (subdomain, desde, hasta))
+        rows = c.fetchall()
+    finally:
+        conn.close()
+
+    por_tipo, por_firma, mencionan = Counter(), Counter(), []
+    for row in rows:
+        por_tipo[row['tipo_evento']] += 1
+        try:
+            data = json.loads(row['raw_data'] or '{}')
+        except (ValueError, TypeError):
+            continue
+        raices = sorted({re.sub(r'\[\d+\]', '[n]', k).split('[')[0] + '[' +
+                         re.sub(r'\[\d+\]', '[n]', k).split('[')[1]
+                         for k in data if '[' in k and not k.startswith('account')})
+        firma = '+'.join(raices)
+        por_firma[firma] += 1
+        if buscar and buscar in (row['raw_data'] or ''):
+            campos = {}
+            for k, v in data.items():
+                hoja = k.rsplit('[', 1)[-1].rstrip(']')
+                patron = re.sub(r'\[\d+\]', '[n]', k)
+                campos[patron] = v if hoja in SEGUROS else f'<{type(v).__name__} {len(str(v))}>'
+            mencionan.append({'capturado_at': row['capturado_at'], 'tipo_evento': row['tipo_evento'],
+                              'firma': firma, 'campos': campos})
+    return jsonify({
+        'subdomain': subdomain, 'desde': desde, 'hasta': hasta,
+        'eventos': len(rows), 'tope_alcanzado': len(rows) == 3000,
+        'por_tipo': dict(por_tipo.most_common()),
+        'por_forma': dict(por_firma.most_common(40)),
+        'buscar': buscar or None,
+        'mencionan': mencionan[:50],
+    })
+
 @app.route('/health/salientes')
 @token_requerido
 def health_salientes():
