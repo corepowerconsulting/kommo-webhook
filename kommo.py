@@ -13,7 +13,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
 import calendar
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, deque
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
@@ -127,7 +127,28 @@ _CARGA = {
     # Eventos que llegaron y se decidio NO guardar (ver _que_guardar). Se
     # cuentan para que el ahorro sea visible y no un descarte a ciegas.
     'eventos_no_guardados': 0,
+    # La ultima escritura que salio bien. Con esto "guardando" se recupera
+    # solo cuando la base vuelve, en vez de quedar en falso hasta reiniciar.
+    'cuando_ultima_escritura_ok': None,
+    # Webhooks cuya escritura fallo y se volvieron a encolar, y los que se
+    # dieron por perdidos despues de REINTENTOS_WEBHOOK intentos.
+    'reintentos_cola': 0,
+    'perdidos_tras_reintentos': 0,
 }
+
+# Momentos (monotonic) de los fallos de escritura recientes. "guardando" mira
+# esta ventana y no el contador acumulado: un fallo de hace tres dias no dice
+# nada del estado de ahora (revision del 26/09).
+_fallos_recientes = deque(maxlen=5000)
+VENTANA_SALUD_SEG = 900
+
+def _fallos_en(seg):
+    limite = time.monotonic() - seg
+    return sum(1 for t in list(_fallos_recientes) if t >= limite)
+
+def _escritura_ok():
+    _CARGA['escrituras_ok'] += 1
+    _CARGA['cuando_ultima_escritura_ok'] = datetime.utcnow().isoformat()
 
 def _fallo_escritura(donde, e):
     """Una escritura a la base fallo: se CUENTA, no solo se imprime.
@@ -140,6 +161,11 @@ def _fallo_escritura(donde, e):
     _CARGA['escrituras_fallidas'] += 1
     _CARGA['ultimo_error_escritura'] = f'{donde}: {e}'
     _CARGA['cuando_el_ultimo_error'] = datetime.utcnow().isoformat()
+    _fallos_recientes.append(time.monotonic())
+    # El trabajador de la cola mira esto para saber si tiene que reintentar
+    # el webhook. Fuera de un trabajador el atributo no existe y no se toca.
+    if hasattr(_hilo_local, 'fallos'):
+        _hilo_local.fallos += 1
     print(f"❌ Error {donde}: {e}")
 
 ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN')
@@ -338,8 +364,6 @@ def init_db():
     # refresca sola cada minuto y medio, o sea muchas veces por sesion.
     c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_cliente_sub_ts
                  ON mensajes_cliente (subdomain, ts)''')
-    c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_asesor_sub_ts
-                 ON mensajes_asesor (subdomain, ts)''')
     c.execute('''
         CREATE TABLE IF NOT EXISTS leads_estado (
             subdomain TEXT,
@@ -422,6 +446,12 @@ def init_db():
             PRIMARY KEY (subdomain, msg_id)
         )
     ''')
+    # Va aca y no junto al de mensajes_cliente: un indice sobre una tabla que
+    # todavia no existe rompe init_db en una base vacia, y como init_db corre
+    # al importar, la app no arrancaba en una instalacion nueva (revision del
+    # 26/09). En una base existente el error no se veia.
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_asesor_sub_ts
+                 ON mensajes_asesor (subdomain, ts)''')
     c.execute('''CREATE INDEX IF NOT EXISTS idx_msjs_asesor_lead
                  ON mensajes_asesor (subdomain, lead_id, ts)''')
     # Para el UPDATE que completa los lead_id que faltan.
@@ -653,7 +683,7 @@ def guardar_msjs_entrantes(subdomain, data):
         c = conn.cursor()
         n = insertar_msjs_cliente(c, subdomain, filas)
         conn.commit()
-        _CARGA['escrituras_ok'] += 1
+        _escritura_ok()
         return n
     except Exception as e:
         _fallo_escritura('mensajes_cliente', e)
@@ -778,6 +808,34 @@ SQL_COMPLETAR_LEAD_SALIENTE = '''
        AND m.subdomain = %s
 '''
 
+def _completar_lead_de_chats(conn, subdomain, chats):
+    """Pone el lead a los salientes huerfanos de estos chats.
+
+    Corre DESPUES de confirmar la escritura, en los dos caminos: al guardar un
+    saliente y al guardar un vinculo chat -> lead. Con cuatro trabajadores, el
+    saliente y el entrante del mismo chat pueden procesarse a la vez; si el
+    UPDATE fuera dentro de cada transaccion, ninguno veria lo del otro sin
+    confirmar y el saliente quedaria huerfano. Hecho despues del commit,
+    el que termina segundo siempre ve lo que confirmo el primero.
+
+    Un fallo aca no pierde nada: el saliente ya esta guardado, y lo completa
+    la proxima pasada o /backfill-salientes."""
+    chats = sorted({ch for ch in chats if ch})
+    if not chats:
+        return
+    try:
+        c = conn.cursor()
+        c.execute(
+            'UPDATE mensajes_asesor m SET lead_id = c.lead_id '
+            'FROM conversaciones c '
+            'WHERE m.subdomain = c.subdomain AND m.chat_id = c.chat_id '
+            'AND m.lead_id IS NULL AND m.subdomain = %s AND m.chat_id = ANY(%s)',
+            (subdomain, chats))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        _fallo_escritura('mensajes_asesor (completar lead)', e)
+
 def guardar_msjs_salientes(subdomain, data):
     """Camino del webhook: guarda los salientes de UN payload."""
     filas = msjs_salientes(data)
@@ -787,20 +845,13 @@ def guardar_msjs_salientes(subdomain, data):
     try:
         c = conn.cursor()
         n = insertar_msjs_asesor(c, subdomain, filas)
-        # Los que llegaron sin lead se completan enseguida si el chat ya se
-        # conoce. Es una consulta acotada a los chats de ESTE payload, no un
-        # UPDATE sobre toda la tabla.
-        chats = [f['chat_id'] for f in filas if not f['lead_id'] and f['chat_id']]
-        if chats:
-            c.execute(
-                'UPDATE mensajes_asesor m SET lead_id = c.lead_id '
-                'FROM conversaciones c '
-                'WHERE m.subdomain = c.subdomain AND m.chat_id = c.chat_id '
-                'AND m.lead_id IS NULL AND m.subdomain = %s AND m.chat_id = ANY(%s)',
-                (subdomain, chats)
-            )
         conn.commit()
-        _CARGA['escrituras_ok'] += 1
+        _escritura_ok()
+        # Los que llegaron sin lead se completan si el chat ya se conoce.
+        # DESPUES del commit y en su propia transaccion: ver
+        # _completar_lead_de_chats.
+        _completar_lead_de_chats(
+            conn, subdomain, [f['chat_id'] for f in filas if not f['lead_id'] and f['chat_id']])
         return n
     except Exception as e:
         conn.rollback()
@@ -819,7 +870,11 @@ def guardar_conversaciones(subdomain, data):
         c = conn.cursor()
         n = insertar_conversaciones(c, subdomain, mapa)
         conn.commit()
-        _CARGA['escrituras_ok'] += 1
+        _escritura_ok()
+        # El vinculo nuevo completa los salientes que llegaron ANTES que el
+        # entrante que revela el lead (revision del 26/09): sin esto quedaban
+        # sin lead hasta que llegara otro saliente del mismo chat.
+        _completar_lead_de_chats(conn, subdomain, list(mapa))
         return n
     except Exception as e:
         conn.rollback()
@@ -895,7 +950,7 @@ def guardar_conversaciones_estado(subdomain, data):
         c = conn.cursor()
         n = insertar_conversaciones_estado(c, subdomain, filas)
         conn.commit()
-        _CARGA['escrituras_ok'] += 1
+        _escritura_ok()
         return n
     except Exception as e:
         conn.rollback()
@@ -994,7 +1049,7 @@ def guardar_evento(subdomain, tipo_evento, lead_id, timestamp, data):
             datetime.now().isoformat()
         ))
         conn.commit()
-        _CARGA['escrituras_ok'] += 1
+        _escritura_ok()
         print(f"💾 {subdomain} | {tipo_evento} | lead: {lead_id}")
     except Exception as e:
         _fallo_escritura('eventos', e)
@@ -1095,7 +1150,7 @@ def guardar_tiempo_respuesta(subdomain, lead_id, f_cliente, f_asesor, responsibl
                           asesor_nombre = COALESCE(EXCLUDED.asesor_nombre, tiempos_respuesta.asesor_nombre)
         ''', (subdomain, lead_id, f_cliente, f_asesor, tiempo_seg, datetime.now().isoformat(), responsible_user_id, lead_nombre, asesor_nombre))
         conn.commit()
-        _CARGA['escrituras_ok'] += 1
+        _escritura_ok()
         print(f"⏱️  {subdomain} | lead {lead_id} | asesor respondió en {tiempo_seg // 60}min {tiempo_seg % 60}s")
     except Exception as e:
         _fallo_escritura('tiempos_respuesta', e)
@@ -1134,7 +1189,7 @@ def guardar_lead_estado(subdomain, lead_id, responsible_user_id, f_cliente, f_as
             WHERE EXCLUDED.evento_ts >= leads_estado.evento_ts
         ''', (subdomain, lead_id, responsible_user_id, f_cliente, f_asesor, int(evento_ts), datetime.now().isoformat(), lead_nombre, status_id, asesor_nombre, pipeline_id))
         conn.commit()
-        _CARGA['escrituras_ok'] += 1
+        _escritura_ok()
     except Exception as e:
         _fallo_escritura('leads_estado', e)
         conn.close()
@@ -1313,13 +1368,34 @@ _trabajadores = []
 _trabajadores_lock = threading.Lock()
 _trabajadores_pid = None
 
+# Cuantas veces se reintenta un webhook cuya escritura fallo (revision del
+# 26/09). Antes un fallo de la base perdia el evento en silencio y contaba
+# como procesado. Reprocesar es seguro: todas las escrituras son upsert o
+# ignoran duplicados, salvo la copia cruda en 'eventos', que puede quedar
+# repetida y los backfills ya la leen de forma idempotente.
+REINTENTOS_WEBHOOK = 3
+
 def _trabajador_webhooks():
     _hilo_local.reusar = True
     while True:
-        data = _cola_webhooks.get()
+        data, intentos = _cola_webhooks.get()
         try:
+            _hilo_local.fallos = 0
             _procesar_webhook(data)
-            _CARGA['procesados_cola'] += 1
+            if _hilo_local.fallos == 0:
+                _CARGA['procesados_cola'] += 1
+            elif intentos < REINTENTOS_WEBHOOK:
+                # Espera creciente: si la base esta caida, reintentar enseguida
+                # solo suma fallos. 5, 10 y 20 segundos.
+                _CARGA['reintentos_cola'] += 1
+                time.sleep(5 * 2 ** intentos)
+                try:
+                    _cola_webhooks.put_nowait((data, intentos + 1))
+                except queue.Full:
+                    _CARGA['perdidos_tras_reintentos'] += 1
+            else:
+                _CARGA['perdidos_tras_reintentos'] += 1
+                print(f"❌ Webhook perdido tras {intentos} reintentos")
         except Exception as e:
             print(f"❌ Trabajador de webhooks: {e}")
         finally:
@@ -1356,7 +1432,7 @@ def _encolar_webhook(data):
         _CARGA['hilos_rechazados'] += 1
         print(f"❌ No se pudo arrancar un trabajador de webhooks: {e}")
     try:
-        _cola_webhooks.put_nowait(data)
+        _cola_webhooks.put_nowait((data, 0))
     except queue.Full:
         # Se responde 200 igual: perder un evento es mucho mas barato que
         # perder la cuenta entera con el webhook apagado.
@@ -1372,8 +1448,11 @@ def _encolar_webhook(data):
 def _vaciar_cola_al_salir():
     """En un deploy el proceso viejo recibe la orden de terminar y lo que quede
     en la cola se perderia. Se les dan unos segundos a los trabajadores."""
+    # unfinished_tasks y no empty(): empty() da verdadero apenas un trabajador
+    # retira el ultimo evento, aunque todavia lo este guardando, y el proceso
+    # terminaba con esa escritura a medias (revision del 26/09).
     limite = time.monotonic() + 20
-    while (not _cola_webhooks.empty() and time.monotonic() < limite
+    while (_cola_webhooks.unfinished_tasks and time.monotonic() < limite
            and any(t.is_alive() for t in _trabajadores)):
         time.sleep(0.2)
 
@@ -1538,7 +1617,10 @@ def _procesar_webhook(data):
             print(f"⚠️  Ignorado | {subdomain} | {patrones}")
 
     except Exception as e:
-        print(f"❌ ERROR procesando webhook en background: {e}")
+        # Tambien es un fallo de escritura: casi siempre es la conexion a la
+        # base, que se abre fuera del try de cada guardar_*. Contarlo aca hace
+        # que /health/carga lo vea y que el trabajador reintente el webhook.
+        _fallo_escritura('webhook', e)
 
 # ========================
 # ENDPOINTS
@@ -2339,7 +2421,14 @@ def health_carga():
         # Lo PRIMERO que hay que mirar. Recibir no es guardar: el 31/08 se
         # recibieron 65.000 webhooks y no se guardo ninguno, y este endpoint
         # decia que todo estaba bien porque solo miraba las lineas de arriba.
-        'guardando':                  _CARGA['escrituras_fallidas'] == 0,
+        # Sin fallos en los ultimos 15 minutos. Antes era "ningun fallo desde
+        # el arranque", y un solo error dejaba la alarma encendida para siempre
+        # aunque la base se hubiera recuperado.
+        'guardando':                  _fallos_en(VENTANA_SALUD_SEG) == 0,
+        'fallos_ultimos_15_min':      _fallos_en(VENTANA_SALUD_SEG),
+        'cuando_ultima_escritura_ok': _CARGA['cuando_ultima_escritura_ok'],
+        'reintentos_cola':            _CARGA['reintentos_cola'],
+        'perdidos_tras_reintentos':   _CARGA['perdidos_tras_reintentos'],
         'escrituras_ok':              _CARGA['escrituras_ok'],
         'escrituras_fallidas':        _CARGA['escrituras_fallidas'],
         'ultimo_error_escritura':     _CARGA['ultimo_error_escritura'],
@@ -3171,16 +3260,33 @@ def _turnos_de_mensajes(entrantes, salientes, autos=None):
             continue
         piso = ent[0]
         i = 0
-        esperando = None
+        # DOS esperas pendientes (revision del 26/09). Con una sola, el saludo
+        # del bot cerraba el turno y la respuesta de la persona que venia
+        # despues no generaba ninguno: cliente 10:00, bot 10:00:04, asesor
+        # 10:10 daba un turno del bot y cero humanos. En tucoytico el bot abre
+        # 505 de 1.215 turnos, asi que esas atenciones faltaban de la mediana.
+        #   esperando_alguien  primer mensaje sin NINGUNA respuesta: la mide
+        #                      el turno del bot, que sigue en el ranking.
+        #   esperando_persona  primer mensaje sin respuesta de una PERSONA: el
+        #                      bot no la cierra.
+        esperando_alguien = esperando_persona = None
         for ts_sal, autor, uid, msg_id in sal:
             if ts_sal < piso:
                 continue
             while i < len(ent) and ent[i] <= ts_sal:
-                if esperando is None:
-                    esperando = ent[i]
+                if esperando_alguien is None:
+                    esperando_alguien = ent[i]
+                if esperando_persona is None:
+                    esperando_persona = ent[i]
                 i += 1
+            es_auto = (autor or '') in autos
+            esperando = esperando_alguien if es_auto else esperando_persona
             if esperando is None:
                 continue          # respuesta sin mensaje previo del cliente
+            if es_auto:
+                esperando_alguien = None
+            else:
+                esperando_alguien = esperando_persona = None
             turnos.append({
                 'lead_id': lead_id,
                 'inicio':  esperando,
@@ -3192,12 +3298,11 @@ def _turnos_de_mensajes(entrantes, salientes, autos=None):
                 'user_id': uid,
                 # 'auto' se decide con el nombre ORIGINAL del mensaje: es el
                 # que figura en REMITENTES_AUTOMATICOS.
-                'auto':    (autor or '') in autos,
+                'auto':    es_auto,
                 # El mensaje que CERRO la espera. Con esto el link del tablero
                 # abre la conversacion parada en esa respuesta.
                 'msg_id':  msg_id,
             })
-            esperando = None
     return turnos
 
 @app.route('/health/comparar-calculo')
@@ -4329,12 +4434,15 @@ def _fmt_seg(seg):
     return f'{h}h {m}m' if m else f'{h}h'
 
 def _next_work_moment(dt, hora_ini, hora_fin, dias_lab):
-    dt = dt.replace(second=0, microsecond=0)
+    # Dentro del horario se devuelve el MISMO instante, con sus segundos. Antes
+    # se truncaba al minuto siempre: un mensaje de las 10:00:50 contestado a
+    # las 10:01:00 medía 60 s en vez de 10 (revision del 26/09). Solo se
+    # redondea al construir una apertura, que empieza en punto.
     if dt.weekday() in dias_lab and hora_ini <= dt.hour < hora_fin:
         return dt
     if dt.weekday() in dias_lab and dt.hour < hora_ini:
-        return dt.replace(hour=hora_ini, minute=0, second=0)
-    next_d = (dt + timedelta(days=1)).replace(hour=hora_ini, minute=0, second=0)
+        return dt.replace(hour=hora_ini, minute=0, second=0, microsecond=0)
+    next_d = (dt + timedelta(days=1)).replace(hour=hora_ini, minute=0, second=0, microsecond=0)
     while next_d.weekday() not in dias_lab:
         next_d += timedelta(days=1)
     return next_d
@@ -5005,6 +5113,37 @@ def dias_parciales(subdomain, conn=None):
     _dias_parciales_cache[subdomain] = (valor, ahora + _DIAS_PARCIALES_TTL_SEG)
     return valor
 
+def _leads_estado_en(subdomain, ts, subconjunto_sql, subconjunto_params):
+    """FROM de leads_estado con responsable, asesor, embudo y etapa como
+    eran en 'ts', sacados de la historia (leads_cambios).
+
+    Se usa como 'leads_estado le' en las listas de un dia PASADO, con las
+    mismas columnas, asi los filtros de responsable, embudo y ganados/perdidos
+    funcionan igual que con el estado de hoy.
+
+    La fila elegida es la ultima que empezo antes o en 'ts'; si todas son
+    posteriores, la primera. Es la regla de _vigente_en. Sin historia se usa
+    el estado actual, como antes.
+
+    'subconjunto_sql' acota los leads (los que tuvieron mensajes ese dia):
+    sin eso la busqueda en la historia se haria para todos los leads de la
+    cuenta, 50.000 en Camara China, en cada refresco del comparativo."""
+    sql = f'''(SELECT e.subdomain, e.lead_id, e.lead_nombre,
+                      COALESCE(h.responsible_user_id, e.responsible_user_id) AS responsible_user_id,
+                      COALESCE(h.asesor_nombre,       e.asesor_nombre)       AS asesor_nombre,
+                      COALESCE(h.pipeline_id,         e.pipeline_id)         AS pipeline_id,
+                      COALESCE(h.status_id,           e.status_id)           AS status_id
+                 FROM leads_estado e
+            LEFT JOIN LATERAL (
+                   SELECT lc.responsible_user_id, lc.asesor_nombre, lc.pipeline_id, lc.status_id
+                     FROM leads_cambios lc
+                    WHERE lc.subdomain = e.subdomain AND lc.lead_id = e.lead_id
+                    ORDER BY (lc.desde_ts <= %s) DESC,
+                             CASE WHEN lc.desde_ts <= %s THEN -lc.desde_ts ELSE lc.desde_ts END
+                    LIMIT 1) h ON TRUE
+                WHERE e.subdomain = %s AND e.lead_id IN ({subconjunto_sql}))'''
+    return sql, [ts, ts, subdomain] + list(subconjunto_params)
+
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None,
                           sql_embudo='', params_embudo=(), corte=None, conn=None,
@@ -5038,10 +5177,29 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         if corte:
-            query = '''
+            # Un momento PASADO usa el responsable, asesor, embudo y etapa de
+            # ese momento (revision del 26/09). Con el estado de hoy, un lead
+            # abierto ayer y ganado hoy desaparecia de la lista de ayer.
+            if hasta_ts is not None:
+                tabla_le, params_le = _leads_estado_en(
+                    subdomain, hasta_ts,
+                    'SELECT lead_id FROM mensajes_cliente '
+                    'WHERE subdomain = %s AND ts >= %s AND ts <= %s',
+                    [subdomain, corte, hasta_ts])
+            else:
+                tabla_le, params_le = 'leads_estado', []
+            # inicio_espera: el PRIMER mensaje del cliente despues de la ultima
+            # respuesta. El ultimo (cli.ultimo) dice quien hablo al final, pero
+            # medir desde ahi bajaba la espera de quien insiste: escribe 10:00
+            # y 10:20, y a las 10:25 figuraba esperando 5 minutos y no 25.
+            query = f'''
                 SELECT le.lead_id, le.responsible_user_id, le.lead_nombre,
-                       le.asesor_nombre, cli.ultimo AS f_ult_msj_cliente
-                  FROM leads_estado le
+                       le.asesor_nombre, cli.ultimo AS f_ult_msj_cliente,
+                       (SELECT MIN(mc.ts) FROM mensajes_cliente mc
+                         WHERE mc.subdomain = le.subdomain AND mc.lead_id = le.lead_id
+                           AND mc.ts >= %s AND mc.ts > COALESCE(asr.ultimo, 0)
+                           AND (%s IS NULL OR mc.ts <= %s)) AS inicio_espera
+                  FROM {tabla_le} le
                   JOIN (SELECT lead_id, MAX(ts) AS ultimo FROM mensajes_cliente
                          WHERE subdomain = %s AND ts >= %s AND (%s IS NULL OR ts <= %s)
                          GROUP BY lead_id) cli
@@ -5058,11 +5216,13 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             # estaban esperando a esa hora. No hace falta guardar ninguna foto
             # —tenemos cada mensaje con su timestamp de los dos lados—, alcanza
             # con no mirar lo que llego despues. Con hasta_ts=None es el ahora.
-            params = [subdomain, corte, hasta_ts, hasta_ts,
-                      subdomain, hasta_ts, hasta_ts, subdomain]
+            params = ([corte, hasta_ts, hasta_ts] + params_le +
+                      [subdomain, corte, hasta_ts, hasta_ts,
+                       subdomain, hasta_ts, hasta_ts, subdomain])
         else:
             query = '''
-                SELECT lead_id, responsible_user_id, f_ult_msj_cliente, lead_nombre, asesor_nombre
+                SELECT lead_id, responsible_user_id, f_ult_msj_cliente,
+                       f_ult_msj_cliente AS inicio_espera, lead_nombre, asesor_nombre
                 FROM leads_estado le
                 WHERE subdomain = %s
                   AND f_ult_msj_cliente IS NOT NULL
@@ -5105,12 +5265,18 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     cfg = PULSE_CONFIG.get(subdomain, {})
     h_ini, h_fin = cfg.get('horario', (0, 24))
     dias_lab = cfg.get('dias_laborables', [0, 1, 2, 3, 4, 5, 6])
-    ahora = int(time.time())
+    # El reloj es el momento que se esta mirando: ahora, o el corte del dia
+    # pasado. Con time.time() siempre, un mismo dia pasado sumaba espera cada
+    # vez que se lo consultaba (revision del 26/09).
+    reloj = int(hasta_ts) if hasta_ts else int(time.time())
     salida = []
     for r in rows:
-        fila = _fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente')
+        r['inicio_espera'] = r.get('inicio_espera') or r['f_ult_msj_cliente']
+        # La fecha que se muestra es desde cuando espera, la misma que la
+        # espera: si no, "10:20 · esperando 25 min" no cierra.
+        fila = _fmt_lead_estado(r, tz_offset, 'inicio_espera')
         fila['espera_seg'] = _calc_tiempo_efectivo(
-            r['f_ult_msj_cliente'], ahora, tz_offset, h_ini, h_fin, dias_lab)
+            r['inicio_espera'], reloj, tz_offset, h_ini, h_fin, dias_lab)
         salida.append(fila)
     return salida
 
@@ -5353,20 +5519,30 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
     try:
         c = conn.cursor(cursor_factory=RealDictCursor)
         if corte:
+            # Un dia pasado con el estado del lead al final de ese dia, igual
+            # que Sin responder (ver _leads_estado_en).
+            if rango:
+                tabla_le, params_le = _leads_estado_en(
+                    subdomain, fin,
+                    'SELECT lead_id FROM mensajes_asesor WHERE subdomain = %s '
+                    'AND ts >= %s AND ts < %s AND lead_id IS NOT NULL',
+                    [subdomain, inicio, fin])
+            else:
+                tabla_le, params_le = 'leads_estado', []
             # ultimo_de_persona es NULL cuando lo unico que llego hoy fue del
             # bot: eso es exactamente lo que separa las dos listas.
-            query = '''
+            query = f'''
                 SELECT le.lead_id, le.responsible_user_id, le.lead_nombre, le.asesor_nombre,
                        MAX(ma.ts) AS f_ult_msj_asesor,
                        MAX(ma.ts) FILTER (
                            WHERE NOT (COALESCE(ma.autor_nombre, '') = ANY(%s))
                        ) AS ultimo_de_persona
                   FROM mensajes_asesor ma
-                  JOIN leads_estado le
+                  JOIN {tabla_le} le
                     ON le.subdomain = ma.subdomain AND le.lead_id = ma.lead_id
                  WHERE ma.subdomain = %s AND ma.ts >= %s AND ma.ts < %s
             '''
-            params = [autos, subdomain, inicio, fin]
+            params = [autos] + params_le + [subdomain, inicio, fin]
         else:
             query = '''
                 SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre,
@@ -6236,6 +6412,18 @@ def pulse_data():
 # ========================
 # MAIN
 # ========================
+# El vigia arranca al cargar la app, no con la primera peticion (revision del
+# 26/09): si despues de un reinicio no llega ningun webhook —justo lo que tiene
+# que detectar— nadie lo despertaba. Si gunicorn cargara la app antes del
+# fork, el hilo quedaria en el padre; _asegurar_vigia compara el pid y lo
+# vuelve a arrancar en el proceso que atiende con la primera peticion.
+# PULSE_SIN_HILOS lo apaga para scripts y pruebas que importan este modulo.
+if not os.environ.get('PULSE_SIN_HILOS'):
+    try:
+        _asegurar_vigia()
+    except RuntimeError as e:
+        print(f"⚠️  No se pudo arrancar el vigia: {e}")
+
 if __name__ == '__main__':
     print("🚀 Servidor corriendo en puerto 5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
