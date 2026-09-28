@@ -1152,5 +1152,44 @@
       "9494503": "Paul Adams",
       "9562043": "Johan Manrique"
     }
+  },
+  "worldimportadospy": {
+    "embudos": {
+      "14439567": {
+        "etapas": {
+          "111534547": "Leads Entrantes",
+          "111534891": "Nueva consulta",
+          "111534895": "Cualificado",
+          "111534899": "Cotización enviada",
+          "111534903": "Pedido creado",
+          "111534907": "Pedido completado",
+          "111534911": "Pedido enviado",
+          "142": "Pedido enviado – ganado",
+          "143": "Pedido cancelado – perdido"
+        },
+        "nombre": "MARKETING",
+        "principal": true
+      },
+      "14499375": {
+        "etapas": {
+          "111992739": "Leads Entrantes",
+          "111992743": "Presupuesto",
+          "111992747": "Consultas",
+          "111992751": "Descartados",
+          "142": "Presupuesto aprobado",
+          "143": "Presupuesto descartado"
+        },
+        "nombre": "NO CLIENTES ",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "15838635": "World Importados",
+      "15838771": "Leticia Garay",
+      "15871775": "Federico",
+      "15871787": "Juan Pablo",
+      "6453065": "Luis Marroquin",
+      "6767570": "Soporte Core Power Consulting"
+    }
   }
 }
