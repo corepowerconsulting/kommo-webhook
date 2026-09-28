@@ -82,6 +82,16 @@ ASESORES = {
     13127364: 'Maria Ventura',
     13127368: 'Mayte Jimenez',
     13902356: 'Freddy Hernandez',
+
+    # Ecoambiental Group (alta del 28/09/2026, bajados con bajar_asesores.py).
+    # Luis Marroquin y el soporte ya estan arriba: mismo usuario en todas.
+    15660891: 'ECOAMBIENTAL SISTEMAS',
+    15822787: 'Asesor Ecoambiental',
+    15883691: 'Asesor ACM',
+    15883699: 'Asesor Geplane',
+    15883703: 'Asesor Ghamec',
+    15883707: 'Asesor Agroambiental',
+    15870195: 'Ecoambiental',   # inactivo en Kommo; se conserva por los datos viejos
 }
 
 # Remitentes AUTOMATICOS: mensajes salientes que no los escribio una persona.
@@ -126,7 +136,7 @@ REMITENTES_AUTOMATICOS = {
 # el dia siguiente.
 #
 # Ninguno de estos paises usa horario de verano, asi que el numero es fijo:
-#   El Salvador -6   ·   Panama -5   ·   Ecuador -5   ·   Rep. Dominicana -4
+#   El Salvador -6   ·   Panama -5   ·   Ecuador -5   ·   Peru -5   ·   Rep. Dominicana -4
 PULSE_CONFIG = {
     'corepowerconsulting': {
         'nombre': 'Core Power Consulting',
@@ -266,6 +276,25 @@ PULSE_CONFIG = {
         # get_custom_field es exacta.
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
         # Panama, que tambien es -5. Verificado, no hace falta cambiarlo.
+        'tz_offset': -5,
+        'horario': (8, 18),
+        'dias_laborables': [0, 1, 2, 3, 4],
+        'franjas': [
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
+        ]
+    },
+    # Alta del 28/09/2026. Lima, Peru: -5 fijo, sin horario de verano.
+    # Horario y franjas por defecto, a pedido de Juan.
+    'ecoambientalgroup': {
+        'nombre': 'Ecoambiental Group',
+        'crm_domain': 'ecoambientalgroup.kommo.com',
+        # 'F ult msj cliente' confirmado en los primeros payloads (/health/alta,
+        # 28/09). El del asesor todavia no llego —nadie habia respondido— y va
+        # el nombre estandar: verificarlo con la primera respuesta.
+        'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
         'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],

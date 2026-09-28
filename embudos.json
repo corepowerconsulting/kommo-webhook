@@ -146,6 +146,93 @@
       "9601187": "Maria Fernanda Morillo"
     }
   },
+  "ecoambientalgroup": {
+    "embudos": {
+      "14478067": {
+        "etapas": {
+          "111830375": "Incoming leads",
+          "111830379": "Contacto inicial",
+          "111830383": "MATRICULADOS",
+          "112006687": "INTERESADOS EN MATRICULARSE",
+          "112008299": "REGISTRADOS",
+          "112008435": "APROBADOS",
+          "142": "COMPRARON CERTIFICADO",
+          "143": "PERDIDOS"
+        },
+        "nombre": "GHAMEC",
+        "principal": false
+      },
+      "14498871": {
+        "etapas": {
+          "111988739": "Incoming leads",
+          "111988743": "Contacto inicial",
+          "111988747": "INTERESADOS EN MATRICULARSE",
+          "111988751": "REGISTRADOS",
+          "112009443": "MATRICULADOS",
+          "112009447": "APROBADOS",
+          "112222967": "DIFUSIONES",
+          "112223055": "DIFUSIONES ENVIADAS",
+          "142": "COMPRARON CERTIFICADO",
+          "143": "PERDIDOS"
+        },
+        "nombre": "ECOAMBIENTAL",
+        "principal": true
+      },
+      "14498875": {
+        "etapas": {
+          "111988755": "Incoming leads",
+          "111988759": "Contacto inicial",
+          "111988763": "INTERESADOS EN MATRICULARSE",
+          "111988767": "MATRICULADOS",
+          "112009503": "REGISTRADOS",
+          "112009507": "APROBADOS",
+          "142": "COMPRARON CERTIFICADO",
+          "143": "PERDIDOS"
+        },
+        "nombre": "ACM",
+        "principal": false
+      },
+      "14498879": {
+        "etapas": {
+          "111988771": "Incoming leads",
+          "111988775": "Contacto inicial",
+          "111988779": "INTERESADOS EN MATRICULARSE",
+          "111988783": "REGISTRADOS",
+          "112009731": "MATRICULADOS",
+          "112009735": "APROBADOS",
+          "142": "COMPRARON CERTIFICADO",
+          "143": "PERDIDOS"
+        },
+        "nombre": "AGROAMBIENTAL",
+        "principal": false
+      },
+      "14498883": {
+        "etapas": {
+          "111988787": "Incoming leads",
+          "111988791": "Contacto inicial",
+          "111988795": "INTERESADOS EN MATRICULARSE",
+          "111988799": "MATRICULADOS",
+          "112009971": "REGISTRADOS",
+          "112009975": "APROBADOS",
+          "142": "COMPRARON CERTIFICADO",
+          "143": "PERDIDOS"
+        },
+        "nombre": "GEPLANE",
+        "principal": false
+      }
+    },
+    "usuarios": {
+      "15660891": "ECOAMBIENTAL SISTEMAS",
+      "15822787": "Asesor Ecoambiental",
+      "15870195": "Ecoambiental",
+      "15883691": "Asesor ACM",
+      "15883699": "Asesor Geplane",
+      "15883703": "Asesor Ghamec",
+      "15883707": "Asesor Agroambiental",
+      "6453065": "Luis Marroquin",
+      "6767570": "Soporte Core Power Consulting"
+    }
+  },
   "gruporegalado": {
     "embudos": {
       "10396768": {
