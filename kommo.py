@@ -1085,10 +1085,46 @@ def nombre_de_remitente(user_id, nombre_del_mensaje):
             return propio
     return nombre_del_mensaje
 
+# Autor de un saliente recuperado del registro de eventos de Kommo cuando no
+# se puede saber si fue el bot o una persona (01/10/2026). El registro no trae
+# el nombre del remitente: por WhatsApp, con usuario 0, el Salesbot y una
+# persona escribiendo desde WhatsApp Lite/Business/Wazzup son identicos, y
+# comparten canal en las seis cuentas (medido: en Autonica 698 del bot contra
+# 9.580 de personas, los dos por waba).
+#
+# Se trata como automatico: cuenta como respuesta para "Sin responder" —que
+# acepta cualquier saliente, bot incluido— pero NO cierra la espera de una
+# persona ni entra en la mediana ni en el ranking (ver _registros_de_mensajes).
+# Asi el relleno arregla la lista sin inventar tiempos de atencion.
+AUTOR_DESCONOCIDO = 'Autor desconocido (registro de Kommo)'
+
 def remitentes_auto_de(subdomain):
     """Los remitentes que no son personas en esta cuenta."""
     return set(PULSE_CONFIG.get(subdomain, {}).get(
-        'remitentes_automaticos', REMITENTES_AUTOMATICOS))
+        'remitentes_automaticos', REMITENTES_AUTOMATICOS)) | {AUTOR_DESCONOCIDO}
+
+# Canales donde el usuario 0 puede ser el bot O una persona. Fuera de estos
+# (Instagram, Facebook, TikTok) el usuario 0 fue siempre el bot: medido en las
+# seis cuentas sobre todo lo capturado hasta el 01/10, 0 mensajes de persona.
+CANALES_AMBIGUOS = ('waba', 'com.amocrm.amocrmwa', 'com.wazzup.whatsapp')
+
+def _autor_de_registro(user_id, origin):
+    """Nombre de autor para un saliente que viene del registro de eventos.
+
+    Con usuario de Kommo, el de nuestra lista: es el mismo nombre que usa el
+    webhook, asi que el soporte (6767570) se reconoce como bot igual que
+    siempre. Con usuario 0, depende del canal (ver CANALES_AMBIGUOS)."""
+    if user_id:
+        nombre = ASESORES.get(int(user_id))
+        return nombre
+    o = (origin or '').lower()
+    if not o or o in CANALES_AMBIGUOS or 'whatsapp' in o:
+        return AUTOR_DESCONOCIDO
+    if o.startswith('instagram'):
+        return 'Instagram'
+    if o.startswith('facebook'):
+        return 'Facebook'
+    return 'Salesbot'
 
 def asesor_de_registro(r):
     """Quien atendio una respuesta.
@@ -2334,6 +2370,90 @@ def backfill_cambios():
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
+
+@app.route('/cargar-mensajes', methods=['POST'])
+@token_requerido
+def cargar_mensajes():
+    """Carga mensajes recuperados del registro de eventos de Kommo.
+
+    Lo llama scripts/rellenar_huecos.py para las ventanas en que no se guardo
+    nada: el 31/08-02/09 la base estuvo en solo lectura 43 horas, y en esos
+    dias hubo leads respondidos que siguen figurando "sin responder" porque la
+    respuesta nunca se guardo.
+
+    NUNCA pisa lo que trajo el webhook: si el mensaje ya existe (mismo id para
+    los salientes, mismo lead y segundo para los entrantes) se deja como esta.
+    El id del registro es el mismo que el del webhook —verificado el 01/10—,
+    asi que no hay duplicados.
+
+    El autor lo decide el servidor (_autor_de_registro), no el script.
+
+    Despues de cargar se borran las caches de la cuenta: la de turnos se
+    invalida por el ultimo mensaje, y estos son mensajes viejos que no lo
+    cambian."""
+    datos = request.get_json(silent=True) or {}
+    subdomain = str(datos.get('subdomain') or '').strip()
+    if subdomain not in PULSE_CONFIG:
+        return jsonify({'error': 'subdomain invalido', 'validos': list(PULSE_CONFIG)}), 400
+    entrantes = datos.get('entrantes') or []
+    salientes = datos.get('salientes') or []
+    if not isinstance(entrantes, list) or not isinstance(salientes, list) \
+            or len(entrantes) > 5000 or len(salientes) > 5000:
+        return jsonify({'error': 'entrantes y salientes: listas de hasta 5000'}), 400
+
+    filas_ent, filas_sal, invalidas = {}, {}, 0
+    for m in entrantes:
+        try:
+            lead, ts = str(int(m['lead_id'])), int(m['ts'])
+            filas_ent[(lead, ts)] = (subdomain, lead, ts)
+        except (KeyError, TypeError, ValueError):
+            invalidas += 1
+    desconocidos = 0
+    for m in salientes:
+        try:
+            msg_id = str(m['msg_id']).strip()[:120]
+            if not msg_id:
+                raise ValueError('msg_id')
+            uid = int(m.get('user_id') or 0)
+            origin = (str(m.get('origin') or '').strip()[:40]) or None
+            autor = _autor_de_registro(uid, origin)
+            desconocidos += autor == AUTOR_DESCONOCIDO
+            talk = m.get('talk_id')
+            filas_sal[msg_id] = (subdomain, msg_id, str(int(m['lead_id'])), int(m['ts']), uid,
+                                 autor, 'registro_kommo', None,
+                                 str(int(talk)) if talk not in (None, '') else None, origin)
+        except (KeyError, TypeError, ValueError):
+            invalidas += 1
+
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        nuevos_ent = nuevos_sal = 0
+        if filas_ent:
+            nuevos_ent = len(execute_values(
+                c, 'INSERT INTO mensajes_cliente (subdomain, lead_id, ts) VALUES %s '
+                   'ON CONFLICT DO NOTHING RETURNING 1',
+                list(filas_ent.values()), fetch=True))
+        if filas_sal:
+            nuevos_sal = len(execute_values(
+                c, 'INSERT INTO mensajes_asesor (subdomain, msg_id, lead_id, ts, user_id, '
+                   'autor_nombre, author_type, chat_id, talk_id, origin) VALUES %s '
+                   'ON CONFLICT DO NOTHING RETURNING 1',
+                list(filas_sal.values()), fetch=True))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+    for cache in (_turnos_cache, _dias_parciales_cache, _fecha_min_cache):
+        cache.pop(subdomain, None)
+    return jsonify({
+        'entrantes_recibidos': len(entrantes), 'entrantes_nuevos': nuevos_ent,
+        'salientes_recibidos': len(salientes), 'salientes_nuevos': nuevos_sal,
+        'salientes_autor_desconocido': desconocidos, 'invalidos': invalidas,
+    })
 
 @app.route('/cargar-conversaciones', methods=['POST'])
 @token_requerido
@@ -4810,6 +4930,10 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
     filtra_embudo = bool(embudos_set or etapas_set)
     for t in turnos:
         if not en_periodo(t):
+            continue
+        # Una respuesta de autor desconocido saca al lead de "Sin responder",
+        # pero no es un tiempo de atencion medible: ni mediana ni ranking.
+        if t['autor'] == AUTOR_DESCONOCIDO:
             continue
         m = meta.get(t['lead_id']) or {}
         # El momento que cuenta es el de la RESPUESTA ('fin'), no el del
