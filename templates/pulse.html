@@ -314,7 +314,14 @@
       display:flex; align-items:center; gap:6px;
       background:var(--fondo-suave); border:1px solid var(--linea); border-radius:12px; padding:5px 8px;
     }
-    .grupo-lbl { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--tenue); white-space:nowrap; }
+    /* Gris 'apagado' y no 'tenue' (01/10): 'tenue' es solo para iconos
+       decorativos —2,56:1, no alcanza para texto, lo dice paleta.py— y estas
+       etiquetas ("Ver", "Comparar con", "Responsables") se leen. */
+    .grupo-lbl { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--apagado); white-space:nowrap; }
+    /* La lista de "Sin responder": es la cola de trabajo y necesita lugar.
+       Con max-h-60 se veian dos leads y medio, y habia que hacer scroll
+       dentro de la tarjeta (01/10). Unos 8 leads de dos lineas. */
+    .lista-cola { max-height: 28rem; }
     /* Input de fecha sin caja propia: la caja es el subrecuadro que lo contiene. */
     .fecha-in {
       background:transparent; border:0; padding:2px 0; width:5.2rem; cursor:pointer;
@@ -485,7 +492,7 @@
           Incluir conversaciones cerradas
         </label>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
         <div class="card card-clic abierta border-l-4 !border-l-red-500">
           <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
                con Tab ni se activa con Enter: quien no usa mouse no podia abrir
@@ -1449,14 +1456,17 @@ function _conScrollGuardado(el, dibujar) {
   if (nueva && arriba) nueva.scrollTop = arriba;
 }
 
+// Dos lineas por lead (01/10): el nombre, y debajo quien lo tiene y cuando
+// escribio. Eran cuatro, con el numero de lead en letra de codigo: para el
+// supervisor es ruido, y queda en el title por si hace falta buscarlo.
 function _filaLead(l, extra) {
+  const unida = [l.asesor, l.detalle].filter(Boolean).join(' · ');
+  const sub = unida ? unida.charAt(0).toUpperCase() + unida.slice(1) : '';
   return `
-      <a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-100 transition">
+      <a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" title="Lead #${l.lead_id}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 transition">
         <div class="min-w-0 flex-1">
           <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
-          <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
-          <div class="t-micro text-slate-500 mt-0.5 truncate">${l.asesor || ''}</div>
-          ${l.detalle ? `<div class="t-micro text-slate-500 mt-0.5 truncate">${l.detalle}</div>` : ''}
+          ${sub ? `<div class="t-micro text-slate-500 mt-0.5 truncate" title="${sub}">${sub}</div>` : ''}
         </div>
         ${extra}
       </a>`;
@@ -1468,9 +1478,9 @@ function _filaLead(l, extra) {
 // fecha, "esperando 200 h" se leia como algo de hoy.
 function _detalleEspera(l) {
   if (!l.fecha) return '';
-  let txt = `Último mensaje ${l.fecha}`;
+  let txt = `último mensaje ${l.fecha}`;
   if ((l.pendientes || 1) > 1 && l.primer_fecha) {
-    txt += ` · ${l.pendientes} sin respuesta, el primero ${l.primer_fecha} (${fmtSeg(l.primer_espera_seg)})`;
+    txt += ` · ${l.pendientes} sin respuesta desde ${l.primer_fecha}`;
   }
   return txt;
 }
@@ -1744,11 +1754,11 @@ function renderNoRespondidos(leads) {
     el.innerHTML = `
       <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
         <div class="flex items-center gap-2 flex-wrap">${chips}</div>
-        <span class="t-micro text-slate-500">los que más esperan, primero · desde el último mensaje del cliente, en horario laboral · clic para abrir el chat en el mensaje</span>
+        <span class="t-micro text-slate-500">los que más esperan, primero · clic para abrir el chat en el mensaje</span>
       </div>
       ${visibles.length === 0
         ? '<div class="t-chico text-slate-500 text-center py-4">Ninguno en esta franja</div>'
-        : `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
+        : `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden lista-cola overflow-y-auto divide-y divide-white">
           ${visibles.map(l => _filaLead({ ...l, detalle: _detalleEspera(l) }, _esperaYFranja(l, franjas))).join('')}
         </div>`}
       ${_bloqueAntiguos()}`;
@@ -1760,7 +1770,13 @@ function _esperaYFranja(l, franjas) {
   const f = franjas[l._f];
   const pill = f ? `<span class="tag ${tagClass(f.tag)} flex-shrink-0">${f.tag}</span>` : '';
   const fuerte = l._f >= franjas.length - 1 ? 'font-semibold text-slate-800' : 'text-slate-600';
-  return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap">esperando ${fmtSeg(l.espera_seg)}</span>${pill}`;
+  // Pasado un dia, dias de CALENDARIO (01/10). "Esperando 58h 5m" eran horas
+  // laborales y al lado decia "ultimo mensaje 24/09": se leia como dos datos
+  // que no cierran. La espera laboral, que es la que decide la franja, queda
+  // al pasar el mouse.
+  const dias = l.dias_desde_ultimo || 0;
+  const texto = dias >= 1 ? `hace ${dias} ${dias === 1 ? 'día' : 'días'}` : `esperando ${fmtSeg(l.espera_seg)}`;
+  return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap" title="Espera en horario laboral: ${fmtSeg(l.espera_seg)}">${texto}</span>${pill}`;
 }
 
 function renderDist(distribucion) {
@@ -2248,7 +2264,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
         x: { grid: { display: false }, stacked: true,
              ticks: { font: { size: FUENTE_EJE }, color: COLOR.apagado, maxTicksLimit: 15 } },
         y: { beginAtZero: true, stacked: true, grid: { display: false },
-             ticks: { font: { size: FUENTE_MINI }, color: COLOR.tenue, precision: 0, maxTicksLimit: 3 },
+             ticks: { font: { size: FUENTE_MINI }, color: COLOR.apagado, precision: 0, maxTicksLimit: 3 },
              title: { display: true, text: 'Respuestas', color: COLOR.apagado,
                       font: { size: FUENTE_MINI, weight: '600' } } }
       }
