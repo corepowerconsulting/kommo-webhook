@@ -9,7 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
       /* --- Colores: bajan de paleta.py, no se escriben aca --------------
@@ -175,6 +175,15 @@
        que se entienda que son dos cosas distintas (04/09). Tres niveles:
        parte > tarjeta > fila. */
     .parte-titulo  { font-size:var(--t-cifra); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.02em; line-height:var(--lh-corto); }
+    /* Numeros grandes y titulos en IBM Plex Sans Condensed (opcion A, 01/10):
+       angosta y tecnica, de panel de control; le da a PULSE una voz propia sin
+       sumar colores. Todo el resto sigue en Inter. Va despues de las reglas de
+       cada clase para que su letter-spacing gane: la condensada ya es angosta
+       y con -0.03em las cifras se tocan. */
+    .kpi-num-xl, .kpi-num, .kpi-num-sm, .section-title, .parte-titulo {
+      font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', 'Inter', sans-serif;
+      letter-spacing: -0.005em;
+    }
     /* La parte del AHORA va entera dentro de una caja: un panel blanco con
        borde que agrupa titulo, tarjetas y tabla por asesor. La parte del
        periodo queda suelta sobre el gris de la pagina. Dos superficies
@@ -267,6 +276,12 @@
     .card-clic { cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .15s; }
     .card-clic:hover { border-color:var(--foco); box-shadow:0 4px 12px rgba(37,99,235,.10); transform:translateY(-1px); }
     .card-clic.abierta { border-color:var(--marca); }
+    /* Opcion A de la identidad (Juan, 01/10): el azul queda solo para lo que
+       se toca —flechas y botones—. "Atendidos hoy" se identifica con el verde
+       de lo cumplido y "Sin responder" queda neutra: su urgencia ya la dicen
+       el icono rojo y la marca de cada fila. */
+    .card-clic.abierta.tarjeta-sin { border-color:var(--linea); }
+    .card-clic.tarjeta-atendidos, .card-clic.abierta.tarjeta-atendidos { border-color:var(--ok); }
     .chev-chip { width:1.8rem; height:1.8rem; border-radius:99px; background:var(--carril); color:var(--apagado);
                  display:flex; align-items:center; justify-content:center; transition:background .15s, color .15s; }
 
@@ -499,7 +514,7 @@
         </label>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-        <div class="card card-clic abierta">
+        <div class="card card-clic abierta tarjeta-sin">
           <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
                con Tab ni se activa con Enter: quien no usa mouse no podia abrir
                esta lista. Cambia solo el elemento; los estilos son los mismos.
@@ -535,13 +550,13 @@
           </button>
           <div id="panel-no-respondidos" class="mt-4"></div>
         </div>
-        <div class="card card-clic abierta border-l-4 !border-l-blue-500">
+        <div class="card card-clic abierta tarjeta-atendidos">
           <button type="button" class="relative w-full text-center flex items-start justify-center"
                   aria-expanded="true" aria-controls="panel-trabajados-hoy"
                   onclick="toggleExtra('trabajados-hoy')">
             <span class="flex items-start gap-3.5">
-              <span class="icon-chip bg-blue-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--marca)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <span class="icon-chip bg-green-50">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </span>
               <span>
                 <span class="kpi-num block" id="kpi-trabajados-hoy">—</span>
@@ -1552,7 +1567,7 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   // admiracion para "Sin responder" y el check para "Atendidos hoy". Es lo
   // que ata la tabla con las tarjetas sin tener que explicarlo.
   const ICO_ALERTA = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
-  const ICO_CHECK  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--marca)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+  const ICO_CHECK  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
   // Las tres columnas de numeros van CENTRADAS, encabezado y cifra sobre el
   // mismo eje (Juan, 04/09). Alineadas a la izquierda no coincidian: el
   // encabezado arranca en el icono y la cifra en el digito, asi que cada
