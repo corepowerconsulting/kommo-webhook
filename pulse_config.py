@@ -282,6 +282,12 @@ PULSE_CONFIG = {
         # letra la cuenta media cero, sin ningun error. La comparacion de
         # get_custom_field es exacta.
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
+        # Quien atendio (Juan, 01/10/2026), igual que 'Asesor' en Camara China:
+        # gana sobre el usuario que mando el mensaje y sobre el responsable.
+        # Va con c MINUSCULA, tal como llega en los payloads (verificado en
+        # /health/alta: 286 de 300 eventos lo traen). Con mayuscula no se
+        # leeria nunca y no daria ningun error.
+        'campo_quien_atendio': 'Ejecutivo comercial',
         # Panama, que tambien es -5. Verificado, no hace falta cambiarlo.
         'tz_offset': -5,
         'horario': (8, 18),
