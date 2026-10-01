@@ -5288,6 +5288,20 @@ def _leads_estado_en(subdomain, ts, subconjunto_sql, subconjunto_params):
                 WHERE e.subdomain = %s AND e.lead_id IN ({subconjunto_sql}))'''
     return sql, [ts, ts, subdomain] + list(subconjunto_params)
 
+# Dias de calendario desde el ultimo mensaje del cliente a partir de los cuales
+# un lead "sin responder" deja de mostrarse como pendiente del dia y pasa a un
+# grupo aparte (Luis, 01/10/2026). Con la lista mezclada, un cliente que
+# escribio hace tres semanas se leia como algo de hoy, y la lista de criticos
+# se llenaba de casos que ya nadie va a atender —o que si se respondieron por
+# un canal que no capturamos—. Dias de CALENDARIO y no horas laborales: "hace
+# 3 semanas" tiene que leerse como 3 semanas. Lo decide el cliente.
+DIAS_SIN_RESPONDER_RECIENTE = 7
+
+def _separar_antiguos(leads):
+    """(recientes, antiguos) segun la marca 'antiguo' de cada lead."""
+    return ([l for l in leads if not l.get('antiguo')],
+            [l for l in leads if l.get('antiguo')])
+
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None,
                           sql_embudo='', params_embudo=(), corte=None, conn=None,
@@ -5435,6 +5449,10 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         fila['espera_seg'] = _calc_tiempo_efectivo(
             ultimo, reloj, tz_offset, h_ini, h_fin, dias_lab)
         fila['pendientes'] = int(r.get('pendientes') or 1)
+        # Antiguedad en dias de calendario, contra el mismo reloj de la espera:
+        # en un dia pasado se mide contra ese dia, no contra hoy.
+        fila['dias_desde_ultimo'] = max(0, (reloj - int(ultimo)) // 86400)
+        fila['antiguo'] = fila['dias_desde_ultimo'] >= DIAS_SIN_RESPONDER_RECIENTE
         fila['primer_fecha'] = _fmt_fecha_corta(_ts_to_local(primero, tz_offset))
         fila['primer_espera_seg'] = _calc_tiempo_efectivo(
             primero, reloj, tz_offset, h_ini, h_fin, dias_lab)
@@ -5610,6 +5628,10 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
         no_respondidos, trabajados, solo_bot = _solo_estos_asesores(
             [no_respondidos, trabajados, solo_bot], op_nombres)
 
+    # Lo de mas de DIAS_SIN_RESPONDER_RECIENTE dias va aparte: el numero de la
+    # tarjeta, los criticos y la tabla por asesor cuentan solo lo reciente.
+    no_respondidos, antiguos = _separar_antiguos(no_respondidos)
+
     contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
     comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, contra,
                                   corte, conn, asesor_ids, solo_abiertas,
@@ -5618,6 +5640,8 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                                   incluir_conv_cerradas=incluir_conv_cerradas)
     return {
         'no_respondidos':     no_respondidos,
+        'no_respondidos_antiguos': antiguos,
+        'dias_reciente':      DIAS_SIN_RESPONDER_RECIENTE,
         'trabajados_hoy':     trabajados,
         'atendidos_solo_bot': solo_bot,
         'comparado':          comparado,
@@ -5651,7 +5675,9 @@ def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
                                   est['atendidos_solo_bot']], nombres)
     return {
         'fecha':          fecha,
-        'no_respondidos': len(est['no_respondidos']),
+        # Solo lo reciente, igual que la tarjeta: comparar contra un numero que
+        # incluye lo viejo inflaria la diferencia.
+        'no_respondidos': len(_separar_antiguos(est['no_respondidos'])[0]),
         'trabajados_hoy': len(est['trabajados_hoy']) + len(est['atendidos_solo_bot']),
     }
 
@@ -6558,6 +6584,8 @@ def pulse_data():
             # solo responsable devuelve una fila.
             'por_asesor':    _calc_por_asesor(registros, franjas),
             'no_respondidos': no_respondidos,
+            'no_respondidos_antiguos': bloque['no_respondidos_antiguos'],
+            'dias_reciente': bloque['dias_reciente'],
             'trabajados_hoy': trabajados_hoy,
             # Los que solo recibieron el saludo del bot. Es el punto ciego del
             # tablero: dejan de figurar en "Sin responder" porque el ultimo

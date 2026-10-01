@@ -511,6 +511,9 @@
                 <span class="kpi-num block" id="kpi-no-respondidos">—</span>
                 <span class="kpi-label block">Sin responder</span>
                 <span class="t-micro block mt-1.5" id="cmp-no-respondidos"></span>
+                <!-- Lo de mas de 7 dias, aparte (Luis, 01/10): el numero grande
+                     es lo que se puede atender hoy. -->
+                <span class="t-micro block mt-1 text-slate-500" id="antiguos-no-respondidos"></span>
               </span>
             </span>
             <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
@@ -1657,6 +1660,39 @@ function pintarDiaElegido(dia) {
 // proposito: quien abre la lista tiene que ver el conjunto entero primero,
 // con los criticos arriba; filtrar es el segundo gesto, no el primero.
 let FRANJA_SEL = null;          // null = todas
+// Los de mas de DIAS_RECIENTE dias, aparte y cerrados (Luis, 01/10). El numero
+// lo manda el servidor; este es solo el valor mientras carga.
+let ANTIGUOS_NO_RESP = [];
+let DIAS_RECIENTE = 7;
+let ANTIGUOS_ABIERTOS = false;
+function toggleAntiguos() {
+  ANTIGUOS_ABIERTOS = !ANTIGUOS_ABIERTOS;
+  renderNoRespondidos(ULTIMOS_NO_RESP);
+}
+// Grupo aparte al pie de la lista: cerrado, con su cantidad. Abierto, los
+// muestra del mas reciente al mas viejo y con "hace N dias" en vez de la
+// franja: a esta altura la franja ya no informa, siempre seria Critico.
+function _bloqueAntiguos() {
+  const n = ANTIGUOS_NO_RESP.length;
+  if (!n) return '';
+  const filas = ANTIGUOS_ABIERTOS
+    ? `<div class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white mt-2">
+        ${[...ANTIGUOS_NO_RESP].sort((a, b) => (a.dias_desde_ultimo || 0) - (b.dias_desde_ultimo || 0))
+          .map(l => _filaLead({ ...l, detalle: _detalleEspera(l) },
+            `<span class="t-chico text-slate-600 flex-shrink-0 whitespace-nowrap">hace ${l.dias_desde_ultimo} días</span>`)).join('')}
+       </div>` : '';
+  return `
+    <div class="mt-3 pt-3" style="border-top:1px solid var(--linea)">
+      <button type="button" onclick="toggleAntiguos()" aria-expanded="${ANTIGUOS_ABIERTOS}"
+              class="flex items-center gap-2 t-chico font-semibold text-slate-600 hover:text-slate-800">
+        <svg class="chevron" style="${ANTIGUOS_ABIERTOS ? 'transform:rotate(180deg)' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        Sin respuesta hace más de ${DIAS_RECIENTE} días
+        <span class="font-normal text-slate-500">${n.toLocaleString('es')}</span>
+      </button>
+      <div class="t-micro text-slate-500 mt-1">No cuentan en el número de arriba: pueden ser casos abandonados o respondidos por otra vía.</div>
+      ${filas}
+    </div>`;
+}
 let ULTIMOS_NO_RESP = [];       // lo ultimo que llego, para refiltrar sin pedir de nuevo
 
 function filtrarNoResp(idx) {
@@ -1669,7 +1705,7 @@ function renderNoRespondidos(leads) {
   const el = document.getElementById('panel-no-respondidos');
   const franjas = FRANJAS || [];
   if (ULTIMOS_NO_RESP.length === 0) {
-    el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>';
+    el.innerHTML = `<div class="t-chico text-slate-500 text-center py-4">Ningún cliente esperando de los últimos ${DIAS_RECIENTE} días</div>${_bloqueAntiguos()}`;
     return;
   }
   // Indice de franja de cada lead, calculado una vez. Sin franjas
@@ -1714,7 +1750,8 @@ function renderNoRespondidos(leads) {
         ? '<div class="t-chico text-slate-500 text-center py-4">Ninguno en esta franja</div>'
         : `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
           ${visibles.map(l => _filaLead({ ...l, detalle: _detalleEspera(l) }, _esperaYFranja(l, franjas))).join('')}
-        </div>`}`;
+        </div>`}
+      ${_bloqueAntiguos()}`;
   });
 }
 
@@ -2466,6 +2503,11 @@ function pintarSnapshot(d) {
   const todosHoy = d.trabajados_hoy.concat(d.atendidos_solo_bot || []);
   document.getElementById('kpi-trabajados-hoy').textContent =
     todosHoy.length.toLocaleString('es');
+  ANTIGUOS_NO_RESP = d.no_respondidos_antiguos || [];
+  DIAS_RECIENTE = d.dias_reciente || DIAS_RECIENTE;
+  const nAnt = ANTIGUOS_NO_RESP.length;
+  document.getElementById('antiguos-no-respondidos').textContent = nAnt
+    ? `+ ${nAnt.toLocaleString('es')} sin respuesta hace más de ${DIAS_RECIENTE} días` : '';
   renderNoRespondidos(d.no_respondidos);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
   renderAsesoresAhora(d.no_respondidos, d.trabajados_hoy, d.atendidos_solo_bot || []);
