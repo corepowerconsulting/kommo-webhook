@@ -358,6 +358,12 @@ def init_db():
     # entrante (author][name], con author][type] = external, o sea el cliente),
     # asi que se guarda aca y se usa cuando el lead no trae el suyo.
     _agregar_columna(c, 'mensajes_cliente', 'cliente_nombre', 'TEXT')
+    # El id del mensaje en Kommo (01/10/2026). Con esto el clic en "Sin
+    # responder" abre la conversacion parada en el mensaje que espera
+    # respuesta, y no al final del chat. Kommo lo manda en cada aviso y hasta
+    # ahora se descartaba; el de los mensajes viejos se recupera de 'eventos'
+    # con /backfill-mensajes.
+    _agregar_columna(c, 'mensajes_cliente', 'msg_id', 'TEXT')
     # La clave primaria es (subdomain, lead_id, ts), asi que 'ts' queda tercera
     # y una consulta por (subdomain, ts) no la puede usar. "Sin responder"
     # consulta exactamente asi —los mensajes desde el corte— y ahora ademas se
@@ -628,8 +634,9 @@ def msjs_entrantes(data):
         # El nombre puede faltar o venir vacio; el mensaje se guarda igual,
         # porque para medir la espera alcanza con lead_id y ts.
         nombre = (data.get(f'{pref}[author][name]') or '').strip()[:200] or None
+        msg_id = str(data.get(f'{pref}[id]') or '').strip()[:120] or None
         if lead_id and ts:
-            salida.add((str(lead_id), ts, nombre))
+            salida.add((str(lead_id), ts, nombre, msg_id))
     return salida
 
 def insertar_msjs_cliente(cursor, subdomain, filas):
@@ -651,23 +658,29 @@ def insertar_msjs_cliente(cursor, subdomain, filas):
     # dos elementos distintos del set y una sola fila en la tabla. Se resuelve
     # antes de consultar, quedandose con la version que trae nombre.
     unicas = {}
-    for lead_id, ts, nombre in filas:
+    for fila in filas:
+        lead_id, ts, nombre = fila[:3]
+        msg_id = fila[3] if len(fila) > 3 else None
         clave = (lead_id, ts)
         previo = unicas.get(clave)
-        if previo is None or (previo[2] is None and nombre):
-            unicas[clave] = (lead_id, ts, nombre)
+        if previo is None:
+            unicas[clave] = (lead_id, ts, nombre, msg_id)
+        else:
+            unicas[clave] = (lead_id, ts, previo[2] or nombre, previo[3] or msg_id)
 
     # DO UPDATE y no DO NOTHING: los mensajes viejos ya estan guardados sin
-    # nombre, y con DO NOTHING el backfill no podria completarlos nunca. El
-    # WHERE evita reescribir los que ya tienen uno, asi que reprocesar el
-    # historial es idempotente.
+    # nombre ni id, y con DO NOTHING el backfill no podria completarlos nunca.
+    # Solo se completa lo que falta, nunca se pisa: reprocesar el historial es
+    # idempotente.
     execute_values(
         cursor,
-        'INSERT INTO mensajes_cliente (subdomain, lead_id, ts, cliente_nombre) VALUES %s '
+        'INSERT INTO mensajes_cliente (subdomain, lead_id, ts, cliente_nombre, msg_id) VALUES %s '
         'ON CONFLICT (subdomain, lead_id, ts) DO UPDATE '
-        'SET cliente_nombre = EXCLUDED.cliente_nombre '
-        'WHERE mensajes_cliente.cliente_nombre IS NULL',
-        [(subdomain, lead_id, ts, nombre) for lead_id, ts, nombre in unicas.values()]
+        'SET cliente_nombre = COALESCE(mensajes_cliente.cliente_nombre, EXCLUDED.cliente_nombre), '
+        '    msg_id         = COALESCE(mensajes_cliente.msg_id,         EXCLUDED.msg_id) '
+        'WHERE (mensajes_cliente.cliente_nombre IS NULL AND EXCLUDED.cliente_nombre IS NOT NULL) '
+        '   OR (mensajes_cliente.msg_id IS NULL AND EXCLUDED.msg_id IS NOT NULL)',
+        [(subdomain, l, t, n, m) for l, t, n, m in unicas.values()]
     )
     return len(unicas)
 
@@ -2405,7 +2418,8 @@ def cargar_mensajes():
     for m in entrantes:
         try:
             lead, ts = str(int(m['lead_id'])), int(m['ts'])
-            filas_ent[(lead, ts)] = (subdomain, lead, ts)
+            mid = (str(m.get('msg_id') or '').strip()[:120]) or None
+            filas_ent[(lead, ts)] = (subdomain, lead, ts, mid)
         except (KeyError, TypeError, ValueError):
             invalidas += 1
     desconocidos = 0
@@ -2430,10 +2444,16 @@ def cargar_mensajes():
         c = conn.cursor()
         nuevos_ent = nuevos_sal = 0
         if filas_ent:
-            nuevos_ent = len(execute_values(
-                c, 'INSERT INTO mensajes_cliente (subdomain, lead_id, ts) VALUES %s '
-                   'ON CONFLICT DO NOTHING RETURNING 1',
-                list(filas_ent.values()), fetch=True))
+            # Un mensaje que ya estaba solo recibe el id si le faltaba: nunca
+            # se pisa nada. xmax = 0 distingue los insertados de los completados.
+            res = execute_values(
+                c, 'INSERT INTO mensajes_cliente (subdomain, lead_id, ts, msg_id) VALUES %s '
+                   'ON CONFLICT (subdomain, lead_id, ts) DO UPDATE '
+                   'SET msg_id = EXCLUDED.msg_id '
+                   'WHERE mensajes_cliente.msg_id IS NULL AND EXCLUDED.msg_id IS NOT NULL '
+                   'RETURNING (xmax = 0)',
+                list(filas_ent.values()), fetch=True)
+            nuevos_ent = sum(1 for (insertado,) in res if insertado)
         if filas_sal:
             nuevos_sal = len(execute_values(
                 c, 'INSERT INTO mensajes_asesor (subdomain, msg_id, lead_id, ts, user_id, '
@@ -5312,17 +5332,21 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                     [subdomain, corte, hasta_ts])
             else:
                 tabla_le, params_le = 'leads_estado', []
-            # inicio_espera: el PRIMER mensaje del cliente despues de la ultima
-            # respuesta. El ultimo (cli.ultimo) dice quien hablo al final, pero
-            # medir desde ahi bajaba la espera de quien insiste: escribe 10:00
-            # y 10:20, y a las 10:25 figuraba esperando 5 minutos y no 25.
+            # La espera se cuenta desde el ULTIMO mensaje del cliente (Juan,
+            # 01/10): si escribio hace 48 h, nadie contesto, y volvio a escribir
+            # hace 5 h, el lead figura con 5 h. Del tramo sin respuesta se
+            # devuelve tambien el PRIMER mensaje —cuando empezo, cuantos van y
+            # su id—: el clic abre la conversacion ahi para leer todo lo
+            # pendiente en orden, y el tablero lo muestra como contexto.
+            # (Del 26/09 al 01/10 se conto desde el primero.)
             query = f'''
                 SELECT le.lead_id, le.responsible_user_id, le.lead_nombre,
                        le.asesor_nombre, cli.ultimo AS f_ult_msj_cliente,
-                       (SELECT MIN(mc.ts) FROM mensajes_cliente mc
-                         WHERE mc.subdomain = le.subdomain AND mc.lead_id = le.lead_id
-                           AND mc.ts >= %s AND mc.ts > COALESCE(asr.ultimo, 0)
-                           AND (%s IS NULL OR mc.ts <= %s)) AS inicio_espera
+                       pen.primero AS inicio_espera, pen.pendientes,
+                       (SELECT mc2.msg_id FROM mensajes_cliente mc2
+                         WHERE mc2.subdomain = le.subdomain AND mc2.lead_id = le.lead_id
+                           AND mc2.ts = pen.primero AND mc2.msg_id IS NOT NULL
+                         LIMIT 1) AS primer_msg_id
                   FROM {tabla_le} le
                   JOIN (SELECT lead_id, MAX(ts) AS ultimo FROM mensajes_cliente
                          WHERE subdomain = %s AND ts >= %s AND (%s IS NULL OR ts <= %s)
@@ -5333,6 +5357,12 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                            AND (%s IS NULL OR ts <= %s)
                          GROUP BY lead_id) asr
                     ON asr.lead_id = le.lead_id
+             LEFT JOIN LATERAL (
+                   SELECT MIN(mc.ts) AS primero, COUNT(*) AS pendientes
+                     FROM mensajes_cliente mc
+                    WHERE mc.subdomain = le.subdomain AND mc.lead_id = le.lead_id
+                      AND mc.ts >= %s AND mc.ts > COALESCE(asr.ultimo, 0)
+                      AND (%s IS NULL OR mc.ts <= %s)) pen ON TRUE
                  WHERE le.subdomain = %s
                    AND (asr.ultimo IS NULL OR cli.ultimo > asr.ultimo)
             '''
@@ -5340,9 +5370,11 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             # estaban esperando a esa hora. No hace falta guardar ninguna foto
             # —tenemos cada mensaje con su timestamp de los dos lados—, alcanza
             # con no mirar lo que llego despues. Con hasta_ts=None es el ahora.
-            params = ([corte, hasta_ts, hasta_ts] + params_le +
+            params = (params_le +
                       [subdomain, corte, hasta_ts, hasta_ts,
-                       subdomain, hasta_ts, hasta_ts, subdomain])
+                       subdomain, hasta_ts, hasta_ts,
+                       corte, hasta_ts, hasta_ts,
+                       subdomain])
         else:
             query = '''
                 SELECT lead_id, responsible_user_id, f_ult_msj_cliente,
@@ -5395,12 +5427,22 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     reloj = int(hasta_ts) if hasta_ts else int(time.time())
     salida = []
     for r in rows:
-        r['inicio_espera'] = r.get('inicio_espera') or r['f_ult_msj_cliente']
-        # La fecha que se muestra es desde cuando espera, la misma que la
-        # espera: si no, "10:20 · esperando 25 min" no cierra.
-        fila = _fmt_lead_estado(r, tz_offset, 'inicio_espera')
+        ultimo = r['f_ult_msj_cliente']
+        primero = r.get('inicio_espera') or ultimo
+        # Fecha y espera del ULTIMO mensaje: es lo que ordena la lista y le
+        # pone la franja. Lo del primero va aparte, como contexto.
+        fila = _fmt_lead_estado(r, tz_offset, 'f_ult_msj_cliente')
         fila['espera_seg'] = _calc_tiempo_efectivo(
-            r['inicio_espera'], reloj, tz_offset, h_ini, h_fin, dias_lab)
+            ultimo, reloj, tz_offset, h_ini, h_fin, dias_lab)
+        fila['pendientes'] = int(r.get('pendientes') or 1)
+        fila['primer_fecha'] = _fmt_fecha_corta(_ts_to_local(primero, tz_offset))
+        fila['primer_espera_seg'] = _calc_tiempo_efectivo(
+            primero, reloj, tz_offset, h_ini, h_fin, dias_lab)
+        # El enlace del tablero usa msg_id y msg_ts para abrir el chat en ese
+        # mensaje (ver leadHref). Sin id guardado, cae al lead como antes.
+        if r.get('primer_msg_id'):
+            fila['msg_id'] = r['primer_msg_id']
+            fila['msg_ts'] = primero
         salida.append(fila)
     return salida
 

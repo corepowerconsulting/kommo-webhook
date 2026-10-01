@@ -1453,9 +1453,23 @@ function _filaLead(l, extra) {
           <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
           <div class="t-micro font-mono text-slate-500 mt-0.5">#${l.lead_id}</div>
           <div class="t-micro text-slate-500 mt-0.5 truncate">${l.asesor || ''}</div>
+          ${l.detalle ? `<div class="t-micro text-slate-500 mt-0.5 truncate">${l.detalle}</div>` : ''}
         </div>
         ${extra}
       </a>`;
+}
+
+// Contexto de un lead sin responder (Juan, 01/10): la espera grande se cuenta
+// desde el ULTIMO mensaje del cliente; aca va cuando fue ese mensaje y, si
+// escribio varias veces seguidas, cuantos van y desde cuando empezo. Sin la
+// fecha, "esperando 200 h" se leia como algo de hoy.
+function _detalleEspera(l) {
+  if (!l.fecha) return '';
+  let txt = `Último mensaje ${l.fecha}`;
+  if ((l.pendientes || 1) > 1 && l.primer_fecha) {
+    txt += ` · ${l.pendientes} sin respuesta, el primero ${l.primer_fecha} (${fmtSeg(l.primer_espera_seg)})`;
+  }
+  return txt;
 }
 
 function renderExtraLeads(containerId, leads) {
@@ -1694,12 +1708,12 @@ function renderNoRespondidos(leads) {
     el.innerHTML = `
       <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
         <div class="flex items-center gap-2 flex-wrap">${chips}</div>
-        <span class="t-micro text-slate-500">los que más esperan, primero · espera en horario laboral</span>
+        <span class="t-micro text-slate-500">los que más esperan, primero · desde el último mensaje del cliente, en horario laboral · clic para abrir el chat en el mensaje</span>
       </div>
       ${visibles.length === 0
         ? '<div class="t-chico text-slate-500 text-center py-4">Ninguno en esta franja</div>'
         : `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
-          ${visibles.map(l => _filaLead(l, _esperaYFranja(l, franjas))).join('')}
+          ${visibles.map(l => _filaLead({ ...l, detalle: _detalleEspera(l) }, _esperaYFranja(l, franjas))).join('')}
         </div>`}`;
   });
 }

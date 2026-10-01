@@ -100,7 +100,9 @@ def leer_registro(sub, token, desde, hasta):
                 otros[e.get('entity_type')] += 1
                 continue
             if e['type'] == 'incoming_chat_message':
-                entrantes.append({'lead_id': e['entity_id'], 'ts': e['created_at']})
+                msg = ((e.get('value_after') or [{}])[0] or {}).get('message') or {}
+                entrantes.append({'lead_id': e['entity_id'], 'ts': e['created_at'],
+                                  'msg_id': msg.get('id')})
             else:
                 msg = ((e.get('value_after') or [{}])[0] or {}).get('message') or {}
                 if not msg.get('id'):
