@@ -180,16 +180,18 @@
        sumar colores. Todo el resto sigue en Inter. Va despues de las reglas de
        cada clase para que su letter-spacing gane: la condensada ya es angosta
        y con -0.03em las cifras se tocan. */
-    .kpi-num-xl, .kpi-num, .kpi-num-sm, .section-title, .parte-titulo, .cifra {
+    .kpi-num-xl, .kpi-num, .kpi-num-sm, .section-title, .parte-titulo {
       font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', 'Inter', sans-serif;
       letter-spacing: -0.005em;
     }
-    /* Todas las cifras en la misma letra (01/10): en un tablero un numero se
-       compara con otro, y tiene que verse igual en la tabla, el ranking y la
-       tarjeta. Plex Condensed trae las cifras de ancho fijo de fabrica
-       (medido: 1111111111 y 8888888888 miden lo mismo) y ocupa un 16% menos
-       que Inter. 'cifra' se pone en cada numero que es dato; las fechas y
-       las palabras siguen en Inter. */
+    /* Grande en Plex Condensed, chico en Inter (01/10). Se probo poner Plex
+       Condensed en todas las cifras y se leyo peor: a 12,5-16 px la letra
+       condensada cierra los huecos del 6, 8, 9 y 0, y las cifras de Plex son
+       mas bajas que las de Inter al mismo tamaño (prueba renderizada a 1x,
+       "38 69 80" costaba leerlo). Lo condensado sirve donde el numero es
+       grande y falta lugar; las tablas de PULSE tienen tres columnas y les
+       sobra. Las cifras chicas van en Inter con ancho fijo (body), asi que
+       siguen alineadas y no saltan al refrescarse. */
     /* La unidad mas chica que el numero: "1h 12m" se lee por los numeros, y
        la letra solo dice de que son. Mismo formato que el ranking. */
     .unidad { font-size:.56em; font-weight:var(--p-medio); opacity:.75; margin-left:.05em; margin-right:.25em; letter-spacing:0; }
@@ -781,11 +783,11 @@
           </div>
           <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
           <div class="mt-2 t-micro text-slate-500">
-            p90 <span id="kpi-p90" class="cifra font-semibold text-slate-500">—</span>
+            p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
             <span class="text-slate-300">·</span>
-            prom <span id="kpi-prom-sec" class="cifra font-semibold text-slate-500">—</span>
+            prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
             <span class="text-slate-300">·</span>
-            máx <span id="kpi-maximo" class="cifra font-semibold text-slate-500">—</span>
+            máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
           </div>
         </div>
         <!-- Leyenda pedida en la reunion del 31/08: quien mira el tablero no
@@ -845,7 +847,7 @@
           <div class="relative mx-auto" style="width:11.8rem;height:11.8rem">
             <canvas id="chart-dist"></canvas>
             <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <div class="cifra t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
+              <div class="t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
               <div class="t-chico text-slate-500">respuestas</div>
             </div>
           </div>
@@ -1599,8 +1601,8 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   // izquierda, que es texto y se lee desde el margen.
   const cab = (txt, icono, izq) => `<div class="kpi-label-sm !mt-0 flex items-center gap-1.5 ${izq ? '' : 'justify-center'}">${icono || ''}${txt}</div>`;
   const num = (n, clase, estilo) => n
-    ? `<div class="cifra t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
-    : `<div class="cifra t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
+    ? `<div class="t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
+    : `<div class="t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
   const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 7.5rem';
   el.innerHTML = `
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
@@ -1676,7 +1678,7 @@ function pintarComparativo(cmp, sinResponderHoy, atendidosHoy, hayDiaElegido) {
     el.innerHTML = `
       <span class="cmp-graf">
         ${pct === null ? '' :
-          `<span class="cmp-pill cifra" style="background:${conAlfa(color, 0.13)};color:${color}">${tri}${signo}${Math.abs(pct)}%</span>`}
+          `<span class="cmp-pill" style="background:${conAlfa(color, 0.13)};color:${color}">${tri}${signo}${Math.abs(pct)}%</span>`}
         <span class="cmp-val cmp-val-tenue">${cuando} · ${antes.toLocaleString('es')}</span>
       </span>`;
   }
@@ -1826,7 +1828,7 @@ function _esperaYFranja(l, franjas) {
   // al pasar el mouse.
   const dias = l.dias_desde_ultimo || 0;
   const texto = dias >= 1 ? `hace ${dias} ${dias === 1 ? 'día' : 'días'}` : `esperando ${fmtSeg(l.espera_seg)}`;
-  return `<span class="cifra t-chico ${fuerte} flex-shrink-0 whitespace-nowrap" title="${f ? f.tag + ' · ' : ''}espera en horario laboral: ${fmtSeg(l.espera_seg)}">${texto}</span>`;
+  return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap" title="${f ? f.tag + ' · ' : ''}espera en horario laboral: ${fmtSeg(l.espera_seg)}">${texto}</span>`;
 }
 
 function renderDist(distribucion) {
@@ -1849,8 +1851,8 @@ function renderDist(distribucion) {
         <span class="barra-franja flex-1 min-w-0 hidden sm:block">
           <span class="barra-franja-fill" style="width:${d.pct}%;background:${d.color}"></span>
         </span>
-        <span class="cifra t-chico font-semibold text-slate-800 w-14 text-right flex-shrink-0">${d.count}</span>
-        <span class="cifra t-chico text-slate-500 w-14 text-right flex-shrink-0">${fmtPct(d.pct, d.count)}</span>
+        <span class="t-chico font-semibold text-slate-800 w-14 text-right flex-shrink-0">${d.count}</span>
+        <span class="t-chico text-slate-500 w-14 text-right flex-shrink-0">${fmtPct(d.pct, d.count)}</span>
         <svg id="chev-${i}" class="chevron flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tenue)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div id="leads-${i}" class="hidden px-2 pb-2">
@@ -2358,7 +2360,7 @@ function renderTabla(containerId, rows, tipo) {
       <div class="text-right flex-shrink-0 pl-3">
         <!-- Misma regla que el ranking: el tiempo es el dato de la fila y va
              un escalon arriba del nombre del lead. -->
-        <div class="cifra t-base font-extrabold ${colorClass} lh-corto">${r.fmt}</div>
+        <div class="t-base font-extrabold ${colorClass} lh-corto">${r.fmt}</div>
         <!-- Dice "mediana" porque es la mediana. Decia "prom." de cuando el
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
@@ -2475,8 +2477,8 @@ function renderAsesores(porAsesor, minMuestra) {
                entre semibold y extrabold a ese tamaño no hay diferencia que se
                vea. La regla vale para toda la pagina: el numero del que trata
                una fila va un escalon arriba de su etiqueta. -->
-          <div class="cifra t-base font-extrabold lh-corto" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
-          <div class="t-micro text-slate-500 lh-corto">p90 <span class="cifra">${fmtSeg(a.p90_seg)}</span></div>
+          <div class="t-base font-extrabold lh-corto" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
+          <div class="t-micro text-slate-500 lh-corto">p90 ${fmtSeg(a.p90_seg)}</div>
         </div>
       </div>
       <!-- La tira arranca despues del puesto y del icono para que todas
