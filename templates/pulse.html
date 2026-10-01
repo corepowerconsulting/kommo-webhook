@@ -180,10 +180,20 @@
        sumar colores. Todo el resto sigue en Inter. Va despues de las reglas de
        cada clase para que su letter-spacing gane: la condensada ya es angosta
        y con -0.03em las cifras se tocan. */
-    .kpi-num-xl, .kpi-num, .kpi-num-sm, .section-title, .parte-titulo {
+    .kpi-num-xl, .kpi-num, .kpi-num-sm, .section-title, .parte-titulo, .cifra {
       font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', 'Inter', sans-serif;
       letter-spacing: -0.005em;
     }
+    /* Todas las cifras en la misma letra (01/10): en un tablero un numero se
+       compara con otro, y tiene que verse igual en la tabla, el ranking y la
+       tarjeta. Plex Condensed trae las cifras de ancho fijo de fabrica
+       (medido: 1111111111 y 8888888888 miden lo mismo) y ocupa un 16% menos
+       que Inter. 'cifra' se pone en cada numero que es dato; las fechas y
+       las palabras siguen en Inter. */
+    /* La unidad mas chica que el numero: "1h 12m" se lee por los numeros, y
+       la letra solo dice de que son. Mismo formato que el ranking. */
+    .unidad { font-size:.56em; font-weight:var(--p-medio); opacity:.75; margin-left:.05em; margin-right:.25em; letter-spacing:0; }
+    .unidad:last-child { margin-right:0; }
     /* La parte del AHORA va entera dentro de una caja: un panel blanco con
        borde que agrupa titulo, tarjetas y tabla por asesor. La parte del
        periodo queda suelta sobre el gris de la pagina. Dos superficies
@@ -771,11 +781,11 @@
           </div>
           <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
           <div class="mt-2 t-micro text-slate-500">
-            p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
+            p90 <span id="kpi-p90" class="cifra font-semibold text-slate-500">—</span>
             <span class="text-slate-300">·</span>
-            prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
+            prom <span id="kpi-prom-sec" class="cifra font-semibold text-slate-500">—</span>
             <span class="text-slate-300">·</span>
-            máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
+            máx <span id="kpi-maximo" class="cifra font-semibold text-slate-500">—</span>
           </div>
         </div>
         <!-- Leyenda pedida en la reunion del 31/08: quien mira el tablero no
@@ -835,7 +845,7 @@
           <div class="relative mx-auto" style="width:11.8rem;height:11.8rem">
             <canvas id="chart-dist"></canvas>
             <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <div class="t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
+              <div class="cifra t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
               <div class="t-chico text-slate-500">respuestas</div>
             </div>
           </div>
@@ -1424,6 +1434,20 @@ function fmtSegLargo(seg) {
   return con(hh, 'hora', 'horas') + (mm ? ' ' + con(mm, 'minuto', 'minutos') : '');
 }
 
+// Duracion con la unidad chica: "1<h>12<m>". Mismas unidades que fmtSeg, asi
+// el mismo tiempo se escribe igual en la tarjeta grande y en el ranking.
+function fmtSegCifra(seg) {
+  const u = t => `<span class="unidad">${t}</span>`;
+  if (!seg || seg <= 0) return `&lt;&nbsp;1${u('s')}`;
+  if (seg < 60) return `${seg}${u('s')}`;
+  if (seg < 3600) {
+    const m = Math.floor(seg / 60), s = seg % 60;
+    return `${m}${u('m')}` + (s ? `${s}${u('s')}` : '');
+  }
+  const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60);
+  return `${h}${u('h')}` + (m ? `${m}${u('m')}` : '');
+}
+
 function tagClass(tag) {
   return { 'Ideal':'tag-green', 'Bueno':'tag-amber', 'Regular':'tag-orange', 'Crítico':'tag-red' }[tag] || 'tag-amber';
 }
@@ -1575,8 +1599,8 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   // izquierda, que es texto y se lee desde el margen.
   const cab = (txt, icono, izq) => `<div class="kpi-label-sm !mt-0 flex items-center gap-1.5 ${izq ? '' : 'justify-center'}">${icono || ''}${txt}</div>`;
   const num = (n, clase, estilo) => n
-    ? `<div class="t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
-    : `<div class="t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
+    ? `<div class="cifra t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
+    : `<div class="cifra t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
   const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 7.5rem';
   el.innerHTML = `
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
@@ -1652,7 +1676,7 @@ function pintarComparativo(cmp, sinResponderHoy, atendidosHoy, hayDiaElegido) {
     el.innerHTML = `
       <span class="cmp-graf">
         ${pct === null ? '' :
-          `<span class="cmp-pill" style="background:${conAlfa(color, 0.13)};color:${color}">${tri}${signo}${Math.abs(pct)}%</span>`}
+          `<span class="cmp-pill cifra" style="background:${conAlfa(color, 0.13)};color:${color}">${tri}${signo}${Math.abs(pct)}%</span>`}
         <span class="cmp-val cmp-val-tenue">${cuando} · ${antes.toLocaleString('es')}</span>
       </span>`;
   }
@@ -1802,7 +1826,7 @@ function _esperaYFranja(l, franjas) {
   // al pasar el mouse.
   const dias = l.dias_desde_ultimo || 0;
   const texto = dias >= 1 ? `hace ${dias} ${dias === 1 ? 'día' : 'días'}` : `esperando ${fmtSeg(l.espera_seg)}`;
-  return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap" title="${f ? f.tag + ' · ' : ''}espera en horario laboral: ${fmtSeg(l.espera_seg)}">${texto}</span>`;
+  return `<span class="cifra t-chico ${fuerte} flex-shrink-0 whitespace-nowrap" title="${f ? f.tag + ' · ' : ''}espera en horario laboral: ${fmtSeg(l.espera_seg)}">${texto}</span>`;
 }
 
 function renderDist(distribucion) {
@@ -1825,8 +1849,8 @@ function renderDist(distribucion) {
         <span class="barra-franja flex-1 min-w-0 hidden sm:block">
           <span class="barra-franja-fill" style="width:${d.pct}%;background:${d.color}"></span>
         </span>
-        <span class="t-chico font-semibold text-slate-800 w-14 text-right flex-shrink-0">${d.count}</span>
-        <span class="t-chico text-slate-500 w-14 text-right flex-shrink-0">${fmtPct(d.pct, d.count)}</span>
+        <span class="cifra t-chico font-semibold text-slate-800 w-14 text-right flex-shrink-0">${d.count}</span>
+        <span class="cifra t-chico text-slate-500 w-14 text-right flex-shrink-0">${fmtPct(d.pct, d.count)}</span>
         <svg id="chev-${i}" class="chevron flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tenue)" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div id="leads-${i}" class="hidden px-2 pb-2">
@@ -2015,7 +2039,7 @@ function renderTrend(tendencia, tendenciaPorAsesor, personasElegidas) {
   // busca ahi.
   document.getElementById('leyenda-linea').textContent = porTiempo
     ? `Mediana${real} de cada persona elegida, por día · la línea punteada es el objetivo`
-    : `Mediana${real} del equipo, por día · la línea punteada es el objetivo${apilado ? ' · pasá el mouse para ver quién' : ''}`;
+    : `Mediana${real} del equipo, por día · la línea punteada es el objetivo${apilado ? ' · pasa el mouse para ver quién' : ''}`;
   // El panel de abajo: volumen, SIEMPRE en un solo gris.
   //
   // Antes se apilaba por persona: hasta seis colores en barras de 20px y sin
@@ -2334,7 +2358,7 @@ function renderTabla(containerId, rows, tipo) {
       <div class="text-right flex-shrink-0 pl-3">
         <!-- Misma regla que el ranking: el tiempo es el dato de la fila y va
              un escalon arriba del nombre del lead. -->
-        <div class="t-base font-extrabold ${colorClass} lh-corto">${r.fmt}</div>
+        <div class="cifra t-base font-extrabold ${colorClass} lh-corto">${r.fmt}</div>
         <!-- Dice "mediana" porque es la mediana. Decia "prom." de cuando el
              calculo era un promedio, y quedo asi al cambiarlo: quien leia la
              etiqueta daba por hecho que el cambio no se habia hecho. La
@@ -2451,8 +2475,8 @@ function renderAsesores(porAsesor, minMuestra) {
                entre semibold y extrabold a ese tamaño no hay diferencia que se
                vea. La regla vale para toda la pagina: el numero del que trata
                una fila va un escalon arriba de su etiqueta. -->
-          <div class="t-base font-extrabold lh-corto" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
-          <div class="t-micro text-slate-500 lh-corto">p90 ${fmtSeg(a.p90_seg)}</div>
+          <div class="cifra t-base font-extrabold lh-corto" style="color:${pasado && !a.sin_puesto ? COLOR.alerta : COLOR.texto}">${fmtSeg(a.mediana_seg)}</div>
+          <div class="t-micro text-slate-500 lh-corto">p90 <span class="cifra">${fmtSeg(a.p90_seg)}</span></div>
         </div>
       </div>
       <!-- La tira arranca despues del puesto y del icono para que todas
@@ -2789,7 +2813,12 @@ async function cargarDatos() {
     // guardaba nada: el silencio pareciendose al exito.
     const hayDatos = d.metricas.total > 0;
     const sinDato = '—';
-    document.getElementById('kpi-promedio').textContent  = hayDatos ? fmtSegLargo(d.metricas.mediana_seg) : sinDato;
+    // La cifra con la unidad chica (01/10); el texto completo queda para
+    // lectores de pantalla y al pasar el mouse.
+    const elMediana = document.getElementById('kpi-promedio');
+    elMediana.innerHTML = hayDatos ? fmtSegCifra(d.metricas.mediana_seg) : sinDato;
+    elMediana.title = hayDatos ? fmtSegLargo(d.metricas.mediana_seg) : '';
+    elMediana.setAttribute('aria-label', hayDatos ? fmtSegLargo(d.metricas.mediana_seg) : String(sinDato));
     document.getElementById('kpi-p90').textContent       = hayDatos ? fmtSeg(d.metricas.p90_seg)          : sinDato;
     document.getElementById('kpi-prom-sec').textContent  = hayDatos ? fmtSeg(d.metricas.promedio_seg)     : sinDato;
     document.getElementById('kpi-maximo').textContent    = hayDatos ? fmtSeg(d.metricas.maximo_seg)       : sinDato;
