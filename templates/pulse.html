@@ -23,7 +23,10 @@
          un pixel: nadie los distingue, pero cada uno era una decision mas que
          tomar al escribir markup nuevo. Seis escalones, cada uno claramente
          mas grande que el anterior, y elegir deja de tener grises. */
-      --t-micro:    0.70rem;   /* etiquetas en mayuscula, tags, rangos */
+      /* 0.78rem y no 0.70 (01/10): era 11 px y ahi vive mucho de lo que se
+         lee —la segunda linea de cada lead, ayudas, ejes—. 12,5 px se lee
+         sin acercarse a la pantalla. */
+      --t-micro:    0.78rem;   /* etiquetas, tags, rangos, segundas lineas */
       --t-chico:    0.85rem;   /* secundario, controles, filas de tabla */
       --t-base:     1.00rem;   /* texto normal */
       --t-titulo:   1.25rem;   /* titulo de tarjeta */
@@ -158,8 +161,11 @@
     .kpi-num-sm { font-size:var(--t-cifra); font-weight:var(--p-fuerte); line-height:var(--lh-cifra); letter-spacing:-0.02em; color:var(--tinta); }
     /* La excepcion. Se pone por JS y solo cuando el dato la justifica. */
     .kpi-num-xl.kpi-alerta, .kpi-num.kpi-alerta, .kpi-num-sm.kpi-alerta { color:var(--alerta); }
-    .kpi-label{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--apagado); margin-top:6px; }
-    .kpi-label-sm{ font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.05em; color:var(--apagado); margin-top:5px; }
+    /* Sin mayusculas (01/10): repartidas en cada etiqueta —numeros grandes,
+       filtros, encabezados de tabla— perdian fuerza y costaban leer a este
+       tamaño. En minuscula se leen igual de claro. */
+    .kpi-label{ font-size:var(--t-chico); font-weight:var(--p-medio); color:var(--apagado); margin-top:6px; }
+    .kpi-label-sm{ font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--apagado); margin-top:5px; }
     .section-title { font-size:var(--t-titulo); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.01em; }
     .section-sub   { font-size:var(--t-chico); color:var(--apagado); margin-top:2px; }
     /* Las DOS partes de la pagina —el ahora y el periodo— llevan un titulo un
@@ -317,7 +323,7 @@
     /* Gris 'apagado' y no 'tenue' (01/10): 'tenue' es solo para iconos
        decorativos —2,56:1, no alcanza para texto, lo dice paleta.py— y estas
        etiquetas ("Ver", "Comparar con", "Responsables") se leen. */
-    .grupo-lbl { font-size:var(--t-micro); font-weight:var(--p-medio); text-transform:uppercase; letter-spacing:.06em; color:var(--apagado); white-space:nowrap; }
+    .grupo-lbl { font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--apagado); white-space:nowrap; }
     /* La lista de "Sin responder": es la cola de trabajo y necesita lugar.
        Con max-h-60 se veian dos leads y medio, y habia que hacer scroll
        dentro de la tarjeta (01/10). Unos 8 leads de dos lineas. */
@@ -473,7 +479,7 @@
           <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="grupo-lbl">Ver</span>
           <select id="dia-base" class="fecha-in" onchange="cambiarDia()"></select>
-          <span class="grupo-lbl">comparar con</span>
+          <span class="grupo-lbl">Comparar con</span>
           <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
         </div>
         <!-- La casilla dice lo EXCEPCIONAL, no lo normal (Juan, 15/09): sin
@@ -493,7 +499,7 @@
         </label>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-        <div class="card card-clic abierta border-l-4 !border-l-red-500">
+        <div class="card card-clic abierta">
           <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
                con Tab ni se activa con Enter: quien no usa mouse no podia abrir
                esta lista. Cambia solo el elemento; los estilos son los mismos.
@@ -1463,7 +1469,7 @@ function _filaLead(l, extra) {
   const unida = [l.asesor, l.detalle].filter(Boolean).join(' · ');
   const sub = unida ? unida.charAt(0).toUpperCase() + unida.slice(1) : '';
   return `
-      <a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" title="Lead #${l.lead_id}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 transition">
+      <a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" title="Lead #${l.lead_id}" class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-100 transition"${l._marca ? ` style="box-shadow:inset 3px 0 0 ${l._marca}"` : ''}>
         <div class="min-w-0 flex-1">
           <div class="t-chico font-semibold text-slate-800 truncate">${l.nombre || 'Sin nombre'}</div>
           ${sub ? `<div class="t-micro text-slate-500 mt-0.5 truncate" title="${sub}">${sub}</div>` : ''}
@@ -1596,7 +1602,9 @@ function deltaEstilo(pct, subirEsBueno) {
   const signo = pct > 0 ? '+' : (pct < 0 ? '−' : '');
   if (Math.abs(pct) <= DELTA_NEUTRO_PCT) return { color: COLOR.apagado, signo };
   const bueno = subirEsBueno ? pct > 0 : pct < 0;
-  return { color: bueno ? COLOR.ok : COLOR.alerta, signo };
+  // Empeorar va en el tono de aviso y no en rojo (01/10): el rojo queda
+  // para lo que exige accion, y en una pantalla llena de rojo dejaba de avisar.
+  return { color: bueno ? COLOR.ok : (COLOR.aviso || COLOR.alerta), signo };
 }
 
 // El renglon bajo cada numero: contra cuanto habia el mismo dia anterior, a la
@@ -1759,7 +1767,7 @@ function renderNoRespondidos(leads) {
       ${visibles.length === 0
         ? '<div class="t-chico text-slate-500 text-center py-4">Ninguno en esta franja</div>'
         : `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden lista-cola overflow-y-auto divide-y divide-white">
-          ${visibles.map(l => _filaLead({ ...l, detalle: _detalleEspera(l) }, _esperaYFranja(l, franjas))).join('')}
+          ${visibles.map(l => _filaLead({ ...l, detalle: _detalleEspera(l), _marca: (franjas[l._f] || {}).color }, _esperaYFranja(l, franjas))).join('')}
         </div>`}
       ${_bloqueAntiguos()}`;
   });
@@ -1768,15 +1776,18 @@ function renderNoRespondidos(leads) {
 // Cuanto lleva esperando y en que franja cae, a la derecha de cada lead.
 function _esperaYFranja(l, franjas) {
   const f = franjas[l._f];
-  const pill = f ? `<span class="tag ${tagClass(f.tag)} flex-shrink-0">${f.tag}</span>` : '';
   const fuerte = l._f >= franjas.length - 1 ? 'font-semibold text-slate-800' : 'text-slate-600';
+  // Sin la etiqueta por fila (01/10): con 279 de 295 en "Critico", la lista era
+  // una columna de pastillas rojas. La franja va como marca de color al borde
+  // de la fila (ver _filaLead) y como palabra en el title; los chips de
+  // arriba siguen filtrando por franja.
   // Pasado un dia, dias de CALENDARIO (01/10). "Esperando 58h 5m" eran horas
   // laborales y al lado decia "ultimo mensaje 24/09": se leia como dos datos
   // que no cierran. La espera laboral, que es la que decide la franja, queda
   // al pasar el mouse.
   const dias = l.dias_desde_ultimo || 0;
   const texto = dias >= 1 ? `hace ${dias} ${dias === 1 ? 'día' : 'días'}` : `esperando ${fmtSeg(l.espera_seg)}`;
-  return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap" title="Espera en horario laboral: ${fmtSeg(l.espera_seg)}">${texto}</span>${pill}`;
+  return `<span class="t-chico ${fuerte} flex-shrink-0 whitespace-nowrap" title="${f ? f.tag + ' · ' : ''}espera en horario laboral: ${fmtSeg(l.espera_seg)}">${texto}</span>`;
 }
 
 function renderDist(distribucion) {

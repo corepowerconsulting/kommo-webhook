@@ -100,4 +100,8 @@ def para_js():
         'tinta': TINTA, 'texto': TEXTO, 'apagado': APAGADO, 'tenue': TENUE,
         'linea': LINEA, 'carril': CARRIL, 'marca': MARCA,
         'alerta': ALERTA, 'ok': OK, 'otros': OTROS,
+        # "Empeoro" en el comparativo (01/10). Es el texto de la franja
+        # Regular: dice "ojo" sin gastar el rojo, que queda para lo que exige
+        # accion. Con el rojo en todos lados, el rojo dejaba de avisar.
+        'aviso': FRANJAS_TEXTO[2],
     }
