@@ -9,7 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
     :root {
       /* --- Colores: bajan de paleta.py, no se escriben aca --------------
@@ -175,23 +175,11 @@
        que se entienda que son dos cosas distintas (04/09). Tres niveles:
        parte > tarjeta > fila. */
     .parte-titulo  { font-size:var(--t-cifra); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.02em; line-height:var(--lh-corto); }
-    /* Numeros grandes y titulos en IBM Plex Sans Condensed (opcion A, 01/10):
-       angosta y tecnica, de panel de control; le da a PULSE una voz propia sin
-       sumar colores. Todo el resto sigue en Inter. Va despues de las reglas de
-       cada clase para que su letter-spacing gane: la condensada ya es angosta
-       y con -0.03em las cifras se tocan. */
-    .kpi-num-xl, .kpi-num, .kpi-num-sm, .section-title, .parte-titulo {
-      font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', 'Inter', sans-serif;
-      letter-spacing: -0.005em;
-    }
-    /* Grande en Plex Condensed, chico en Inter (01/10). Se probo poner Plex
-       Condensed en todas las cifras y se leyo peor: a 12,5-16 px la letra
-       condensada cierra los huecos del 6, 8, 9 y 0, y las cifras de Plex son
-       mas bajas que las de Inter al mismo tamaño (prueba renderizada a 1x,
-       "38 69 80" costaba leerlo). Lo condensado sirve donde el numero es
-       grande y falta lugar; las tablas de PULSE tienen tres columnas y les
-       sobra. Las cifras chicas van en Inter con ancho fijo (body), asi que
-       siguen alineadas y no saltan al refrescarse. */
+    /* Todo en Inter (Juan, 01/10). Se probo IBM Plex Sans Condensed en los
+       numeros grandes y titulos —y antes en todas las cifras— y se descarto:
+       en chico cerraba los huecos del 6, 8, 9 y 0, y no gusto en grande.
+       Inter con cifras de ancho fijo (body) se lee bien en todos los tamaños.
+       Lo que quedo de esa prueba es la unidad chica de la mediana grande. */
     /* La unidad mas chica que el numero: "1h 12m" se lee por los numeros, y
        la letra solo dice de que son. Mismo formato que el ranking. */
     .unidad { font-size:.56em; font-weight:var(--p-medio); opacity:.75; margin-left:.05em; margin-right:.25em; letter-spacing:0; }
