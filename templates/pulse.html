@@ -520,13 +520,15 @@
             </button>
             <div id="multi-tjasesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
+          <!-- Embudos con sus etapas, el mismo selector anidado del periodo
+               (Juan, 02/10). -->
           <div class="multi-wrap relative hidden" id="filtro-tj-embudo">
             <button type="button" onclick="multiToggle('tjembudo')" class="multi-btn">
               <span class="grupo-lbl">Embudos</span>
               <span class="truncate font-normal" id="multi-tjembudo-txt">Todos</span>
               <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div id="multi-tjembudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-72 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+            <div id="multi-tjembudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-80 max-h-80 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
           </div>
         </div>
         </div>
@@ -1060,7 +1062,8 @@ function multiValores(nombre) {
 // tabla no pide nada; el de las tarjetas pide el snapshot porque el
 // comparativo es un conteo de otro dia y ese lo arma el servidor. Ninguno
 // recarga el analisis del periodo, que no depende de ellos.
-const MULTI_TARJETAS = new Set(['tjasesor', 'tjasesorcampo', 'tjembudo']);
+// (Su selector de embudos es el anidado, ver embudoCambio.)
+const MULTI_TARJETAS = new Set(['tjasesor', 'tjasesorcampo']);
 const MULTI_DETALLE = new Set(['opasesor', 'opasesorcampo', 'opembudo']);
 
 function multiCambio(nombre, inicial) {
@@ -1108,55 +1111,59 @@ function multiToggle(nombre) {
 // Las etapas viajan como "pipeline:status" y no como status suelto: Kommo
 // reserva 142 y 143 para ganado y perdido, asi que esos ids se repiten en TODOS
 // los embudos con nombres distintos.
+//
+// Hay dos (Juan, 02/10): el del periodo (pref '') y el de las tarjetas de
+// arriba (pref 'tj'). Mismo componente, selecciones independientes.
 // ---------------------------------------------------------------------------
 let EMBUDOS = [];
 
-function embudoInit(lista) {
+function embudoInit(lista, pref = '') {
   EMBUDOS = lista || [];
-  const wrap = document.getElementById('filtro-embudo');
+  const wrap = document.getElementById(pref ? `filtro-${pref}-embudo` : 'filtro-embudo');
   // Sin embudos cargados el filtro no filtraria nada: se esconde en vez de
   // ofrecer un desplegable vacio.
   wrap.classList.toggle('hidden', EMBUDOS.length === 0);
   if (EMBUDOS.length === 0) return;
 
-  document.getElementById('multi-embudo-panel').innerHTML = EMBUDOS.map(e => `
+  document.getElementById(`multi-${pref}embudo-panel`).innerHTML = EMBUDOS.map(e => `
     <div class="border-b border-slate-50 last:border-0">
       <div class="flex items-center gap-1 px-2 py-2 hover:bg-slate-50">
-        <button type="button" onclick="embudoAbrir(${e.id})"
+        <button type="button" onclick="embudoAbrir(${e.id}, '${pref}')"
                 class="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-slate-600 flex-shrink-0"
                 title="Ver etapas">
-          <svg id="emb-flecha-${e.id}" class="chevron -rotate-90" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg id="${pref}emb-flecha-${e.id}" class="chevron -rotate-90" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <label class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-          <input type="checkbox" data-emb="${e.id}" onchange="embudoCambio()"
+          <input type="checkbox" data-emb="${e.id}" onchange="embudoCambio('${pref}')"
                  class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
           <span class="t-chico font-semibold text-slate-700 truncate">${e.nombre}</span>
           <span class="ml-auto t-micro text-slate-500 flex-shrink-0">${e.leads}</span>
         </label>
       </div>
-      <div id="emb-hijos-${e.id}" class="hidden pb-1">
+      <div id="${pref}emb-hijos-${e.id}" class="hidden pb-1">
         ${e.etapas.map(et => `
           <label class="flex items-center gap-2 pl-9 pr-3 py-1.5 hover:bg-slate-50 cursor-pointer">
-            <input type="checkbox" data-etapa="${et.clave}" data-padre="${e.id}" onchange="embudoCambio()"
+            <input type="checkbox" data-etapa="${et.clave}" data-padre="${e.id}" onchange="embudoCambio('${pref}')"
                    class="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
             <span class="t-micro text-slate-600 truncate">${et.nombre}</span>
             <span class="ml-auto t-micro text-slate-300 flex-shrink-0">${et.leads}</span>
           </label>`).join('')}
       </div>
     </div>`).join('');
-  embudoCambio();
+  // Al armarlo no cambio nada: solo el texto, sin recargar.
+  embudoCambio(pref, true);
 }
 
-function embudoAbrir(pid) {
-  const hijos = document.getElementById(`emb-hijos-${pid}`);
-  const flecha = document.getElementById(`emb-flecha-${pid}`);
+function embudoAbrir(pid, pref = '') {
+  const hijos = document.getElementById(`${pref}emb-hijos-${pid}`);
+  const flecha = document.getElementById(`${pref}emb-flecha-${pid}`);
   const abierto = !hijos.classList.contains('hidden');
   hijos.classList.toggle('hidden', abierto);
   flecha.classList.toggle('-rotate-90', abierto);
 }
 
-function embudoCambio() {
-  const panel = document.getElementById('multi-embudo-panel');
+function embudoCambio(pref = '', inicial = false) {
+  const panel = document.getElementById(`multi-${pref}embudo-panel`);
   const embMarcados = Array.from(panel.querySelectorAll('input[data-emb]:checked'))
                            .map(i => i.dataset.emb);
 
@@ -1172,7 +1179,7 @@ function embudoCambio() {
                            .filter(i => !i.disabled)
                            .map(i => i.dataset.etapa);
 
-  const txt = document.getElementById('multi-embudo-txt');
+  const txt = document.getElementById(`multi-${pref}embudo-txt`);
   const total = embMarcados.length + etaMarcadas.length;
   if (total === 0) {
     txt.textContent = 'Todos';
@@ -1181,17 +1188,29 @@ function embudoCambio() {
     const uno = EMBUDOS.find(e => String(e.id) === embMarcados[0]);
     txt.textContent = uno ? uno.nombre : '1 embudo';
     txt.classList.remove('text-slate-500');
+  } else if (total === 1) {
+    // Una etapa sola: su nombre, no "1 seleccionados".
+    const eta = EMBUDOS.flatMap(e => e.etapas || []).find(et => et.clave === etaMarcadas[0]);
+    txt.textContent = eta ? eta.nombre : '1 etapa';
+    txt.classList.remove('text-slate-500');
   } else {
     txt.textContent = `${total} seleccionados`;
     txt.classList.remove('text-slate-500');
   }
 
   // Se aplica solo, como el resto de la barra. Sin boton (Juan, 04/09).
-  if (typeof aplicarPronto === 'function') aplicarPronto();
+  // El de las tarjetas pide solo el snapshot, como sus vecinos.
+  if (inicial) return;
+  if (pref === 'tj') {
+    if (typeof refrescarSnapshot === 'function') refrescarSnapshot();
+  } else if (typeof aplicarPronto === 'function') {
+    aplicarPronto();
+  }
 }
 
-function embudoValores() {
-  const panel = document.getElementById('multi-embudo-panel');
+function embudoValores(pref = '') {
+  const panel = document.getElementById(`multi-${pref}embudo-panel`);
+  if (!panel || !panel.innerHTML) return { embudos: [], etapas: [] };
   return {
     embudos: Array.from(panel.querySelectorAll('input[data-emb]:checked')).map(i => i.dataset.emb),
     etapas:  Array.from(panel.querySelectorAll('input[data-etapa]:checked'))
@@ -2575,7 +2594,9 @@ function filtrosComunes() {
   // llegan enteras y se filtran en pantalla. Prefijo tj_ para que el backend
   // no lo confunda con los del periodo. El de "Detalle por asesor" no viaja.
   multiValores('tjasesor').forEach(v => params.append('tj_asesor', v));
-  multiValores('tjembudo').forEach(v => params.append('tj_embudo', v));
+  const tjEmb = embudoValores('tj');
+  tjEmb.embudos.forEach(v => params.append('tj_embudo', v));
+  tjEmb.etapas.forEach(v => params.append('tj_etapa', v));
   const tjNombres = multiValores('tjasesorcampo');
   if (tjNombres.length) params.append('tj_asesorcampo', tjNombres.join('||'));
   // Un parametro por elegido; sin ninguno, el backend no filtra.
@@ -2598,16 +2619,21 @@ function filtrosComunes() {
 // el comparativo: responsable y embudo por id; asesor por el nombre YA
 // resuelto, el mismo que muestra la tabla. Los valores del selector son
 // texto, de ahi el String().
+// Las tarjetas usan el selector anidado: embudo entero O etapa suelta
+// ("pipeline:status"), con OR como el servidor. La tabla, la lista plana.
 function filtrarLeads(lista, pref) {
   const resp = new Set(multiValores(pref + 'asesor'));
   const nombres = new Set(multiValores(pref + 'asesorcampo'));
-  const embs = new Set(multiValores(pref + 'embudo'));
+  const anidado = pref === 'tj' ? embudoValores('tj') : { embudos: multiValores(pref + 'embudo'), etapas: [] };
+  const embs = new Set(anidado.embudos);
+  const etapas = new Set(anidado.etapas);
+  const conEmbudo = embs.size || etapas.size;
   lista = lista || [];
-  if (!resp.size && !nombres.size && !embs.size) return lista;
+  if (!resp.size && !nombres.size && !conEmbudo) return lista;
   return lista.filter(l =>
     (!resp.size || resp.has(String(l.responsable_id))) &&
     (!nombres.size || nombres.has(l.asesor || SIN_ASIGNAR_UI)) &&
-    (!embs.size || embs.has(String(l.embudo_id))));
+    (!conEmbudo || embs.has(String(l.embudo_id)) || etapas.has(`${l.embudo_id}:${l.etapa_id}`)));
 }
 
 let SNAP = null;   // la ultima respuesta del snapshot, sin filtrar
@@ -2816,12 +2842,14 @@ async function cargarDatos() {
           multiInit(p + 'asesorcampo', campo.map(n => ({ value: n, label: n })), 'Todos');
           document.getElementById(`filtro-${p}-asesor-campo`).classList.remove('hidden');
         }
-        if (emb.length) {
-          // Lista plana, sin etapas: aca la pregunta es de que embudo.
-          multiInit(p + 'embudo', emb.map(e => ({ value: e.id, label: e.nombre })), 'Todos');
-          document.getElementById(`filtro-${p}-embudo`).classList.remove('hidden');
+        if (emb.length && p === 'op') {
+          // La tabla, lista plana: ahi la pregunta es de que embudo.
+          multiInit('opembudo', emb.map(e => ({ value: e.id, label: e.nombre })), 'Todos');
+          document.getElementById('filtro-op-embudo').classList.remove('hidden');
         }
       });
+      // Las tarjetas, anidado con etapas como el del periodo (Juan, 02/10).
+      embudoInit(emb, 'tj');
       asesoresListados = true;
     }
 
@@ -2845,14 +2873,18 @@ async function cargarDatos() {
     void cob;
     avisoCob.classList.add('hidden');
 
+    // Las franjas ANTES del snapshot: la tabla por asesor y la lista de Sin
+    // responder cuentan los criticos con ellas. Despues, la primera carga
+    // mostraba 0 criticos hasta el refresco de los 90 segundos.
+    const fr = d.config.franjas || [];
+    FRANJAS = fr;
+
     pintarSnapshot(d);
 
     // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
     // antes se escondia y desaparecian la mediana y el p90 de esa persona,
     // que es justo lo que uno filtra para ver. Con uno solo, una fila.
     // Antes de dibujar el ranking: la barra se pinta segun el objetivo.
-    const fr = d.config.franjas || [];
-    FRANJAS = fr;
     // OBJETIVO sigue en uso —pinta de rojo la mediana que lo pasa y dibuja la
     // linea del grafico— pero ya no se explica con un renglon de texto.
     OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;

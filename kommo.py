@@ -5126,6 +5126,7 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
         # aplican sobre las mismas listas, sin pedirlas dos veces.
         'responsable_id': row.get('responsible_user_id'),
         'embudo_id':      row.get('pipeline_id'),
+        'etapa_id':       row.get('status_id'),
     }
 
 # Constantes reservadas de Kommo, iguales en cualquier cuenta/pipeline:
@@ -5360,7 +5361,8 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             # (Del 26/09 al 01/10 se conto desde el primero.)
             query = f'''
                 SELECT le.lead_id, le.responsible_user_id, le.lead_nombre,
-                       le.asesor_nombre, le.pipeline_id, cli.ultimo AS f_ult_msj_cliente,
+                       le.asesor_nombre, le.pipeline_id, le.status_id,
+                       cli.ultimo AS f_ult_msj_cliente,
                        pen.primero AS inicio_espera, pen.pendientes,
                        (SELECT mc2.msg_id FROM mensajes_cliente mc2
                          WHERE mc2.subdomain = le.subdomain AND mc2.lead_id = le.lead_id
@@ -5398,7 +5400,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             query = '''
                 SELECT lead_id, responsible_user_id, f_ult_msj_cliente,
                        f_ult_msj_cliente AS inicio_espera, lead_nombre, asesor_nombre,
-                       pipeline_id
+                       pipeline_id, status_id
                 FROM leads_estado le
                 WHERE subdomain = %s
                   AND f_ult_msj_cliente IS NOT NULL
@@ -5600,10 +5602,14 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
 
     Lo unico que no se puede filtrar en pantalla es el comparativo, que es
     un conteo de otro dia: ese se arma aca con el filtro de las tarjetas
-    (tj_asesor, tj_asesorcampo, tj_embudo), que es al que acompaña."""
+    (tj_asesor, tj_asesorcampo, tj_embudo, tj_etapa), que es al que
+    acompaña. Embudo y etapa van con OR, como en el filtro del periodo."""
     tj_asesores  = _ids_de('tj_asesor')
     tj_nombres   = _nombres_de('tj_asesorcampo')
     tj_embudos   = _ids_de('tj_embudo')
+    # "pipeline:status", igual que 'etapa' en el periodo (ver _filtro_embudo).
+    tj_etapas    = sorted({p.strip() for crudo in request.args.getlist('tj_etapa')
+                           for p in str(crudo).split(',') if ':' in p})
     sql_embudo, params_embudo = '', ()
     asesor_ids = None
 
@@ -5636,7 +5642,7 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
     no_respondidos, antiguos = _separar_antiguos(no_respondidos)
 
     contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
-    tj_sql_embudo, tj_params_embudo = _filtro_embudo(tj_embudos, ())
+    tj_sql_embudo, tj_params_embudo = _filtro_embudo(tj_embudos, tj_etapas)
     comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, contra,
                                   corte, conn, tj_asesores or None, solo_abiertas,
                                   tj_sql_embudo, tj_params_embudo, base_es_hoy=base_es_hoy,
@@ -5733,7 +5739,7 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
                        MAX(ma.ts) FILTER (
                            WHERE NOT (COALESCE(ma.autor_nombre, '') = ANY(%s))
                        ) AS ultimo_de_persona,
-                       le.pipeline_id
+                       le.pipeline_id, le.status_id
                   FROM mensajes_asesor ma
                   JOIN {tabla_le} le
                     ON le.subdomain = ma.subdomain AND le.lead_id = ma.lead_id
@@ -5744,7 +5750,7 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
             query = '''
                 SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre,
                        f_ult_msj_asesor, f_ult_msj_asesor AS ultimo_de_persona,
-                       pipeline_id
+                       pipeline_id, status_id
                   FROM leads_estado
                  WHERE subdomain = %s
                    AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
@@ -5761,7 +5767,7 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
             params.extend(params_embudo)
         if corte:
             query += (' GROUP BY le.lead_id, le.responsible_user_id, '
-                      'le.lead_nombre, le.asesor_nombre, le.pipeline_id')
+                      'le.lead_nombre, le.asesor_nombre, le.pipeline_id, le.status_id')
         query += ' ORDER BY 5 DESC'      # por f_ult_msj_asesor
         c.execute(query, params)
         rows = c.fetchall()
