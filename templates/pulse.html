@@ -2684,14 +2684,22 @@ function marcarFrescura() {
 
 // Solo el snapshot, no el dashboard entero: el resto depende del rango de
 // fechas y no cambia si nadie toca el filtro.
+// Cada pedido del snapshot lleva numero y solo se pinta el ULTIMO. Dos clics
+// seguidos en el filtro de arriba salen como dos pedidos; si el primero
+// volvia ultimo, el comparativo quedaba con el filtro viejo hasta el refresco
+// siguiente. Lo usa tambien cargarDatos, que trae su propio snapshot.
+let SNAP_PEDIDO = 0;
+
 async function refrescarSnapshot() {
   // Con la pestaña oculta no hay nadie mirando; seguir consultando seria carga
-  // contra la base a cambio de nada.
-  if (document.hidden) return;
+  // contra la base a cambio de nada. Antes de la primera carga tampoco: faltan
+  // las franjas, y la carga completa ya trae el snapshot.
+  if (document.hidden || PRIMERA_CARGA) return;
+  const n = ++SNAP_PEDIDO;
   try {
     const res = await fetch('/pulse/snapshot?' + filtrosComunes().toString());
     const d = await res.json();
-    if (!d.error) pintarSnapshot(d);
+    if (!d.error && n === SNAP_PEDIDO) pintarSnapshot(d);
   } catch (e) {
     // Un refresco que falla no puede romper la pantalla: los numeros que ya
     // estan siguen siendo validos, solo quedan viejos.
@@ -2741,6 +2749,7 @@ async function cargarDatos() {
   multiValores('asesorcampo').forEach(v => params.append('asesor_nombre', v));
   params.append('modo', MODO);
 
+  const nSnap = ++SNAP_PEDIDO;
   try {
     const res = await fetch('/pulse/data?' + params.toString());
     const d   = await res.json();
@@ -2879,7 +2888,8 @@ async function cargarDatos() {
     const fr = d.config.franjas || [];
     FRANJAS = fr;
 
-    pintarSnapshot(d);
+    // Si mientras tanto salio un refresco del snapshot, el suyo es mas nuevo.
+    if (nSnap === SNAP_PEDIDO) pintarSnapshot(d);
 
     // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
     // antes se escondia y desaparecian la mediana y el p90 de esa persona,
