@@ -5121,6 +5121,11 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
         # distintos en la misma pantalla.
         'asesor':  asesor_de_registro(row),
         'fecha':   _fmt_fecha_corta(local_dt),
+        # Para que el tablero filtre en pantalla (02/10): el filtro de las
+        # tarjetas y el de "Detalle por asesor" son independientes y se
+        # aplican sobre las mismas listas, sin pedirlas dos veces.
+        'responsable_id': row.get('responsible_user_id'),
+        'embudo_id':      row.get('pipeline_id'),
     }
 
 # Constantes reservadas de Kommo, iguales en cualquier cuenta/pipeline:
@@ -5355,7 +5360,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
             # (Del 26/09 al 01/10 se conto desde el primero.)
             query = f'''
                 SELECT le.lead_id, le.responsible_user_id, le.lead_nombre,
-                       le.asesor_nombre, cli.ultimo AS f_ult_msj_cliente,
+                       le.asesor_nombre, le.pipeline_id, cli.ultimo AS f_ult_msj_cliente,
                        pen.primero AS inicio_espera, pen.pendientes,
                        (SELECT mc2.msg_id FROM mensajes_cliente mc2
                          WHERE mc2.subdomain = le.subdomain AND mc2.lead_id = le.lead_id
@@ -5392,7 +5397,8 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         else:
             query = '''
                 SELECT lead_id, responsible_user_id, f_ult_msj_cliente,
-                       f_ult_msj_cliente AS inicio_espera, lead_nombre, asesor_nombre
+                       f_ult_msj_cliente AS inicio_espera, lead_nombre, asesor_nombre,
+                       pipeline_id
                 FROM leads_estado le
                 WHERE subdomain = %s
                   AND f_ult_msj_cliente IS NOT NULL
@@ -5585,16 +5591,21 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
     y compararlo contra un dia entero infla la diferencia. Entre dos dias
     pasados se toman enteros los dos.
 
-    FILTROS PROPIOS: op_asesor (responsables), op_embudo y op_asesorcampo
-    (nombres de la tabla). Son independientes de los del periodo —pedido de
-    la reunion del 31/08— asi que se puede mirar 'que tiene Ivis ahora mismo'
-    sin tocar el analisis de abajo, y al reves. Si no vienen, no se filtra:
-    los del periodo NO se heredan."""
-    op_asesores  = _ids_de('op_asesor')
-    op_nombres   = _nombres_de('op_asesorcampo')
-    op_embudos   = _ids_de('op_embudo')
-    sql_embudo, params_embudo = _filtro_embudo(op_embudos, ())
-    asesor_ids = op_asesores or None
+    FILTROS PROPIOS: el bloque tiene dos, independientes entre si y de los
+    del periodo (reuniones del 31/08 y Juan, 02/10): el de las tarjetas,
+    arriba, y el de "Detalle por asesor". Los dos filtran las MISMAS listas,
+    asi que las listas viajan enteras —cada lead con su responsable_id y
+    embudo_id— y cada filtro se aplica en pantalla. Pedirlas una vez por
+    filtro duplicaria la consulta mas cara del tablero.
+
+    Lo unico que no se puede filtrar en pantalla es el comparativo, que es
+    un conteo de otro dia: ese se arma aca con el filtro de las tarjetas
+    (tj_asesor, tj_asesorcampo, tj_embudo), que es al que acompaña."""
+    tj_asesores  = _ids_de('tj_asesor')
+    tj_nombres   = _nombres_de('tj_asesorcampo')
+    tj_embudos   = _ids_de('tj_embudo')
+    sql_embudo, params_embudo = '', ()
+    asesor_ids = None
 
     dia = (request.args.get('dia') or '').strip()
     base_es_hoy = True
@@ -5620,23 +5631,16 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                                                      sql_embudo, params_embudo, corte, conn=conn)
         _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
 
-    # El filtro por nombre se aplica sobre las listas ya armadas, no en SQL:
-    # el nombre que muestra la tabla sale de la cadena de atribucion completa
-    # —campo Asesor, quien mando el mensaje, responsable— y no de una sola
-    # columna, asi que en SQL no se puede pedir.
-    if op_nombres:
-        no_respondidos, trabajados, solo_bot = _solo_estos_asesores(
-            [no_respondidos, trabajados, solo_bot], op_nombres)
-
     # Lo de mas de DIAS_SIN_RESPONDER_RECIENTE dias va aparte: el numero de la
     # tarjeta, los criticos y la tabla por asesor cuentan solo lo reciente.
     no_respondidos, antiguos = _separar_antiguos(no_respondidos)
 
     contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
+    tj_sql_embudo, tj_params_embudo = _filtro_embudo(tj_embudos, ())
     comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, contra,
-                                  corte, conn, asesor_ids, solo_abiertas,
-                                  sql_embudo, params_embudo, base_es_hoy=base_es_hoy,
-                                  nombres=op_nombres,
+                                  corte, conn, tj_asesores or None, solo_abiertas,
+                                  tj_sql_embudo, tj_params_embudo, base_es_hoy=base_es_hoy,
+                                  nombres=tj_nombres,
                                   incluir_conv_cerradas=incluir_conv_cerradas)
     return {
         'no_respondidos':     no_respondidos,
@@ -5728,7 +5732,8 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
                        MAX(ma.ts) AS f_ult_msj_asesor,
                        MAX(ma.ts) FILTER (
                            WHERE NOT (COALESCE(ma.autor_nombre, '') = ANY(%s))
-                       ) AS ultimo_de_persona
+                       ) AS ultimo_de_persona,
+                       le.pipeline_id
                   FROM mensajes_asesor ma
                   JOIN {tabla_le} le
                     ON le.subdomain = ma.subdomain AND le.lead_id = ma.lead_id
@@ -5738,7 +5743,8 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
         else:
             query = '''
                 SELECT lead_id, responsible_user_id, lead_nombre, asesor_nombre,
-                       f_ult_msj_asesor, f_ult_msj_asesor AS ultimo_de_persona
+                       f_ult_msj_asesor, f_ult_msj_asesor AS ultimo_de_persona,
+                       pipeline_id
                   FROM leads_estado
                  WHERE subdomain = %s
                    AND f_ult_msj_asesor >= %s AND f_ult_msj_asesor < %s
@@ -5755,7 +5761,7 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
             params.extend(params_embudo)
         if corte:
             query += (' GROUP BY le.lead_id, le.responsible_user_id, '
-                      'le.lead_nombre, le.asesor_nombre')
+                      'le.lead_nombre, le.asesor_nombre, le.pipeline_id')
         query += ' ORDER BY 5 DESC'      # por f_ult_msj_asesor
         c.execute(query, params)
         rows = c.fetchall()

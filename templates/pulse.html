@@ -490,12 +490,45 @@
            bloque —numeros, listas y tabla por asesor— obedece a esa
            eleccion. -->
       <div class="flex items-center justify-between gap-4 flex-wrap no-imprimir">
+        <div class="flex items-center gap-3 flex-wrap">
         <div class="grupo">
           <svg class="flex-shrink-0 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="grupo-lbl">Ver</span>
           <select id="dia-base" class="fecha-in" onchange="cambiarDia()"></select>
           <span class="grupo-lbl">Comparar con</span>
           <select id="dia-comparar" class="fecha-in" onchange="cambiarDia()"></select>
+        </div>
+
+        <!-- Filtro de las DOS TARJETAS (Juan, 02/10): el mismo de "Detalle por
+             asesor", duplicado y no movido. Acota los numeros, las listas y
+             el comparativo de "Sin responder" y "Atendidos hoy"; la tabla de
+             abajo sigue con el suyo. Son independientes. -->
+        <div class="grupo">
+          <div class="multi-wrap relative">
+            <button type="button" onclick="multiToggle('tjasesor')" class="multi-btn">
+              <span class="grupo-lbl">Responsables</span>
+              <span class="truncate font-normal" id="multi-tjasesor-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-tjasesor-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
+          <div class="multi-wrap relative hidden" id="filtro-tj-asesor-campo">
+            <button type="button" onclick="multiToggle('tjasesorcampo')" class="multi-btn">
+              <span class="grupo-lbl">Asesores</span>
+              <span class="truncate font-normal" id="multi-tjasesorcampo-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-tjasesorcampo-panel" class="multi-panel hidden absolute z-30 mt-1 w-60 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
+          <div class="multi-wrap relative hidden" id="filtro-tj-embudo">
+            <button type="button" onclick="multiToggle('tjembudo')" class="multi-btn">
+              <span class="grupo-lbl">Embudos</span>
+              <span class="truncate font-normal" id="multi-tjembudo-txt">Todos</span>
+              <svg class="flex-shrink-0 text-slate-500 ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="multi-tjembudo-panel" class="multi-panel hidden absolute z-30 mt-1 w-72 max-h-64 overflow-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1"></div>
+          </div>
+        </div>
         </div>
         <!-- La casilla dice lo EXCEPCIONAL, no lo normal (Juan, 15/09): sin
              marcar, "Sin responder" muestra solo los leads con la conversacion
@@ -590,12 +623,11 @@
           <div class="section-sub">Ahora mismo, ordenados por críticos: quién necesita ayuda primero</div>
         </div>
 
-        <!-- Filtro PROPIO de esta mitad (reunion del 31/08): responsables,
-             asesores y embudos, independiente del filtro del periodo. Asi se
-             puede mirar "que tiene Ivis ahora mismo" sin tocar el analisis de
-             abajo, y al reves.
-             Al cambiarlo se refresca solo el bloque de operacion, no la
-             pagina entera: el analisis del periodo no depende de esto. -->
+        <!-- Filtro PROPIO de esta tabla (reunion del 31/08): responsables,
+             asesores y embudos, independiente del filtro del periodo y, desde
+             el 02/10, tambien del de las tarjetas de arriba. Asi se puede
+             mirar "que tiene Ivis ahora mismo" sin tocar lo demas.
+             Filtra en pantalla, sin pedir nada al servidor. -->
         <div class="grupo no-imprimir ml-auto">
           <div class="multi-wrap relative">
             <button type="button" onclick="multiToggle('opasesor')" class="multi-btn">
@@ -1011,25 +1043,35 @@ function multiInit(nombre, items, textoTodos) {
              class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 flex-shrink-0"/>
       <span class="truncate">${it.label}</span>
     </label>`).join('');
-  multiCambio(nombre);
+  // Solo pone el texto "Todos": al armarlo no cambio nada, y recargar aca
+  // pedia el tablero otra vez en cada apertura de la pagina.
+  multiCambio(nombre, true);
 }
 
 function multiValores(nombre) {
   return MULTI[nombre] ? Array.from(MULTI[nombre].sel) : [];
 }
 
-// Los tres selectores del bloque de operacion refrescan SOLO ese bloque: el
-// analisis del periodo no depende de ellos, y recargar la pagina entera por
-// un filtro de la mitad de arriba costaria segundos de mas.
-const MULTI_SOLO_OPERACION = new Set(['opasesor', 'opasesorcampo', 'opembudo']);
+// El bloque de operacion tiene DOS filtros, independientes (Juan, 02/10):
+//   tj*  arriba, junto a "Ver": las dos tarjetas —numeros, listas y
+//        comparativo—.
+//   op*  en "Detalle por asesor": solo esa tabla.
+// Los dos filtran en pantalla las mismas listas (ver filtrarLeads). El de la
+// tabla no pide nada; el de las tarjetas pide el snapshot porque el
+// comparativo es un conteo de otro dia y ese lo arma el servidor. Ninguno
+// recarga el analisis del periodo, que no depende de ellos.
+const MULTI_TARJETAS = new Set(['tjasesor', 'tjasesorcampo', 'tjembudo']);
+const MULTI_DETALLE = new Set(['opasesor', 'opasesorcampo', 'opembudo']);
 
-function multiCambio(nombre) {
+function multiCambio(nombre, inicial) {
   const panel = document.getElementById(`multi-${nombre}-panel`);
   const marcados = Array.from(panel.querySelectorAll('input:checked')).map(i => i.value);
   MULTI[nombre].sel = new Set(marcados);
-  // Los del bloque de operacion refrescan solo ese bloque; los del periodo
-  // recargan el analisis, con la espera de aplicarPronto.
-  if (MULTI_SOLO_OPERACION.has(nombre)) {
+  if (inicial) {
+    // nada que recargar
+  } else if (MULTI_DETALLE.has(nombre)) {
+    if (typeof pintarDetalleAsesores === 'function') pintarDetalleAsesores();
+  } else if (MULTI_TARJETAS.has(nombre)) {
     if (typeof refrescarSnapshot === 'function') refrescarSnapshot();
   } else if (typeof aplicarPronto === 'function') {
     aplicarPronto();
@@ -2529,12 +2571,13 @@ function filtrosComunes() {
   if (dia) params.append('dia', dia);
   const cmp = diaComparar();
   if (cmp) params.append('comparar', cmp);
-  // Filtros propios del bloque de operacion. Van con prefijo op_ para que el
-  // backend no los confunda con los del periodo: son independientes.
-  multiValores('opasesor').forEach(v => params.append('op_asesor', v));
-  multiValores('opembudo').forEach(v => params.append('op_embudo', v));
-  const opNombres = multiValores('opasesorcampo');
-  if (opNombres.length) params.append('op_asesorcampo', opNombres.join('||'));
+  // El filtro de las tarjetas viaja solo para el comparativo: las listas
+  // llegan enteras y se filtran en pantalla. Prefijo tj_ para que el backend
+  // no lo confunda con los del periodo. El de "Detalle por asesor" no viaja.
+  multiValores('tjasesor').forEach(v => params.append('tj_asesor', v));
+  multiValores('tjembudo').forEach(v => params.append('tj_embudo', v));
+  const tjNombres = multiValores('tjasesorcampo');
+  if (tjNombres.length) params.append('tj_asesorcampo', tjNombres.join('||'));
   // Un parametro por elegido; sin ninguno, el backend no filtra.
   multiValores('asesor').forEach(v => params.append('asesor', v));
   // Embudos tildados enteros y etapas sueltas van por separado: el backend los
@@ -2550,24 +2593,53 @@ function filtrosComunes() {
 
 // Pinta las dos tarjetas de "ahora mismo". La usan la carga completa y el
 // refresco automatico, para que las dos dejen la pantalla igual.
+// Deja en la lista los leads que pasan uno de los dos filtros del bloque
+// ('tj' las tarjetas, 'op' la tabla). Mismo criterio que el servidor usa para
+// el comparativo: responsable y embudo por id; asesor por el nombre YA
+// resuelto, el mismo que muestra la tabla. Los valores del selector son
+// texto, de ahi el String().
+function filtrarLeads(lista, pref) {
+  const resp = new Set(multiValores(pref + 'asesor'));
+  const nombres = new Set(multiValores(pref + 'asesorcampo'));
+  const embs = new Set(multiValores(pref + 'embudo'));
+  lista = lista || [];
+  if (!resp.size && !nombres.size && !embs.size) return lista;
+  return lista.filter(l =>
+    (!resp.size || resp.has(String(l.responsable_id))) &&
+    (!nombres.size || nombres.has(l.asesor || SIN_ASIGNAR_UI)) &&
+    (!embs.size || embs.has(String(l.embudo_id))));
+}
+
+let SNAP = null;   // la ultima respuesta del snapshot, sin filtrar
+
+function pintarDetalleAsesores() {
+  if (!SNAP) return;
+  renderAsesoresAhora(filtrarLeads(SNAP.no_respondidos, 'op'),
+                      filtrarLeads(SNAP.trabajados_hoy, 'op'),
+                      filtrarLeads(SNAP.atendidos_solo_bot, 'op'));
+}
+
 function pintarSnapshot(d) {
+  SNAP = d;
+  const noResp = filtrarLeads(d.no_respondidos, 'tj');
   document.getElementById('kpi-no-respondidos').textContent =
-    d.no_respondidos.length.toLocaleString('es');
+    noResp.length.toLocaleString('es');
   // Cuenta TODOS los atendidos hoy, contestara una persona o el bot. El
   // desglose se sigue calculando y viaja en la respuesta —'atendidos_solo_bot'—
   // por si mas adelante se quiere mostrar en algun lado.
-  const todosHoy = d.trabajados_hoy.concat(d.atendidos_solo_bot || []);
+  const todosHoy = filtrarLeads(d.trabajados_hoy, 'tj')
+    .concat(filtrarLeads(d.atendidos_solo_bot, 'tj'));
   document.getElementById('kpi-trabajados-hoy').textContent =
     todosHoy.length.toLocaleString('es');
-  ANTIGUOS_NO_RESP = d.no_respondidos_antiguos || [];
+  ANTIGUOS_NO_RESP = filtrarLeads(d.no_respondidos_antiguos, 'tj');
   DIAS_RECIENTE = d.dias_reciente || DIAS_RECIENTE;
   const nAnt = ANTIGUOS_NO_RESP.length;
   document.getElementById('antiguos-no-respondidos').textContent = nAnt
     ? `+ ${nAnt.toLocaleString('es')} sin respuesta hace más de ${DIAS_RECIENTE} días` : '';
-  renderNoRespondidos(d.no_respondidos);
+  renderNoRespondidos(noResp);
   renderExtraLeads('panel-trabajados-hoy', todosHoy);
-  renderAsesoresAhora(d.no_respondidos, d.trabajados_hoy, d.atendidos_solo_bot || []);
-  pintarComparativo(d.comparado, d.no_respondidos.length, todosHoy.length, !!d.dia);
+  pintarDetalleAsesores();
+  pintarComparativo(d.comparado, noResp.length, todosHoy.length, !!d.dia);
   pintarDiaElegido(d.dia);
   ULTIMO_SNAPSHOT = Date.now();
   marcarFrescura();
@@ -2735,17 +2807,21 @@ async function cargarDatos() {
       // Los mismos tres, para el bloque de operacion. Son listas iguales pero
       // selecciones INDEPENDIENTES: mirar a una persona arriba no tiene por
       // que cambiar el analisis del periodo de abajo (reunion del 31/08).
-      multiInit('opasesor', d.config.asesores.map(a => ({ value: a.id, label: a.nombre })), 'Todos');
-      if (campo.length) {
-        multiInit('opasesorcampo', campo.map(n => ({ value: n, label: n })), 'Todos');
-        document.getElementById('filtro-op-asesor-campo').classList.remove('hidden');
-      }
+      // Y dos veces: el de las tarjetas (tj) y el de "Detalle por asesor"
+      // (op), tambien independientes entre si (Juan, 02/10).
       const emb = d.config.embudos || [];
-      if (emb.length) {
-        // Lista plana, sin etapas: aca la pregunta es de que embudo.
-        multiInit('opembudo', emb.map(e => ({ value: e.id, label: e.nombre })), 'Todos');
-        document.getElementById('filtro-op-embudo').classList.remove('hidden');
-      }
+      ['tj', 'op'].forEach(p => {
+        multiInit(p + 'asesor', d.config.asesores.map(a => ({ value: a.id, label: a.nombre })), 'Todos');
+        if (campo.length) {
+          multiInit(p + 'asesorcampo', campo.map(n => ({ value: n, label: n })), 'Todos');
+          document.getElementById(`filtro-${p}-asesor-campo`).classList.remove('hidden');
+        }
+        if (emb.length) {
+          // Lista plana, sin etapas: aca la pregunta es de que embudo.
+          multiInit(p + 'embudo', emb.map(e => ({ value: e.id, label: e.nombre })), 'Todos');
+          document.getElementById(`filtro-${p}-embudo`).classList.remove('hidden');
+        }
+      });
       asesoresListados = true;
     }
 
