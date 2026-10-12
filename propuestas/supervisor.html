@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <style>html{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
-<title>Pulse para supervisores</title>
+<title>Pulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=Barlow:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap">
 <style>
 /* Layout: una sola columna de lectura. Bloque HOY (su barra de filtros con la
    comparacion de dos dias, cifras, ritmo contra el otro dia, cola y asesores)
@@ -352,67 +352,95 @@ body { -webkit-font-smoothing: antialiased; }
 .dl-barra { display: none; }
 </style>
 
+<style>
+/* ===== Version "en produccion": controles que funcionan ===== */
+body { padding: 0 0 72px; background: #f5f7fa; }
+.marco { max-width: 1280px; padding-block: 0; gap: 0; }
+.lienzo-scroll { border-radius: 0; box-shadow: none; }
+.app { border-radius: 0; background: #f5f7fa; }
+select.ctl-sel { appearance: none; -webkit-appearance: none; font: inherit; font-size: var(--t-chico); font-weight: 600; color: var(--tinta);
+  background: transparent; border: 0; padding: 0 16px 0 0; cursor: pointer; outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right center; }
+.ctl:focus-within { border-color: var(--marca); }
+input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; color: var(--tinta); border: 0; background: transparent; padding: 0; outline: none; width: 118px; }
+.panel .todos { border-bottom: 1px solid var(--linea); margin-bottom: 4px; padding-bottom: 8px; }
+.panel label.opc { cursor: pointer; }
+.panel input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--marca); margin: 0; flex: none; }
+.panel .etapas label.opc { padding-left: 6px; }
+.panel .flecha-btn { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--apagado); width: 16px; }
+.panel .flecha-btn.abierta .flecha { transform: rotate(90deg); }
+.ctl b.activo { color: var(--marca-tinta); }
+.titulo-dia { display: flex; align-items: center; gap: 12px; }
+.fila-click { cursor: pointer; }
+.antiguos-lista { margin: 0 var(--e4) 18px; border-top: 1px dashed var(--linea); }
+.antiguos-lista .fila { grid-template-columns: minmax(0, 1fr) 120px; }
+.pie-antiguos { display: flex; justify-content: space-between; align-items: center; margin: -6px var(--e4) 16px; font-size: var(--t-chico); color: var(--apagado); }
+.vacio { padding: 28px 0; text-align: center; color: var(--apagado); font-size: var(--t-chico); }
+.modal-fondo { position: fixed; inset: 0; background: rgba(15,23,42,.35); display: grid; place-items: center; z-index: 80; padding: 20px; }
+.modal { width: min(640px, 100%); max-height: 80vh; overflow: auto; background: var(--superficie); border-radius: 16px; box-shadow: 0 24px 60px rgba(15,23,42,.3); }
+.modal-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 20px 22px 8px; position: sticky; top: 0; background: var(--superficie); }
+.modal-cab h3 { font-size: 1.05rem; font-weight: 800; }
+.modal-cab p { margin: 4px 0 0; color: var(--apagado); font-size: var(--t-chico); }
+.modal-cuerpo { padding: 0 22px 20px; }
+.modal-cuerpo .fila { grid-template-columns: minmax(0, 1fr) 130px 90px; }
+.cerrar { border: 0; background: var(--carril); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 18px; line-height: 1; color: var(--texto); }
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--tinta); color: #fff; padding: 10px 16px; border-radius: 10px;
+         font-size: var(--t-chico); font-weight: 600; z-index: 90; box-shadow: 0 10px 24px rgba(15,23,42,.25); }
+.ver-cambios { position: fixed; left: 16px; bottom: 16px; z-index: 70; display: inline-flex; align-items: center; gap: 8px; background: var(--superficie);
+               border: 1px solid var(--linea); border-radius: 999px; padding: 6px 12px; font-size: var(--t-micro); color: var(--apagado); box-shadow: var(--sombra); cursor: pointer; }
+.ver-cambios input { accent-color: #7c3aed; margin: 0; }
+.chip-cerrada { background: var(--carril); color: var(--apagado); }
+.resumen-sup.n1 { grid-template-columns: 1fr; } .resumen-sup.n2 { grid-template-columns: 1fr 1fr; }
+#tabla-per th, #tabla-per td { padding-left: 7px; padding-right: 7px; }
+#tabla-per th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+</style>
+
 
 </head>
 <body>
 <div class="marco">
-  <div class="intro">
-    <div>
-      <h1>Pulse para supervisores</h1>
-      <p>El tablero actual con los cambios para el supervisor de ventas, ya ordenado y alineado. La casilla de abajo muestra cada cambio con su porqué. Los datos son inventados.</p>
-    </div>
-    <span class="ejemplo">Números y nombres de ejemplo</span>
-  </div>
-  <div class="letrero">
-    <label class="interruptor" for="chk-marcas"><input type="checkbox" id="chk-marcas"> Mostrar qué cambió y por qué</label>
-    <span class="sep"></span>
-    <span>Texto en Manrope · números en Inter</span>
-  </div>
-
   <div class="lienzo-scroll"><div class="app" id="app">
     <div class="barra-app">
       <div class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 12 6 12 9 4 15 20 18 12 22 12"/></svg></i>
-        <div><b>PULSE</b><small>Cuenta de ejemplo</small></div></div>
-      <span class="sub" style="margin-left:auto">Salir</span>
+        <div><b>PULSE</b><small>Cuenta demo · Lun a Vie 8:00–20:00, Sáb 8:00–16:00</small></div></div>
+      <button class="enlace" type="button" id="salir" style="margin-left:auto;color:var(--apagado);font-weight:600">Salir</button>
     </div>
 
-    <!-- ============ OPERACION EN TIEMPO REAL ============ -->
+    <!-- ============ OPERACION ============ -->
     <section class="bloque" aria-labelledby="h-hoy">
-      <div class="bloque-cab"><h2 id="h-hoy">Operación en tiempo real</h2><span class="vivo" style="margin-left:0">actualizado recién</span></div>
-      <p class="sub" style="margin:-8px 0 0">Responde: <b style="color:var(--tinta)">¿qué leads necesitan atención ya, y cómo va el día contra otro día?</b></p>
+      <div class="bloque-cab titulo-dia"><h2 id="h-hoy">Operación en tiempo real</h2><span class="vivo" id="chip-vivo" style="margin-left:0">actualizado recién</span></div>
+      <p class="sub" style="margin:-8px 0 0">Qué leads necesitan atención y cómo va el día contra otro día</p>
 
       <div class="filtros" aria-label="Filtros de las tarjetas">
-        <button class="ctl dia" type="button"><em>Ver</em><b>Hoy</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
-        <button class="ctl contra" type="button"><em>Comparar con</em><b>07/10</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <label class="ctl dia" for="sel-dia"><em>Ver</em><select class="ctl-sel" id="sel-dia"></select></label>
+        <label class="ctl contra" for="sel-contra"><em>Comparar con</em><select class="ctl-sel" id="sel-contra"></select></label>
         <span class="sep"></span>
-        <button class="ctl" type="button"><em>Responsables</em><b>Todos</b></button>
-        <button class="ctl" type="button"><em>Asesores</em><b>Todos</b></button>
-        <div class="ctl-wrap">
-          <button class="ctl" type="button" data-panel="pan-emb-hoy" aria-expanded="false"><em>Embudos</em><b>Todos</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
-          <div class="panel" id="pan-emb-hoy" hidden></div>
-        </div>
-        <span class="que-filtra">Filtra las dos tarjetas</span>
+        <div class="ctl-wrap" id="f-tj-resp"></div>
+        <div class="ctl-wrap" id="f-tj-ases"></div>
+        <div class="ctl-wrap" id="f-tj-emb"></div>
         <label class="check" for="chk-cerradas"><input type="checkbox" id="chk-cerradas">Incluir conversaciones cerradas</label>
       </div>
 
       <div class="cards-hoy">
         <div class="tarjeta">
           <div class="kpi-card">
-            <div class="kpi-top"><span class="cifra">12</span><span class="nombre-kpi">Sin responder</span></div>
-            <div class="desglose"><span class="pill p3 num-pill">4 en Crítico</span><div class="apilada" id="sev-barra"></div></div>
-            <div class="cmp"><span>07/10 a esta hora: <span class="contra">15</span></span><span class="delta mejor">▼ 3 · mejor</span></div>
-            <span class="sub nota-kpi">+ <span class="num">37</span> sin respuesta hace más de 7 días, aparte</span>
+            <div class="kpi-top"><span class="cifra" id="n-sr">—</span><span class="nombre-kpi">Sin responder</span></div>
+            <div class="desglose"><span class="pill p3 num-pill" id="n-crit">—</span><div class="apilada" id="sev-barra"></div><span class="cambio nuevo" data-tip="Antes solo había un total. Un total de 12 no dice si es urgente: puede ser 12 clientes de hace 2 minutos. Lo que hace actuar es cuántos ya están en Crítico.">Nuevo</span></div>
+            <div class="cmp" id="cmp-sr"></div>
+            <span class="sub nota-kpi" id="nota-sr"></span>
           </div>
           <div class="fila-chips"><div class="chips" id="chips"></div></div>
           <div class="lista-hoy" id="cola"></div>
+          <div class="pie-antiguos" id="pie-antiguos"></div>
+          <div class="antiguos-lista" id="antiguos" hidden></div>
         </div>
         <div class="tarjeta">
           <div class="kpi-card">
-            <div class="kpi-top"><span class="cifra">58</span><span class="nombre-kpi">Atendidos hoy</span></div>
-            <div class="desglose"><span class="pill pv num-pill">49 por vendedores</span><div class="apilada">
-              <i class="bv" style="flex:49" data-tip="49 atendidos por vendedores"></i><i class="bb" style="flex:9" data-tip="9 atendidos solo por el bot"></i></div></div>
-            <div class="cmp"><span>07/10 a esta hora: <span class="contra">51</span></span><span class="delta mejor">▲ 7 · mejor</span></div>
-            <span class="sub nota-kpi">Última respuesta hace 3 min · <span class="num">9</span> solo por el bot</span>
+            <div class="kpi-top"><span class="cifra" id="n-at">—</span><span class="nombre-kpi">Atendidos hoy</span></div>
+            <div class="desglose"><span class="pill pv num-pill" id="n-vend">—</span><div class="apilada" id="at-barra"></div></div>
+            <div class="cmp" id="cmp-at"></div>
+            <span class="sub nota-kpi" id="nota-at"></span>
           </div>
           <div class="fila-chips"><div class="chips" id="chips-atend"></div></div>
           <p class="aviso-bot" id="aviso-bot" hidden>El bot contestó, pero ningún vendedor. Revisa si el cliente quedó atendido.</p>
@@ -421,387 +449,670 @@ body { -webkit-font-smoothing: antialiased; }
       </div>
 
       <div class="tarjeta">
-        <div class="t-cab"><div><h3>Detalle por asesor</h3><p>Ahora mismo, ordenados por críticos · responde: <b style="color:var(--tinta)">¿a qué vendedor llamo primero?</b></p></div>
+        <div class="t-cab"><div><h3>Detalle por asesor</h3><p>Ordenados por críticos: a qué vendedor llamar primero</p></div>
           <div class="filtro-tabla" style="align-items:center"><span class="que-filtra">Filtra solo esta tabla</span>
-            <button class="ctl" type="button"><em>Responsables</em><b>Todos</b></button><button class="ctl" type="button"><em>Asesores</em><b>Todos</b></button><button class="ctl" type="button"><em>Embudos</em><b>Todos</b></button></div></div>
+            <div class="ctl-wrap" id="f-op-resp"></div><div class="ctl-wrap" id="f-op-ases"></div><div class="ctl-wrap" id="f-op-emb"></div></div></div>
         <div class="t-cuerpo" style="padding-top:8px"><table class="tabla" id="tabla-hoy"></table></div>
       </div>
     </section>
 
-    <!-- ============ ANALISIS DEL PERIODO ============ -->
+    <!-- ============ PERIODO ============ -->
     <section class="bloque" aria-labelledby="h-per">
       <div class="bloque-cab"><h2 id="h-per">Análisis del periodo</h2></div>
-      <p class="sub" style="margin:-8px 0 0">Responde: <b style="color:var(--tinta)">¿mejoramos, quién se demora y quién mejoró?</b></p>
+      <p class="sub" style="margin:-8px 0 0">Cómo venimos respondiendo, quién se demora y quién mejoró</p>
 
       <div class="filtros" aria-label="Filtros del periodo">
-        <div class="seg" data-seg><button type="button" aria-pressed="false">Hoy</button><button type="button" aria-pressed="false">7 días</button><button type="button" aria-pressed="true">30 días</button></div>
-        <button class="ctl num" type="button"><em>Desde</em><b>08/09/2026</b></button>
-        <button class="ctl num" type="button"><em>Hasta</em><b>08/10/2026</b></button>
+        <div class="seg" id="seg-rango"><button type="button" data-r="hoy">Hoy</button><button type="button" data-r="7">7 días</button><button type="button" data-r="30" aria-pressed="true">30 días</button></div>
+        <label class="ctl" for="f-desde"><em>Desde</em><input type="date" class="ctl-fecha" id="f-desde"></label>
+        <label class="ctl" for="f-hasta"><em>Hasta</em><input type="date" class="ctl-fecha" id="f-hasta"></label>
         <span class="sep"></span>
-        <button class="ctl" type="button"><em>Responsables</em><b>Todos</b></button>
-        <button class="ctl" type="button"><em>Asesores</em><b>Todos</b></button>
-        <div class="ctl-wrap">
-          <button class="ctl" type="button" data-panel="pan-emb-per" aria-expanded="false"><em>Embudos</em><b>Todos</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
-          <div class="panel" id="pan-emb-per" hidden></div>
-        </div>
-        <div class="seg empuja" data-seg><button type="button" aria-pressed="true">Horario laboral</button><button type="button" aria-pressed="false">Fuera de horario</button></div>
+        <div class="ctl-wrap" id="f-per-resp"></div>
+        <div class="ctl-wrap" id="f-per-ases"></div>
+        <div class="ctl-wrap" id="f-per-emb"></div>
+        <div class="seg empuja" id="seg-modo"><button type="button" data-m="laboral" aria-pressed="true">Horario laboral</button><button type="button" data-m="fuera">Fuera de horario</button></div>
       </div>
 
-      <div class="tarjeta resumen-sup" aria-label="Lo importante del periodo">
-        <div class="rs-item"><span class="rs-ico mejor">▼</span><div><b>El equipo respondió 38 s más rápido</b><span>que en los 30 días anteriores (4 min 12 s contra 4 min 50 s).</span></div></div>
-        <div class="rs-item"><span class="rs-ico peor">!</span><div><b>Lucía Ferrer es la más lenta y empeoró 2 min</b><span>La mitad de sus clientes espera más de 9 min. El 18 % espera más de 30.</span></div></div>
-        <div class="rs-item"><span class="rs-ico mejor">★</span><div><b>Andrea Solís es la que más mejoró</b><span>Bajó 1 min 10 s y responde a la mitad en menos de 3 min.</span></div></div>
-      </div>
+      <div class="tarjeta resumen-sup" id="resumen" aria-label="Lo importante del periodo"></div>
 
       <div class="tarjeta kpis-per">
         <div class="principal"><span class="lbl">Respondidas dentro del objetivo (5 min)<span class="cambio cambia" data-tip="La pregunta del supervisor es cuántos clientes atendimos a tiempo. Un porcentaje se entiende sin saber qué es una mediana y no lo esconde la cola de casos lentos.">Primero</span></span>
-          <span class="cifra">50<small>%</small></span>
-          <div class="meta-barra"><span class="carril"><i style="width:50%"></i></span><span class="sub"><span class="num">784</span> de <span class="num">1.562</span> respuestas</span></div>
-          <div class="vs-ant">30 días anteriores: <span class="num" style="color:var(--texto);font-weight:600">44 %</span><span class="delta mejor">▲ 6 puntos</span></div></div>
-        <div><span class="lbl">Esperaron más de 30 min</span><span class="cifra" style="color:var(--f3-t)">10<small>%</small></span><span class="sub"><span class="num">155</span> clientes en Crítico</span>
-          <div class="vs-ant">antes: <span class="num" style="color:var(--texto);font-weight:600">13 %</span><span class="delta mejor">▼ 3 puntos</span></div></div>
-        <div><span class="lbl">La mitad respondida en menos de</span><span class="cifra">4<small>min</small>12<small>s</small></span><span class="sub"><span class="pill p0">Ideal</span></span>
-          <div class="vs-ant">antes: <span class="num" style="color:var(--texto);font-weight:600">4 min 50 s</span><span class="delta mejor">38 s mejor</span></div></div>
-        <div><span class="lbl">9 de cada 10, en menos de</span><span class="cifra">29<small>min</small></span><span class="sub"><span class="pill p2">Regular</span></span>
-          <div class="vs-ant">antes: <span class="num" style="color:var(--texto);font-weight:600">34 min</span><span class="delta mejor">5 min mejor</span></div></div>
+          <span class="cifra" id="k-ideal">—</span>
+          <div class="meta-barra"><span class="carril"><i id="k-ideal-barra" style="width:0"></i></span><span class="sub" id="k-ideal-sub"></span></div>
+          <div class="vs-ant" id="k-ideal-ant"></div></div>
+        <div><span class="lbl">Esperaron más de 30 min</span><span class="cifra" style="color:var(--f3-t)" id="k-crit">—</span><span class="sub" id="k-crit-sub"></span>
+          <div class="vs-ant" id="k-crit-ant"></div></div>
+        <div><span class="lbl">La mitad respondida en menos de</span><span class="cifra" id="k-med">—</span><span class="sub" id="k-med-sub"></span>
+          <div class="vs-ant" id="k-med-ant"></div></div>
+        <div><span class="lbl">9 de cada 10, en menos de</span><span class="cifra" id="k-p90">—</span><span class="sub" id="k-p90-sub"></span>
+          <div class="vs-ant" id="k-p90-ant"></div></div>
       </div>
 
       <div class="tarjeta">
-        <div class="t-cab"><div><h3>Cómo va cada vendedor</h3><p>El más lento arriba, con su cambio contra los 30 días anteriores · responde: <b style="color:var(--tinta)">¿quién se demora y quién mejoró?</b></p></div><button class="boton" type="button">Descargar Excel</button></div>
+        <div class="t-cab"><div><h3>Cómo va cada vendedor</h3><p>El más lento arriba, con su cambio contra el periodo anterior</p></div><button class="boton" type="button" id="btn-excel">Descargar Excel</button></div>
         <div class="t-cuerpo" style="padding-top:8px"><table class="tabla" id="tabla-per"></table></div>
       </div>
 
       <div class="tarjeta">
-        <div class="t-cab"><div><h3>Tendencia diaria<span class="cambio cambia" data-tip="Un solo día malo mueve mucho una línea diaria y asusta sin motivo. Los días quedan como puntos y la línea muestra los últimos 7 días: así se ve si la mejora es real o fue un día suelto.">Cambia</span></h3><p>Cada punto es un día; la línea, la mediana de los últimos 7 días; la línea verde, el objetivo de 5 min · responde: <b style="color:var(--tinta)">¿la mejora es real o fue un día suelto?</b></p></div></div>
+        <div class="t-cab"><div><h3>Tendencia<span class="cambio cambia" data-tip="Un solo día malo mueve mucho una línea diaria y asusta sin motivo. Los días quedan como puntos y la línea muestra los últimos 7 días: así se ve si la mejora es real o fue un día suelto.">Cambia</span></h3><p id="sub-trend"></p></div></div>
         <div class="t-cuerpo">
-          <svg class="graf" id="trend" viewBox="0 0 1150 210" role="img" aria-label="Mediana diaria del tiempo de respuesta"></svg>
-          <div class="lbl" style="margin:10px 0 2px 44px">Respuestas del día</div>
-          <svg class="graf" id="volumen" viewBox="0 0 1150 70" role="img" aria-label="Cantidad de respuestas por día"></svg>
+          <svg class="graf" id="trend" viewBox="0 0 1150 210" role="img" aria-label="Tiempo de respuesta en el periodo"></svg>
+          <div class="lbl" style="margin:10px 0 2px 44px" id="lbl-vol">Respuestas del día</div>
+          <svg class="graf" id="volumen" viewBox="0 0 1150 70" role="img" aria-label="Cantidad de respuestas"></svg>
         </div>
       </div>
 
       <div class="dos dos-iguales">
         <div class="tarjeta">
           <div class="t-cab"><div><h3>Cuándo nos demoramos<span class="cambio nuevo" data-tip="Es la única vista que ayuda a decidir turnos: muestra qué día y a qué hora se acumulan las esperas. Usa el mismo semáforo que el resto del tablero.">Nuevo</span></h3>
-            <p>Mediana de respuesta por día y hora, en horario laboral · responde: <b style="color:var(--tinta)">¿a qué hora falta gente?</b></p></div></div>
+            <p>Mediana de respuesta por día y hora</p></div></div>
           <div class="t-cuerpo">
-            <p class="hallazgo"><b>El almuerzo (13 a 15 h) es lento todos los días, y el sábado desde las 12 h.</b></p>
+            <p class="hallazgo" id="hallazgo"></p>
             <div class="mapa" id="mapa"></div>
-            <div class="leyenda-mapa"><span class="pill p0">Ideal</span><span class="pill p1">Bueno</span><span class="pill p2">Regular</span><span class="pill p3">Crítico</span><span class="sub">· el número es la mediana en minutos · gris: fuera de horario</span></div>
+            <div class="leyenda-mapa"><span class="pill p0">Ideal</span><span class="pill p1">Bueno</span><span class="pill p2">Regular</span><span class="pill p3">Crítico</span><span class="sub">· el número es la mediana en minutos · rayado: fuera de horario</span></div>
           </div>
         </div>
         <div class="tarjeta">
           <div class="t-cab"><div><h3>Velocidad y carga<span class="cambio nuevo" data-tip="Lento con mucha carga no es el mismo problema que lento con poca: el primero necesita apoyo, el segundo revisar cómo trabaja. Sin la carga al lado, el ranking es injusto.">Nuevo</span></h3>
-            <p>Cada punto es un vendedor · responde: <b style="color:var(--tinta)">¿le falta tiempo o le falta método?</b></p></div></div>
+            <p>Cada punto es un vendedor: ¿le falta tiempo o le falta método?</p></div></div>
           <div class="t-cuerpo"><svg class="graf" id="carga" viewBox="0 0 520 330" role="img" aria-label="Mediana de respuesta contra cantidad de respuestas por vendedor"></svg></div>
         </div>
       </div>
 
       <div class="dos">
         <div class="tarjeta">
-          <div class="t-cab"><div><h3>Distribución</h3><p>Cada respuesta en su franja según cuánto esperó el cliente · clic en una franja para ver sus leads</p></div></div>
+          <div class="t-cab"><div><h3>Distribución<span class="cambio cambia" data-tip="La dona se queda. Se le sumó el número clave al centro y una leyenda con cantidades, para que el color nunca vaya solo. Las barras de al lado repetían lo mismo.">Cambia</span></h3><p>Cada respuesta en su franja según cuánto esperó el cliente · clic en una franja para ver sus leads</p></div></div>
           <div class="t-cuerpo dona-wrap">
             <svg id="dona" viewBox="0 0 220 220" role="img" aria-label="Distribución de respuestas por franja"></svg>
             <div id="dona-leyenda" class="dona-leyenda"></div>
           </div>
         </div>
         <div class="tarjeta">
-          <div class="t-cab"><div><h3>Conversaciones más lentas</h3><p>Ya respondidas · para revisar caso por caso</p></div></div>
+          <div class="t-cab"><div><h3>Conversaciones más lentas</h3><p>Ya respondidas · clic para abrir el chat</p></div></div>
           <div class="t-cuerpo lentas" id="lentas"></div>
         </div>
       </div>
     </section>
   </div></div>
 </div>
+
+<label class="ver-cambios" for="chk-marcas"><input type="checkbox" id="chk-marcas"> Ver cambios propuestos</label>
 <div id="tip" hidden></div>
+<div id="modal" class="modal-fondo" hidden></div>
 
 <script>
 (() => {
-  const PILA = ', system-ui, -apple-system, "Segoe UI", sans-serif';
-  const NUM = [['inter', 'Inter', '"Inter"'], ['geist', 'Geist', '"Geist"'], ['plex', 'IBM Plex Sans', '"IBM Plex Sans"'],
-    ['manrope', 'Manrope', '"Manrope"'], ['dm', 'DM Sans', '"DM Sans"'], ['barlow', 'Barlow', '"Barlow"'],
-    ['source', 'Source Sans 3', '"Source Sans 3"'], ['robotomono', 'Roboto Mono', '"Roboto Mono", monospace'],
-    ['jetbrains', 'JetBrains Mono', '"JetBrains Mono", monospace']];
-  const TXT = [['inter', 'Inter', '"Inter"'], ['geist', 'Geist', '"Geist"'], ['plex', 'IBM Plex Sans', '"IBM Plex Sans"'],
-    ['dm', 'DM Sans', '"DM Sans"'], ['source', 'Source Sans 3', '"Source Sans 3"'], ['manrope', 'Manrope', '"Manrope"']];
-  const leer = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-  const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-  const montar = (sel, lista, varCss, clave) => {
-    sel.innerHTML = lista.map(([id, n]) => `<option value="${id}">${n}</option>`).join('');
-    const poner = id => { const l = lista.find(x => x[0] === id) || lista[0];
-      document.documentElement.style.setProperty(varCss, l[2] + PILA); sel.value = l[0]; guardar(clave, l[0]); };
-    sel.addEventListener('change', () => poner(sel.value)); poner(leer(clave) || 'inter');
-  };
-
-  document.body.classList.add('sin-marcas');
-  const chkMarcas = document.getElementById('chk-marcas');
-  chkMarcas.addEventListener('change', () => document.body.classList.toggle('sin-marcas', !chkMarcas.checked));
-  const FR = ['Ideal', 'Bueno', 'Regular', 'Crítico'];
-  const RANGO = ['5 min o menos', '5 a 15 min', '15 a 30 min', 'más de 30 min'];
-  const franja = min => min <= 5 ? 0 : min <= 15 ? 1 : min <= 30 ? 2 : 3;
-  const COLA = [
-    ['Rosa Medina', 'Lucía Ferrer', 134, 3, 'WhatsApp'], ['Jorge Salas', 'Marco Ríos', 108, 1, 'Instagram'],
-    ['Ana Cárdenas', 'Lucía Ferrer', 52, 2, 'WhatsApp'], ['Pedro Ibáñez', 'Tomás Vega', 41, 1, 'WhatsApp'],
-    ['Carla Núñez', 'Daniela Paz', 24, 1, 'Facebook'], ['Luis Ortega', 'Marco Ríos', 19, 2, 'WhatsApp'],
-    ['Sofía Herrera', 'Andrea Solís', 16, 1, 'WhatsApp'], ['Diego Paredes', 'Daniela Paz', 11, 1, 'Instagram'],
-    ['Valeria Ruiz', 'Tomás Vega', 7, 1, 'WhatsApp'], ['Miguel Castro', 'Andrea Solís', 4, 1, 'WhatsApp'],
-    ['Elena Vargas', 'Daniela Paz', 2, 1, 'Facebook'], ['Raúl Fuentes', 'Sin asignar', 1, 1, 'WhatsApp'],
-  ].map(([cliente, asesor, min, msj, canal]) => ({ cliente, asesor, min, msj, canal, f: franja(min) }));
-  const ATENDIDOS = [['Patricia León', 'Daniela Paz', '08/10 15:42'], ['Óscar Chávez', 'Tomás Vega', '08/10 15:39'],
-    ['Gabriela Ríos', 'Solo el bot', '08/10 15:37'], ['Hugo Romero', 'Marco Ríos', '08/10 15:31'], ['Inés Palacios', 'Andrea Solís', '08/10 15:28'],
-    ['Julio Campos', 'Lucía Ferrer', '08/10 15:20'], ['Fernando Lazo', 'Solo el bot', '08/10 15:16'], ['Teresa Quispe', 'Daniela Paz', '08/10 15:12'],
-    ['Mónica Salas', 'Solo el bot', '08/10 15:05'], ['Carlos Benítez', 'Marco Ríos', '08/10 14:58']];
-  const EQUIPO = [
-    // medAntes: mediana de los 30 dias anteriores · hoyAntes: atendidos el dia de comparacion a esta hora
-    { n: 'Daniela Paz',  r: 412, med: 190, medAntes: 210, p90: 840,  d: [251, 99, 37, 25], hoy: 14, hoyAntes: 12 },
-    { n: 'Marco Ríos',   r: 388, med: 400, medAntes: 380, p90: 2280, d: [159, 124, 58, 47], hoy: 11, hoyAntes: 13 },
-    { n: 'Lucía Ferrer', r: 297, med: 545, medAntes: 425, p90: 3720, d: [98, 95, 50, 54], hoy: 9, hoyAntes: 7 },
-    { n: 'Tomás Vega',   r: 264, med: 260, medAntes: 300, p90: 1260, d: [143, 74, 26, 21], hoy: 8, hoyAntes: 9 },
-    { n: 'Andrea Solís', r: 201, med: 170, medAntes: 240, p90: 660,  d: [133, 46, 14, 8], hoy: 7, hoyAntes: 6 },
-    { n: 'Kevin Salas',  r: 18,  med: 130, medAntes: null, p90: 420,  d: [13, 4, 1, 0], hoy: 0, hoyAntes: 0 },
-  ];
-  const MIN_MUESTRA = 30;
-  const TOTAL = [784, 438, 185, 155], TOT = 1562;
-  const TREND = [4.6, 4.1, 5.3, 3.9, 4.4, 6.8, 5.1, 4.0, 3.7, 4.2, 9.4, 5.6, 4.8, 4.3, 3.8, 4.1, 4.9, 5.2, 3.6, 4.0, 4.4, 4.2, 4.5];
-  const VOL = [68, 71, 74, 62, 66, 92, 70, 69, 64, 67, 131, 77, 70, 66, 63, 68, 72, 75, 61, 65, 69, 67, 70];
-  const LENTAS = [['Lead 47652208', 'Lucía Ferrer · 12 sep', 21780], ['Lead 47920311', 'Marco Ríos · 22 sep', 15960],
-                  ['Lead 48011872', 'Lucía Ferrer · 15 sep', 12300], ['Lead 47788420', 'Tomás Vega · 8 sep', 9840],
-                  ['Lead 48230109', 'Marco Ríos · 29 sep', 8460]];
-
-  function fmt(seg) {
-    if (seg < 60) return `${seg} s`;
-    if (seg < 3600) { const m = Math.floor(seg / 60), s = seg % 60; return s ? `${m} min ${String(s).padStart(2, '0')} s` : `${m} min`; }
-    const h = Math.floor(seg / 3600), m = Math.round((seg % 3600) / 60); return m ? `${h} h ${String(m).padStart(2, '0')} min` : `${h} h`;
-  }
-  const nf = n => n.toLocaleString('de-DE');
-  const pct = (a, t) => Math.round(a / t * 100);
+  // =================== utilidades ===================
   const $ = id => document.getElementById(id);
   const NS = 'http://www.w3.org/2000/svg';
   function s(tag, a, padre, texto) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (texto !== undefined) e.textContent = texto; padre.appendChild(e); return e; }
+  const nf = n => Math.round(n).toLocaleString('de-DE');
+  const pct = (a, t) => t ? Math.round(a / t * 100) : 0;
+  const sum = a => a.reduce((t, x) => t + x, 0);
+  function fmt(seg) {
+    seg = Math.round(seg);
+    if (seg < 60) return `${seg} s`;
+    if (seg < 3600) { const m = Math.floor(seg / 60), r = seg % 60; return r ? `${m} min ${String(r).padStart(2, '0')} s` : `${m} min`; }
+    const h = Math.floor(seg / 3600), m = Math.round((seg % 3600) / 60); return m ? `${h} h ${String(m).padStart(2, '0')} min` : `${h} h`;
+  }
+  const cifraSeg = seg => { seg = Math.round(seg);
+    if (seg < 60) return `${seg}<small>s</small>`;
+    if (seg < 3600) { const m = Math.floor(seg / 60), r = seg % 60; return r ? `${m}<small>min</small>${String(r).padStart(2, '0')}<small>s</small>` : `${m}<small>min</small>`; }
+    const h = Math.floor(seg / 3600), m = Math.round((seg % 3600) / 60); return `${h}<small>h</small>${String(m).padStart(2, '0')}<small>min</small>`; };
+  const FR = ['Ideal', 'Bueno', 'Regular', 'Crítico'];
+  const RANGO = ['5 min o menos', '5 a 15 min', '15 a 30 min', 'más de 30 min'];
+  const franjaMin = min => min <= 5 ? 0 : min <= 15 ? 1 : min <= 30 ? 2 : 3;
   const apilada = (cuentas, tipFn) => cuentas.map((c, i) => c ? `<i class="b${i}" style="flex:${c}" data-tip="${tipFn(c, i)}"></i>` : '').join('');
+  const marca = (tipo, texto, porque) => `<span class="cambio ${tipo}" data-tip="${porque}">${texto}</span>`;
+  function rng(seed) { let a = 0; for (const ch of String(seed)) a = (a * 31 + ch.charCodeAt(0)) | 0;
+    return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const elegir = (r, arr) => arr[Math.floor(r() * arr.length)];
+  const elegirPeso = (r, pares) => { let x = r() * sum(pares.map(p => p[1])); for (const [v, w] of pares) { x -= w; if (x <= 0) return v; } return pares[pares.length - 1][0]; };
+  function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
 
-  // Embudos con etapas
-  const ARBOL = `
-    <div class="opc padre"><span class="flecha" style="transform:rotate(90deg)">›</span><span class="caja"></span>Ventas<small class="num">9.210</small></div>
-    <div class="etapas"><div class="opc"><span class="caja"></span>Contacto inicial<small class="num">3.402</small></div>
-      <div class="opc"><span class="caja"></span>En conversación<small class="num">2.118</small></div><div class="opc"><span class="caja"></span>Cita agendada<small class="num">1.640</small></div></div>
-    <div class="opc padre"><span class="flecha">›</span><span class="caja"></span>Postventa<small class="num">2.876</small></div>
-    <div class="opc padre"><span class="flecha">›</span><span class="caja"></span>Clientes activos<small class="num">1.305</small></div>`;
-  $('pan-emb-hoy').innerHTML = ARBOL; $('pan-emb-per').innerHTML = ARBOL;
-  document.addEventListener('click', e => {
-    const b = e.target.closest('[data-panel]');
-    if (e.target.closest('.panel')) return;
-    document.querySelectorAll('.panel').forEach(p => { if (!b || p.id !== b.dataset.panel) p.hidden = true; });
-    if (b) { const p = $(b.dataset.panel); p.hidden = !p.hidden; b.setAttribute('aria-expanded', !p.hidden); }
-  });
-  document.querySelectorAll('[data-seg]').forEach(g => g.addEventListener('click', e => {
-    const b = e.target.closest('button'); if (b) g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  // Fechas (UTC para no depender de la zona del navegador)
+  const HOY = '2026-10-08';
+  const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const DSEM = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const aDate = f => new Date(f + 'T00:00:00Z');
+  const aStr = d => d.toISOString().slice(0, 10);
+  const sumarDias = (f, n) => { const d = aDate(f); d.setUTCDate(d.getUTCDate() + n); return aStr(d); };
+  const corta = f => { const d = aDate(f); return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+  const larga = f => { const d = aDate(f); return `${DSEM[d.getUTCDay()]} ${d.getUTCDate()} ${MES[d.getUTCMonth()]}`; };
+  const diasHabiles = (desde, hasta) => { const out = []; for (let f = desde; f <= hasta; f = sumarDias(f, 1)) { const w = aDate(f).getUTCDay(); if (w > 0) out.push(f); } return out; };
+
+  // =================== catalogo ===================
+  const ASESORES = ['Daniela Paz', 'Marco Ríos', 'Lucía Ferrer', 'Tomás Vega', 'Andrea Solís', 'Kevin Salas'];
+  const EMBUDOS = [
+    { id: 'v', n: 'Ventas', peso: .6, etapas: [['v1', 'Contacto inicial', .25], ['v2', 'En conversación', .2], ['v3', 'Cita agendada', .15]] },
+    { id: 'p', n: 'Postventa', peso: .25, etapas: [['p1', 'Seguimiento', .15], ['p2', 'Reclamos', .1]] },
+    { id: 'c', n: 'Clientes activos', peso: .15, etapas: [['c1', 'Recompra', .15]] },
+  ];
+  const ETAPA_EMB = {}; EMBUDOS.forEach(e => e.etapas.forEach(([id]) => ETAPA_EMB[id] = e.id));
+  const NOMBRES = ['Rosa', 'Jorge', 'Ana', 'Pedro', 'Carla', 'Luis', 'Sofía', 'Diego', 'Valeria', 'Miguel', 'Elena', 'Raúl', 'Patricia', 'Óscar', 'Gabriela', 'Hugo', 'Inés', 'Julio', 'Teresa', 'Fernando', 'Mónica', 'Carlos', 'Andrés', 'Paola', 'Ricardo', 'Natalia', 'Gustavo', 'Martín', 'Camila', 'Héctor', 'Lorena', 'Iván', 'Silvia', 'Renato'];
+  const APELLIDOS = ['Medina', 'Salas', 'Cárdenas', 'Ibáñez', 'Núñez', 'Ortega', 'Herrera', 'Paredes', 'Ruiz', 'Castro', 'Vargas', 'Fuentes', 'León', 'Chávez', 'Romero', 'Palacios', 'Campos', 'Quispe', 'Lazo', 'Benítez', 'Torres', 'Rojas', 'Flores', 'Mendoza', 'Silva', 'Gutiérrez', 'Aguilar', 'Ramos'];
+  const persona = r => `${elegir(r, NOMBRES)} ${elegir(r, APELLIDOS)}`;
+  const canal = r => elegirPeso(r, [['WhatsApp', 6], ['Instagram', 2], ['Facebook', 2]]);
+  const etapa = r => { const e = elegirPeso(r, EMBUDOS.map(x => [x, x.peso])); return { emb: e.id, eta: elegirPeso(r, e.etapas.map(([id, , w]) => [id, w])) }; };
+  const leadId = r => 47000000 + Math.floor(r() * 1400000);
+
+  // =================== datos de un dia (operacion) ===================
+  const BASE_HOY = { 'Daniela Paz': 14, 'Marco Ríos': 11, 'Lucía Ferrer': 9, 'Tomás Vega': 8, 'Andrea Solís': 7 };
+  function atendidosDe(r, cuentas, bot, horaFin) {
+    const lista = [];
+    Object.entries(cuentas).forEach(([a, n]) => { for (let i = 0; i < n; i++) lista.push({ asesor: a, ...etapa(r) }); });
+    for (let i = 0; i < bot; i++) lista.push({ asesor: 'Solo el bot', ...etapa(r) });
+    for (let i = lista.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [lista[i], lista[j]] = [lista[j], lista[i]]; }
+    let min = horaFin * 60 - 3;
+    return lista.map(x => { const h = min; min -= 2 + Math.floor(r() * 6); return { ...x, cliente: persona(r), hora: `${String(Math.floor(h / 60)).padStart(2, '0')}:${String(h % 60).padStart(2, '0')}` }; });
+  }
+  const CACHE = {};
+  function dia(f) {
+    if (CACHE[f]) return CACHE[f];
+    const r = rng('dia' + f);
+    let cola;
+    if (f === HOY) {
+      cola = [['Rosa Medina', 'Lucía Ferrer', 134, 3, 'WhatsApp', 'v', 'v2'], ['Jorge Salas', 'Marco Ríos', 108, 1, 'Instagram', 'v', 'v1'],
+        ['Ana Cárdenas', 'Lucía Ferrer', 52, 2, 'WhatsApp', 'p', 'p2'], ['Pedro Ibáñez', 'Tomás Vega', 41, 1, 'WhatsApp', 'v', 'v3'],
+        ['Carla Núñez', 'Daniela Paz', 24, 1, 'Facebook', 'v', 'v1'], ['Luis Ortega', 'Marco Ríos', 19, 2, 'WhatsApp', 'c', 'c1'],
+        ['Sofía Herrera', 'Andrea Solís', 16, 1, 'WhatsApp', 'v', 'v2'], ['Diego Paredes', 'Daniela Paz', 11, 1, 'Instagram', 'p', 'p1'],
+        ['Valeria Ruiz', 'Tomás Vega', 7, 1, 'WhatsApp', 'v', 'v1'], ['Miguel Castro', 'Andrea Solís', 4, 1, 'WhatsApp', 'v', 'v2'],
+        ['Elena Vargas', 'Daniela Paz', 2, 1, 'Facebook', 'c', 'c1'], ['Raúl Fuentes', 'Sin asignar', 1, 1, 'WhatsApp', 'v', 'v1'],
+        ['Nora Delgado', 'Marco Ríos', 75, 1, 'WhatsApp', 'p', 'p1', true], ['Bruno Villa', 'Daniela Paz', 33, 1, 'WhatsApp', 'v', 'v3', true],
+        ['Alicia Mora', 'Tomás Vega', 9, 1, 'Instagram', 'v', 'v2', true],
+      ].map(([cliente, asesor, min, msj, can, emb, eta, cerrada]) => ({ cliente, asesor, min, msj, canal: can, emb, eta, cerrada: !!cerrada, id: leadId(r) }));
+    } else {
+      const n = 9 + Math.floor(r() * 9);
+      cola = Array.from({ length: n + 3 }, (_, i) => {
+        const x = r(), min = x < .3 ? 1 + Math.floor(r() * 5) : x < .5 ? 6 + Math.floor(r() * 10) : x < .66 ? 16 + Math.floor(r() * 15) : 31 + Math.floor(r() * 140);
+        return { cliente: persona(r), asesor: elegirPeso(r, [['Daniela Paz', 3], ['Marco Ríos', 3], ['Lucía Ferrer', 3], ['Tomás Vega', 2], ['Andrea Solís', 2], ['Sin asignar', .6]]),
+          min, msj: 1 + (r() < .25) + (r() < .08), canal: canal(r), ...etapa(r), cerrada: i >= n, id: leadId(r) };
+      });
+    }
+    cola.forEach(l => l.f = franjaMin(l.min));
+    const cuentas = {}; Object.entries(BASE_HOY).forEach(([a, n]) => cuentas[a] = f === HOY ? n : Math.max(2, n + Math.floor(r() * 6) - 3));
+    const bot = f === HOY ? 9 : 4 + Math.floor(r() * 6);
+    const atend = atendidosDe(r, cuentas, bot, f === HOY ? 15 * 60 / 60 + .75 : 19);
+    const antiguos = Array.from({ length: f === HOY ? 37 : 30 + Math.floor(r() * 10) }, () => ({ cliente: persona(r), asesor: elegir(r, ['Daniela Paz', 'Marco Ríos', 'Lucía Ferrer', 'Tomás Vega', 'Andrea Solís', 'Sin asignar']), dias: 8 + Math.floor(r() * 40), ...etapa(r), id: leadId(r) }))
+      .sort((a, b) => a.dias - b.dias);
+    return CACHE[f] = { cola, atend, antiguos };
+  }
+
+  // =================== datos del periodo ===================
+  const BASE = [
+    { n: 'Daniela Paz',  r: 412, med: 190, p90: 840,  d: [251, 99, 37, 25], medAntes: 210, dAntes: [230, 105, 45, 30], ident: 96 },
+    { n: 'Marco Ríos',   r: 388, med: 400, p90: 2280, d: [159, 124, 58, 47], medAntes: 380, dAntes: [165, 118, 55, 44], ident: 71 },
+    { n: 'Lucía Ferrer', r: 297, med: 545, p90: 3720, d: [98, 95, 50, 54],  medAntes: 425, dAntes: [115, 92, 46, 40], ident: 88 },
+    { n: 'Tomás Vega',   r: 264, med: 260, p90: 1260, d: [143, 74, 26, 21], medAntes: 300, dAntes: [128, 80, 30, 24], ident: 93 },
+    { n: 'Andrea Solís', r: 201, med: 170, p90: 660,  d: [133, 46, 14, 8],  medAntes: 240, dAntes: [118, 52, 18, 12], ident: 98 },
+    { n: 'Kevin Salas',  r: 18,  med: 130, p90: 420,  d: [13, 4, 1, 0],     medAntes: null, dAntes: null, ident: 100 },
+  ];
+  const MIN_MUESTRA = 30;
+  const TREND_BASE = [4.6, 4.1, 5.3, 3.9, 4.4, 6.8, 5.1, 4.0, 3.7, 4.2, 9.4, 5.6, 4.8, 4.3, 3.8, 4.1, 4.9, 5.2, 3.6, 4.0, 4.4, 4.2, 4.5, 4.3, 4.7, 3.9];
+  const VOL_BASE = [68, 71, 74, 62, 66, 92, 70, 69, 64, 67, 131, 77, 70, 66, 63, 68, 72, 75, 61, 65, 69, 67, 70, 66, 71, 64];
+  const MAPA_BASE = [
+    [9, 12, 6, 4, 5, 8, 7, 4, 3, 4, 5, 7], [4, 5, 4, 3, 4, 9, 8, 4, 3, 3, 4, 6], [4, 4, 3, 3, 4, 10, 7, 3, 3, 4, 4, 6],
+    [5, 4, 4, 3, 4, 9, 8, 4, 4, 3, 5, 7], [4, 5, 4, 4, 5, 11, 9, 5, 4, 5, 6, 9], [6, 7, 8, 9, 16, 22, 35, 41, null, null, null, null]];
+
+  // Proporcion de leads que cae en los embudos/etapas elegidos
+  function pesoEmbudo(sel) {
+    if (!sel.emb.size && !sel.eta.size) return 1;
+    let p = 0;
+    EMBUDOS.forEach(e => { if (sel.emb.has(e.id)) p += e.peso; else e.etapas.forEach(([id, , w]) => { if (sel.eta.has(id)) p += w; }); });
+    return p;
+  }
+  function weightedMedian(items) {           // [{v, w}]
+    const o = items.filter(x => x.w > 0).sort((a, b) => a.v - b.v), tot = sum(o.map(x => x.w)); let c = 0;
+    for (const x of o) { c += x.w; if (c >= tot / 2) return x.v; } return 0;
+  }
+  function p90DeFranjas(d) {
+    const t = sum(d), bordes = [0, 300, 900, 1800, 7200]; let c = 0;
+    for (let i = 0; i < 4; i++) { if (c + d[i] >= .9 * t) return bordes[i] + (bordes[i + 1] - bordes[i]) * ((.9 * t - c) / (d[i] || 1)); c += d[i]; }
+    return 7200;
+  }
+  function modoFranjas(d, modo) {
+    if (modo !== 'fuera') return d;
+    const t = sum(d), x = [d[0] * .55, d[1] * 1.05, d[2] * 1.35, d[3] * 1.9], k = t / sum(x);
+    return x.map(v => Math.round(v * k));
+  }
+
+  function periodo(E) {
+    const dias = E.rango === 'hoy' ? 1 : diasHabiles(E.desde, E.hasta).length;
+    const factor = dias / 26, r = rng(`per${E.desde}${E.hasta}${E.modo}`), pe = pesoEmbudo(E.emb);
+    const fueraM = E.modo === 'fuera' ? 1.9 : 1;
+    const elegido = n => (!E.resp.size || E.resp.has(n)) && (!E.ases.size || E.ases.has(n));
+    const filas = BASE.filter(b => elegido(b.n)).map(b => {
+      const exacto = E.rango === '30' && E.modo === 'laboral' && pe === 1;
+      const j = exacto ? 1 : .85 + r() * .3, k = exacto ? 1 : factor * pe * (.9 + r() * .2);
+      const d = modoFranjas(b.d.map(v => Math.round(v * k)), E.modo);
+      const dAntes = b.dAntes ? modoFranjas(b.dAntes.map(v => Math.round(v * k)), E.modo) : null;
+      return { n: b.n, r: sum(d), d, med: b.med * j * fueraM, p90: b.p90 * j * (E.modo === 'fuera' ? 1.6 : 1), dAntes,
+        medAntes: b.medAntes ? b.medAntes * (exacto ? 1 : .9 + r() * .2) * fueraM : null, ident: b.ident };
+    }).filter(f => f.r > 0);
+    const d = [0, 1, 2, 3].map(i => sum(filas.map(f => f.d[i])));
+    const conAntes = filas.filter(f => f.dAntes);
+    const dAntes = [0, 1, 2, 3].map(i => sum(conAntes.map(f => f.dAntes[i])));
+    const total = sum(d), totalAntes = sum(dAntes);
+    const med = weightedMedian(filas.map(f => ({ v: f.med, w: f.r })));
+    const medAntes = weightedMedian(conAntes.map(f => ({ v: f.medAntes, w: sum(f.dAntes) })));
+    const base30 = weightedMedian(BASE.map(b => ({ v: b.med, w: b.r })));
+    const ratio = med && base30 ? med / base30 / fueraM : 1;
+    let trend, etiquetas, porHora = false;
+    if (E.rango === 'hoy') {
+      porHora = true; const rh = rng('hoyh' + E.modo);
+      trend = [8, 9, 10, 11, 12, 13, 14, 15].map(h => +(MAPA_BASE[3][h - 8] * ratio * fueraM * (.85 + rh() * .3)).toFixed(1));
+      etiquetas = [8, 9, 10, 11, 12, 13, 14, 15].map(h => `${h}:00`);
+    } else {
+      const fechas = diasHabiles(E.desde, E.hasta);
+      trend = fechas.map((_, i) => +(TREND_BASE[(TREND_BASE.length - fechas.length + i + TREND_BASE.length * 4) % TREND_BASE.length] * ratio * fueraM).toFixed(1));
+      etiquetas = fechas.map(f => { const x = aDate(f); return `${x.getUTCDate()} ${MES[x.getUTCMonth()]}`; });
+    }
+    const volEsc = total / 1562 * 26 / Math.max(1, trend.length);
+    const vol = trend.map((_, i) => Math.max(1, Math.round(VOL_BASE[(VOL_BASE.length - trend.length + i + VOL_BASE.length * 4) % VOL_BASE.length] * volEsc * (porHora ? 26 / 8 : 1))));
+    return { dias, filas, d, dAntes, total, totalAntes, med, medAntes, p90: p90DeFranjas(d), p90Antes: totalAntes ? p90DeFranjas(dAntes) : null,
+      trend, vol, etiquetas, porHora, ratio, fueraM };
+  }
+
+  // =================== estado ===================
+  const set = () => new Set();
+  const E = {
+    hoy: { dia: HOY, contra: '2026-10-07', resp: set(), ases: set(), emb: { emb: set(), eta: set() }, cerradas: false, franja: null, atend: 'todos', antiguos: false },
+    det: { resp: set(), ases: set(), emb: { emb: set(), eta: set() } },
+    per: { rango: '30', desde: sumarDias(HOY, -30), hasta: HOY, resp: set(), ases: set(), emb: { emb: set(), eta: set() }, modo: 'laboral' },
+  };
+
+  // =================== componentes de filtro ===================
+  function cerrarPaneles(excepto) { document.querySelectorAll('.panel').forEach(p => { if (p !== excepto) p.hidden = true; }); }
+  document.addEventListener('click', e => { if (!e.target.closest('.ctl-wrap')) cerrarPaneles(); });
+  function textoSel(sel, todos, nombres) {
+    if (!sel.size) return todos;
+    if (sel.size === 1) return nombres([...sel][0]);
+    return `${sel.size} seleccionados`;
+  }
+  function multi(cont, etiqueta, opciones, sel, alCambiar) {
+    cont.innerHTML = `<button class="ctl" type="button" aria-expanded="false"><em>${etiqueta}</em><b></b>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+      <div class="panel" hidden>
+        <label class="opc todos"><input type="checkbox" data-todos>Todos</label>
+        ${opciones.map(o => `<label class="opc"><input type="checkbox" value="${o}">${o}</label>`).join('')}
+      </div>`;
+    const btn = cont.querySelector('button'), panel = cont.querySelector('.panel'), txt = btn.querySelector('b');
+    const pintar = () => { txt.textContent = textoSel(sel, 'Todos', x => x); txt.classList.toggle('activo', sel.size > 0);
+      panel.querySelectorAll('input[value]').forEach(i => i.checked = sel.has(i.value)); panel.querySelector('[data-todos]').checked = !sel.size; };
+    btn.addEventListener('click', () => { const abrir = panel.hidden; cerrarPaneles(panel); panel.hidden = !abrir; btn.setAttribute('aria-expanded', abrir); });
+    panel.addEventListener('change', e => {
+      if (e.target.dataset.todos !== undefined) sel.clear();
+      else e.target.checked ? sel.add(e.target.value) : sel.delete(e.target.value);
+      pintar(); alCambiar();
+    });
+    pintar();
+  }
+  function embudoSel(cont, sel, alCambiar, plano) {
+    cont.innerHTML = `<button class="ctl" type="button"><em>Embudos</em><b></b>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+      <div class="panel" hidden>
+        <label class="opc todos"><input type="checkbox" data-todos>Todos</label>
+        ${EMBUDOS.map(e => `<div><div class="opc padre">${plano ? '' : `<button type="button" class="flecha-btn" data-abre="${e.id}"><span class="flecha">›</span></button>`}
+            <label style="display:flex;gap:9px;align-items:center;cursor:pointer;flex:1"><input type="checkbox" data-emb="${e.id}">${e.n}</label></div>
+          ${plano ? '' : `<div class="etapas" data-hijos="${e.id}" hidden>${e.etapas.map(([id, n]) => `<label class="opc"><input type="checkbox" data-eta="${id}">${n}</label>`).join('')}</div>`}</div>`).join('')}
+      </div>`;
+    const btn = cont.querySelector('button.ctl'), panel = cont.querySelector('.panel'), txt = btn.querySelector('b');
+    const nombre = () => {
+      const n = sel.emb.size + sel.eta.size; if (!n) return 'Todos';
+      if (n === 1 && sel.emb.size) return EMBUDOS.find(e => sel.emb.has(e.id)).n;
+      if (n === 1) { for (const e of EMBUDOS) for (const [id, nn] of e.etapas) if (sel.eta.has(id)) return nn; }
+      return `${n} seleccionados`;
+    };
+    const pintar = () => { txt.textContent = nombre(); txt.classList.toggle('activo', sel.emb.size + sel.eta.size > 0);
+      panel.querySelector('[data-todos]').checked = !(sel.emb.size + sel.eta.size);
+      panel.querySelectorAll('[data-emb]').forEach(i => i.checked = sel.emb.has(i.dataset.emb));
+      panel.querySelectorAll('[data-eta]').forEach(i => { const padre = sel.emb.has(ETAPA_EMB[i.dataset.eta]); i.checked = padre || sel.eta.has(i.dataset.eta); i.disabled = padre;
+        i.parentElement.style.opacity = padre ? .5 : 1; }); };
+    btn.addEventListener('click', () => { const abrir = panel.hidden; cerrarPaneles(panel); panel.hidden = !abrir; });
+    panel.addEventListener('click', e => { const f = e.target.closest('[data-abre]'); if (!f) return;
+      const h = panel.querySelector(`[data-hijos="${f.dataset.abre}"]`); h.hidden = !h.hidden; f.classList.toggle('abierta', !h.hidden); });
+    panel.addEventListener('change', e => {
+      const t = e.target;
+      if (t.dataset.todos !== undefined) { sel.emb.clear(); sel.eta.clear(); }
+      else if (t.dataset.emb) { t.checked ? sel.emb.add(t.dataset.emb) : sel.emb.delete(t.dataset.emb);
+        if (t.checked) EMBUDOS.find(x => x.id === t.dataset.emb).etapas.forEach(([id]) => sel.eta.delete(id)); }
+      else if (t.dataset.eta) t.checked ? sel.eta.add(t.dataset.eta) : sel.eta.delete(t.dataset.eta);
+      pintar(); alCambiar();
+    });
+    pintar();
+  }
+  const pasaEmb = (l, f) => (!f.emb.size && !f.eta.size) || f.emb.has(l.emb) || f.eta.has(l.eta);
+  const pasa = (l, f) => (!f.resp.size || f.resp.has(l.asesor)) && (!f.ases.size || f.ases.has(l.asesor)) && pasaEmb(l, f.emb);
+
+  // =================== OPERACION ===================
+  function opcionesDias() {
+    const out = []; for (let i = 0, f = HOY; out.length < 12; i++, f = sumarDias(f, -1)) { if (aDate(f).getUTCDay() > 0) out.push(f); }
+    return out;
+  }
+  const DIAS_OP = opcionesDias();
+  const etiquetaDia = f => f === HOY ? 'Hoy' : `${larga(f)}`;
+  function pintarSelects() {
+    $('sel-dia').innerHTML = DIAS_OP.map(f => `<option value="${f}"${f === E.hoy.dia ? ' selected' : ''}>${etiquetaDia(f)}</option>`).join('');
+    const antes = DIAS_OP.filter(f => f < E.hoy.dia);
+    if (!antes.includes(E.hoy.contra)) E.hoy.contra = antes[0];
+    $('sel-contra').innerHTML = antes.map(f => `<option value="${f}"${f === E.hoy.contra ? ' selected' : ''}>${larga(f)}</option>`).join('');
+  }
+  $('sel-dia').addEventListener('change', e => { E.hoy.dia = e.target.value; E.hoy.franja = null; pintarSelects(); renderHoy(); });
+  $('sel-contra').addEventListener('change', e => { E.hoy.contra = e.target.value; renderHoy(); });
+  $('chk-cerradas').addEventListener('change', e => { E.hoy.cerradas = e.target.checked; renderHoy(); });
+
+  const delta = (hoy, antes, menosEsMejor) => {
+    const d = hoy - antes; if (!d) return `<span class="delta" style="background:var(--carril);color:var(--apagado)">igual</span>`;
+    const mejor = menosEsMejor ? d < 0 : d > 0;
+    return `<span class="delta ${mejor ? 'mejor' : 'peor'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)} · ${mejor ? 'mejor' : 'peor'}</span>`;
+  };
+
+  function renderHoy() {
+    const esHoy = E.hoy.dia === HOY, D = dia(E.hoy.dia), C = dia(E.hoy.contra), f = E.hoy;
+    $('h-hoy').textContent = esHoy ? 'Operación en tiempo real' : `Estado del ${corta(E.hoy.dia)}`;
+    $('chip-vivo').hidden = !esHoy;
+    const abierta = l => f.cerradas || !l.cerrada;
+    const cola = D.cola.filter(l => abierta(l) && pasa(l, f)).sort((a, b) => b.min - a.min);
+    const colaC = C.cola.filter(l => abierta(l) && pasa(l, f));
+    const porF = [0, 1, 2, 3].map(i => cola.filter(l => l.f === i).length);
+    const etqC = `${corta(E.hoy.contra)}${esHoy ? ' a esta hora' : ''}`;
+    $('n-sr').textContent = cola.length;
+    $('n-crit').textContent = `${porF[3]} en Crítico`;
+    $('sev-barra').innerHTML = [3, 2, 1, 0].map(i => porF[i] ? `<i class="b${i}" style="flex:${porF[i]}" data-tip="${porF[i]} en ${FR[i]} (${RANGO[i]})"></i>` : '').join('') || '<i style="flex:1;background:var(--carril)"></i>';
+    $('cmp-sr').innerHTML = `<span>${etqC}: <span class="contra">${colaC.length}</span></span>${delta(cola.length, colaC.length, true)}`;
+    const ant = D.antiguos.filter(l => pasa(l, f));
+    $('nota-sr').innerHTML = `+ <span class="num">${ant.length}</span> sin respuesta hace más de 7 días, aparte`;
+    $('chips').innerHTML = `<button type="button" class="chip" data-f="" aria-pressed="${f.franja === null}">Todos <span class="num">${cola.length}</span></button>` +
+      [3, 2, 1, 0].map(i => `<button type="button" class="chip" data-f="${i}" aria-pressed="${f.franja === i}"><i class="b${i}"></i>${FR[i]} <span class="num">${porF[i]}</span></button>`).join('');
+    const visibles = f.franja === null ? cola : cola.filter(l => l.f === f.franja);
+    $('cola').innerHTML = visibles.length ? visibles.map(l => `
+      <div class="fila fila-click" data-abrir="${l.cliente}"><span class="marca-f b${l.f}"></span>
+        <div><b>${l.cliente}</b><small>${l.asesor === 'Sin asignar' ? '<span class="pill pb">Sin vendedor asignado</span>' : l.asesor} · ${l.canal}${l.msj > 1 ? ` · <b class="insiste">${l.msj} mensajes sin responder</b>` : ''}${l.cerrada ? ' · <span class="pill pb">conversación cerrada</span>' : ''}</small></div>
+        <div class="espera num">${fmt(l.min * 60)}</div>
+        <div style="text-align:right"><span class="pill p${l.f}">${FR[l.f]}</span></div></div>`).join('')
+      : `<div class="vacio">Ningún cliente esperando con estos filtros</div>`;
+    $('pie-antiguos').innerHTML = `<span><b class="num" style="color:var(--tinta)">${ant.length}</b> sin respuesta hace más de 7 días</span><button class="boton" type="button" id="btn-antiguos">${f.antiguos ? 'Ocultar' : 'Mostrar'}</button>`;
+    $('antiguos').hidden = !f.antiguos;
+    $('antiguos').innerHTML = ant.map(l => `<div class="fila fila-click" data-abrir="${l.cliente}"><div><b>${l.cliente}</b><small>${l.asesor}</small></div><div class="num" style="text-align:right;color:var(--apagado)">hace ${l.dias} días</div></div>`).join('');
+
+    // Atendidos
+    const at = D.atend.filter(l => pasa(l, f)), atC = C.atend.filter(l => pasa(l, f));
+    const bot = at.filter(l => l.asesor === 'Solo el bot'), vend = at.length - bot.length;
+    $('n-at').textContent = at.length;
+    $('n-vend').textContent = `${vend} por vendedores`;
+    $('at-barra').innerHTML = `${vend ? `<i class="bv" style="flex:${vend}" data-tip="${vend} atendidos por vendedores"></i>` : ''}${bot.length ? `<i class="bb" style="flex:${bot.length}" data-tip="${bot.length} atendidos solo por el bot"></i>` : ''}` || '<i style="flex:1;background:var(--carril)"></i>';
+    $('cmp-at').innerHTML = `<span>${etqC}: <span class="contra">${atC.length}</span></span>${delta(at.length, atC.length, false)}`;
+    $('nota-at').innerHTML = esHoy ? `Última respuesta hace 3 min · <span class="num">${bot.length}</span> solo por el bot` : `Al cierre del día · <span class="num">${bot.length}</span> solo por el bot`;
+    $('chips-atend').innerHTML = [['todos', 'Todos', at.length], ['personas', 'Por vendedores', vend], ['bot', 'Solo el bot', bot.length]]
+      .map(([k, t, n]) => `<button type="button" class="chip${k === 'bot' ? ' chip-bot' : ''}" data-k="${k}" aria-pressed="${f.atend === k}">${t} <span class="num">${n}</span></button>`).join('') +
+      marca('nuevo', 'Nuevo', 'El bot saluda a todos los leads nuevos, así que el lead sale de Sin responder sin que nadie lo haya mirado. Este chip muestra justo esos casos para revisarlos.');
+    const lista = f.atend === 'todos' ? at : f.atend === 'bot' ? bot : at.filter(l => l.asesor !== 'Solo el bot');
+    $('aviso-bot').hidden = f.atend !== 'bot';
+    $('atendidos').innerHTML = lista.length ? lista.map(l => `<div class="fila fila-click" data-abrir="${l.cliente}"><div><b>${l.cliente}</b><small>${l.asesor === 'Solo el bot' ? '<span class="pill pb">Solo el bot</span>' : l.asesor}</small></div>
+      <div class="num" style="text-align:right;color:var(--apagado)">${corta(E.hoy.dia)} ${l.hora}</div><div></div></div>`).join('')
+      : `<div class="vacio">Sin atendidos con estos filtros</div>`;
+    renderDetalle();
+  }
+  $('chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; E.hoy.franja = b.dataset.f === '' ? null : Number(b.dataset.f); renderHoy(); });
+  $('chips-atend').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; E.hoy.atend = b.dataset.k; renderHoy(); });
+  document.addEventListener('click', e => { if (e.target.id === 'btn-antiguos') { E.hoy.antiguos = !E.hoy.antiguos; renderHoy(); } });
+
+  function renderDetalle() {
+    const D = dia(E.hoy.dia), C = dia(E.hoy.contra), f = E.det;
+    const abierta = l => E.hoy.cerradas || !l.cerrada;
+    const nombres = ['Daniela Paz', 'Marco Ríos', 'Lucía Ferrer', 'Tomás Vega', 'Andrea Solís'].filter(n => (!f.resp.size || f.resp.has(n)) && (!f.ases.size || f.ases.has(n)));
+    const fil = l => pasaEmb(l, f.emb);
+    const filas = nombres.map(n => {
+      const e = D.cola.filter(l => l.asesor === n && abierta(l) && fil(l));
+      return { n, esp: e.length, crit: e.filter(l => l.f === 3).length, peor: e.length ? Math.max(...e.map(l => l.min)) : 0,
+        hoy: D.atend.filter(l => l.asesor === n && fil(l)).length, antes: C.atend.filter(l => l.asesor === n && fil(l)).length };
+    }).sort((a, b) => b.crit - a.crit || b.esp - a.esp || a.n.localeCompare(b.n));
+    const critN = n => n ? `<span class="critico-n num">${n}</span>` : `<span class="cero num">0</span>`;
+    const dif = (h, a) => { const d = h - a; if (!d) return `<span class="cero">igual</span>`; return `<span class="mini-delta ${d > 0 ? 'mejor' : 'peor'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`; };
+    const sinAsig = !f.resp.size && !f.ases.size ? D.cola.filter(l => l.asesor === 'Sin asignar' && abierta(l) && fil(l)) : [];
+    const bot = !f.resp.size && !f.ases.size ? [D.atend.filter(l => l.asesor === 'Solo el bot' && fil(l)).length, C.atend.filter(l => l.asesor === 'Solo el bot' && fil(l)).length] : null;
+    $('tabla-hoy').innerHTML = `<thead><tr><th class="izq">Vendedor</th><th>Críticos</th><th>Sin responder</th><th>El que más espera${marca('nuevo', 'Nuevo', 'Dos clientes esperando 3 minutos no son lo mismo que uno esperando 2 horas. Esta columna dice qué tan urgente es cada vendedor.')}</th><th>Atendidos</th><th>vs ${corta(E.hoy.contra)}${E.hoy.dia === HOY ? ' a esta hora' : ''}${marca('nuevo', 'Nuevo', 'La comparación de dos días, vendedor por vendedor: quién atendió más o menos que el otro día.')}</th></tr></thead><tbody>` +
+      (filas.map(a => `<tr><td class="izq nombre">${a.n}</td><td>${critN(a.crit)}</td><td class="num">${a.esp}</td>
+        <td class="num">${a.peor ? `<span class="pill p${franjaMin(a.peor)} num-pill">${fmt(a.peor * 60)}</span>` : '—'}</td><td class="num">${a.hoy}</td>
+        <td class="num">${dif(a.hoy, a.antes)} <span class="sub num">(${a.antes})</span></td></tr>`).join('') || `<tr><td colspan="6" class="vacio">Sin vendedores con estos filtros</td></tr>`) +
+      (sinAsig.length ? `<tr class="apagada"><td class="izq">Sin asignar</td><td>${critN(sinAsig.filter(l => l.f === 3).length)}</td><td class="num">${sinAsig.length}</td><td class="num">${fmt(Math.max(...sinAsig.map(l => l.min)) * 60)}</td><td>—</td><td>—</td></tr>` : '') +
+      (bot ? `<tr class="apagada"><td class="izq">Solo el bot</td><td>—</td><td>—</td><td>—</td><td class="num">${bot[0]}</td><td class="num">${dif(bot[0], bot[1])} <span class="sub num">(${bot[1]})</span></td></tr>` : '') + '</tbody>';
+  }
+
+  // =================== PERIODO ===================
+  function pintarRango() {
+    $('f-desde').value = E.per.desde; $('f-hasta').value = E.per.hasta;
+    document.querySelectorAll('#seg-rango button').forEach(b => b.setAttribute('aria-pressed', b.dataset.r === E.per.rango));
+    document.querySelectorAll('#seg-modo button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === E.per.modo));
+  }
+  $('seg-rango').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+    E.per.rango = b.dataset.r; E.per.hasta = HOY; E.per.desde = b.dataset.r === 'hoy' ? HOY : sumarDias(HOY, -Number(b.dataset.r)); pintarRango(); renderPer(); });
+  $('seg-modo').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; E.per.modo = b.dataset.m; pintarRango(); renderPer(); });
+  ['f-desde', 'f-hasta'].forEach(id => $(id).addEventListener('change', () => {
+    let d = $('f-desde').value || E.per.desde, h = $('f-hasta').value || E.per.hasta;
+    if (h > HOY) h = HOY; if (d > h) d = h; if (d < '2026-07-01') d = '2026-07-01';
+    E.per.desde = d; E.per.hasta = h; E.per.rango = d === h && h === HOY ? 'hoy' : 'custom'; pintarRango(); renderPer();
   }));
 
-  // Sin responder
-  const porF = [0, 1, 2, 3].map(i => COLA.filter(l => l.f === i).length);
-  $('sev-barra').innerHTML = [3, 2, 1, 0].map(i => porF[i] ? `<i class="b${i}" style="flex:${porF[i]}" data-tip="${porF[i]} en ${FR[i]} (${RANGO[i]})"></i>` : '').join('');
-  let filtroF = null;
-  const pintarChips = () => { $('chips').innerHTML = `<button type="button" class="chip" data-f="" aria-pressed="${filtroF === null}">Todos <span class="num">${COLA.length}</span></button>` +
-    [3, 2, 1, 0].map(i => `<button type="button" class="chip" data-f="${i}" aria-pressed="${filtroF === i}"><i class="b${i}"></i>${FR[i]} <span class="num">${porF[i]}</span></button>`).join(''); };
-  const pintarCola = () => { $('cola').innerHTML = (filtroF === null ? COLA : COLA.filter(l => l.f === filtroF)).map(l => `
-    <div class="fila"><span class="marca-f b${l.f}"></span>
-      <div><b>${l.cliente}</b><small>${l.asesor === 'Sin asignar' ? '<span class="pill pb">Sin vendedor asignado</span>' : l.asesor} · ${l.canal}${l.msj > 1 ? ` · <b class="insiste">${l.msj} mensajes sin responder</b>` : ''}</small></div>
-      <div class="espera num">${fmt(l.min * 60)}</div>
-      <div style="text-align:right"><span class="pill p${l.f}">${FR[l.f]}</span></div></div>`).join(''); };
-  $('chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; filtroF = b.dataset.f === '' ? null : Number(b.dataset.f); pintarChips(); pintarCola(); });
-  pintarChips(); pintarCola();
-  let filtroAt = 'todos';
-  const pintarAtendidos = () => {
-    const bot = ATENDIDOS.filter(x => x[1] === 'Solo el bot');
-    $('chips-atend').innerHTML = [['todos', 'Todos', 58], ['personas', 'Por vendedores', 49], ['bot', 'Solo el bot', 9]]
-      .map(([k, t, n]) => `<button type="button" class="chip${k === 'bot' ? ' chip-bot' : ''}" data-k="${k}" aria-pressed="${filtroAt === k}">${t} <span class="num">${n}</span></button>`).join('');
-    const lista = filtroAt === 'todos' ? ATENDIDOS : filtroAt === 'bot' ? bot : ATENDIDOS.filter(x => x[1] !== 'Solo el bot');
-    $('aviso-bot').hidden = filtroAt !== 'bot';
-    $('atendidos').innerHTML = lista.map(([c, a, h]) => `<div class="fila"><div><b>${c}</b><small>${a === 'Solo el bot' ? '<span class="pill pb">Solo el bot</span>' : a}</small></div>
-      <div class="num" style="text-align:right;color:var(--apagado)">${h}</div><div></div></div>`).join('');
-  };
-  $('chips-atend').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; filtroAt = b.dataset.k; pintarAtendidos(); });
-  pintarAtendidos();
-
-  // Detalle por asesor (hoy)
-  (() => {
-    const filas = EQUIPO.filter(a => a.hoy || COLA.some(l => l.asesor === a.n)).map(a => { const e = COLA.filter(l => l.asesor === a.n);
-      return { n: a.n, esp: e.length, crit: e.filter(l => l.f === 3).length, hoy: a.hoy, antes: a.hoyAntes, peor: e.length ? Math.max(...e.map(l => l.min)) : 0 }; })
-      .sort((a, b) => b.crit - a.crit || b.esp - a.esp);
-    const critN = n => n ? `<span class="critico-n num">${n}</span>` : `<span class="cero num">0</span>`;
-    const dif = (h, a) => { const d = h - a; if (!d) return `<span class="cero">igual</span>`;
-      return `<span class="mini-delta ${d > 0 ? 'mejor' : 'peor'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`; };
-    $('tabla-hoy').innerHTML = `<thead><tr><th class="izq">Vendedor</th><th>Críticos</th><th>Sin responder</th><th>El que más espera</th><th>Atendidos hoy</th><th>vs 07/10 a esta hora</th></tr></thead><tbody>` +
-      filas.map(a => `<tr><td class="izq nombre">${a.n}</td><td>${critN(a.crit)}</td><td class="num">${a.esp}</td>
-        <td class="num">${a.peor ? `<span class="pill p${franja(a.peor)} num-pill">${fmt(a.peor * 60)}</span>` : '—'}</td><td class="num">${a.hoy}</td>
-        <td class="num">${dif(a.hoy, a.antes)} <span class="sub num">(${a.antes})</span></td></tr>`).join('') +
-      `<tr class="apagada"><td class="izq">Sin asignar</td><td>${critN(0)}</td><td class="num">1</td><td class="num">1 min</td><td>—</td><td>—</td></tr>
-       <tr class="apagada"><td class="izq">Solo el bot</td><td>—</td><td>—</td><td>—</td><td class="num">9</td><td class="num">${dif(9, 5)} <span class="sub num">(5)</span></td></tr></tbody>`;
-  })();
-
-  // Por vendedor (periodo): el cambio contra el periodo anterior y la
-  // evolucion de 14 dias van en la fila de cada uno, para ver quien mejoro.
-  (() => {
-    const spark = (a, k) => Array.from({ length: 14 }, (_, i) => {
-      const base = a.medAntes ?? a.med, v = base + (a.med - base) * i / 13;
-      return v / 60 * (1 + .18 * Math.sin(i * 1.4 + k) + .08 * Math.cos(i * 2.3 + k));
-    });
-    const sparkSvg = vals => {
-      const W = 92, H = 32, mx = 10, y = v => 3 + (1 - Math.min(v, mx) / mx) * (H - 6), x = i => 2 + i * (W - 8) / (vals.length - 1), u = vals.length - 1;
-      return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-left:auto" aria-hidden="true">
-        <line x1="2" x2="${W - 6}" y1="${y(5)}" y2="${y(5)}" stroke="var(--f0)" stroke-width="1" stroke-dasharray="3 3"/>
-        <path d="M${vals.map((v, i) => `${x(i)},${y(v)}`).join(' L')}" fill="none" stroke="var(--marca)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
-        <circle cx="${x(u)}" cy="${y(vals[u])}" r="3" fill="var(--marca)" stroke="var(--superficie)" stroke-width="1.5"/></svg>`;
+  let P = null;
+  function renderPer() {
+    P = periodo(E.per);
+    const rotulo = E.per.rango === 'hoy' ? 'ayer' : 'el periodo anterior';
+    const vsAnt = (antes, actual, fmtF, menosEsMejor, unidad) => {
+      if (antes == null || !isFinite(antes)) return `<span class="sub">sin datos del periodo anterior</span>`;
+      const d = actual - antes, mejor = menosEsMejor ? d < 0 : d > 0, abs = Math.abs(d);
+      const txt = unidad === 'pts' ? `${d > 0 ? '▲' : '▼'} ${Math.round(abs)} ${Math.round(abs) === 1 ? 'punto' : 'puntos'}` : `${fmt(abs)} ${mejor ? 'mejor' : 'peor'}`;
+      return `${rotulo === 'ayer' ? 'Ayer' : 'Antes'}: <span class="num" style="color:var(--texto);font-weight:600">${fmtF(antes)}</span>${Math.round(abs) ? `<span class="delta ${mejor ? 'mejor' : 'peor'}">${txt}</span>` : '<span class="sub">igual</span>'}`;
     };
+    const ideal = pct(P.d[0], P.total), idealA = P.totalAntes ? pct(P.dAntes[0], P.totalAntes) : null;
+    const crit = pct(P.d[3], P.total), critA = P.totalAntes ? pct(P.dAntes[3], P.totalAntes) : null;
+    $('k-ideal').innerHTML = `${ideal}<small>%</small>`; $('k-ideal-barra').style.width = ideal + '%';
+    $('k-ideal-sub').innerHTML = `<span class="num">${nf(P.d[0])}</span> de <span class="num">${nf(P.total)}</span> respuestas`;
+    $('k-ideal-ant').innerHTML = vsAnt(idealA, ideal, v => `${v} %`, false, 'pts');
+    $('k-crit').innerHTML = `${crit}<small>%</small>`; $('k-crit-sub').innerHTML = `<span class="num">${nf(P.d[3])}</span> clientes en Crítico`;
+    $('k-crit-ant').innerHTML = vsAnt(critA, crit, v => `${v} %`, true, 'pts');
+    $('k-med').innerHTML = P.total ? cifraSeg(P.med) : '—'; $('k-med-sub').innerHTML = `<span class="pill p${franjaMin(P.med / 60)}">${FR[franjaMin(P.med / 60)]}</span>`;
+    $('k-med-ant').innerHTML = vsAnt(P.medAntes || null, P.med, fmt, true);
+    $('k-p90').innerHTML = P.total ? cifraSeg(P.p90) : '—'; $('k-p90-sub').innerHTML = `<span class="pill p${franjaMin(P.p90 / 60)}">${FR[franjaMin(P.p90 / 60)]}</span>`;
+    $('k-p90-ant').innerHTML = vsAnt(P.p90Antes, P.p90, fmt, true);
+    renderResumen(); renderTablaPer(); renderTrend(); renderMapa(); renderCarga(); renderDona(); renderLentas();
+  }
+
+  function renderResumen() {
+    const items = [], validos = P.filas.filter(f => f.r >= MIN_MUESTRA);
+    if (P.medAntes && P.total) { const d = P.med - P.medAntes;
+      items.push(Math.abs(d) < 5 ? ['mejor', '=', 'El equipo responde igual que antes', `La mitad de los clientes recibe respuesta en menos de ${fmt(P.med)}.`]
+        : [d < 0 ? 'mejor' : 'peor', d < 0 ? '▼' : '▲', `El equipo respondió ${fmt(Math.abs(d))} más ${d < 0 ? 'rápido' : 'lento'}`, `que en el periodo anterior (${fmt(P.med)} contra ${fmt(P.medAntes)}).`]); }
+    if (validos.length > 1) {
+      const lento = [...validos].sort((a, b) => b.med - a.med)[0], dl = lento.medAntes ? lento.med - lento.medAntes : 0;
+      items.push(['peor', '!', `${lento.n} tiene el tiempo más alto${dl > 15 ? ` y empeoró ${fmt(dl)}` : ''}`, `La mitad de sus clientes espera más de ${fmt(lento.med)}. El ${pct(lento.d[3], lento.r)} % espera más de 30 min.`]);
+      const mejoras = validos.filter(f => f.medAntes && f.med < f.medAntes - 15).sort((a, b) => (a.med - a.medAntes) - (b.med - b.medAntes));
+      if (mejoras.length) { const m = mejoras[0]; items.push(['mejor', '★', `${m.n} es quien más mejoró`, `Bajó ${fmt(m.medAntes - m.med)} y responde a la mitad en menos de ${fmt(m.med)}.`]); }
+    } else if (validos.length === 1) { const v = validos[0];
+      items.push([franjaMin(v.med / 60) > 1 ? 'peor' : 'mejor', '•', `${v.n}: la mitad en menos de ${fmt(v.med)}`, `${pct(v.d[0], v.r)} % dentro del objetivo, ${pct(v.d[3], v.r)} % más de 30 min.`]); }
+    const r = $('resumen'); r.className = `tarjeta resumen-sup n${Math.max(1, items.length)}`;
+    r.innerHTML = items.map(([c, ico, b, t], i) => `<div class="rs-item"><span class="rs-ico ${c}">${ico}</span><div><b>${b}</b><span>${t}</span></div>${i === 0 ? marca('nuevo', 'Nuevo', 'El supervisor no tiene que interpretar gráficos para saber lo importante: el equipo, el más lento y quien más mejoró, en una frase cada uno. Se arman solas con reglas fijas.') : ''}</div>`).join('')
+      || `<div class="rs-item"><div><b>Sin datos para este filtro</b><span>Prueba con otro periodo o con todos los vendedores.</span></div></div>`;
+  }
+
+  function sparkSvg(vals) {
+    const W = 84, H = 32, mx = 10, y = v => 3 + (1 - Math.min(v, mx) / mx) * (H - 6), x = i => 2 + i * (W - 8) / Math.max(1, vals.length - 1), u = vals.length - 1;
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-left:auto" aria-hidden="true">
+      <line x1="2" x2="${W - 6}" y1="${y(5)}" y2="${y(5)}" stroke="var(--f0)" stroke-width="1" stroke-dasharray="3 3"/>
+      <path d="M${vals.map((v, i) => `${x(i)},${y(v)}`).join(' L')}" fill="none" stroke="var(--marca)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${x(u)}" cy="${y(vals[u])}" r="3" fill="var(--marca)" stroke="var(--superficie)" stroke-width="1.5"/></svg>`;
+  }
+  const sparkDe = (f, k) => Array.from({ length: 14 }, (_, i) => { const b = f.medAntes ?? f.med, v = b + (f.med - b) * i / 13; return v / 60 * (1 + .18 * Math.sin(i * 1.4 + k) + .08 * Math.cos(i * 2.3 + k)); });
+  let FILAS_PER = [];
+  function renderTablaPer() {
     const cambio = a => {
       if (a.medAntes == null) return `<span class="cero">sin datos antes</span>`;
-      const d = a.med - a.medAntes;
-      if (Math.abs(d) < 15) return `<span class="cero">igual</span>`;
-      return `<span class="mini-delta ${d < 0 ? 'mejor' : 'peor'}">${d < 0 ? '▼' : '▲'} ${fmt(Math.abs(d))} · ${d < 0 ? 'mejoró' : 'empeoró'}</span>`;
+      const d = a.med - a.medAntes; if (Math.abs(d) < 15) return `<span class="cero">igual</span>`;
+      return `<span class="mini-delta ${d < 0 ? 'mejor' : 'peor'}" data-tip="${d < 0 ? 'Mejoró' : 'Empeoró'} ${fmt(Math.abs(d))} frente al periodo anterior (${fmt(a.medAntes)})">${d < 0 ? '▼' : '▲'} ${fmt(Math.abs(d))}</span>`;
     };
-    // Parte de las respuestas por WhatsApp llegan sin el nombre de quien las
-    // mando (desde el celular, usuario 0) y se le asignan al responsable.
-    const IDENT = { 'Daniela Paz': 96, 'Marco Ríos': 71, 'Lucía Ferrer': 88, 'Tomás Vega': 93, 'Andrea Solís': 98, 'Kevin Salas': 100 };
-    const resp = a => `<span class="num">${nf(a.r)}</span>${IDENT[a.n] < 80
-      ? `<small class="ident baja" data-tip="${100 - IDENT[a.n]} % de sus respuestas salieron del celular sin nombre y se le asignaron por ser el responsable del lead. Su tiempo puede no ser solo suyo.">${100 - IDENT[a.n]} % sin autor</small>`
-      : `<small class="ident">${IDENT[a.n]} % con autor</small>`}`;
-    const filas = [...EQUIPO].sort((a, b) => (a.r < MIN_MUESTRA) - (b.r < MIN_MUESTRA) || b.med - a.med);
-    $('tabla-per').innerHTML = `<thead><tr><th class="izq">Vendedor</th><th>Respuestas<span class="cambio nuevo" data-tip="Por WhatsApp, parte de las respuestas salen del celular sin el nombre de quien escribió. Si un vendedor tiene muchas así, su tiempo no es del todo suyo: el supervisor tiene que saberlo antes de juzgarlo.">Nuevo</span></th><th>La mitad, en menos de ▾</th><th>Cambio vs 30 días antes</th><th>9 de cada 10, en menos de</th><th>Más de 30 min</th><th style="width:170px">Reparto por franja</th><th>Últimas 2 semanas</th></tr></thead><tbody>` +
-      filas.map((a, k) => { const poca = a.r < MIN_MUESTRA;
-        return `<tr class="${poca ? 'poca' : ''}"><td class="izq nombre">${a.n}${poca ? `<span class="muestra-baja">pocas respuestas, no comparar</span>` : ''}</td><td class="resp-cel">${resp(a)}</td>
-        <td><span class="pill p${franja(a.med / 60)} num-pill">${fmt(a.med)}</span></td><td>${cambio(a)}</td><td class="num">${fmt(a.p90)}</td>
+    const resp = a => `<span class="num">${nf(a.r)}</span>${a.ident < 80
+      ? `<small class="ident baja" data-tip="${100 - a.ident} % de sus respuestas salieron del celular sin nombre y se le asignaron por ser el responsable del lead. Su tiempo puede no ser solo suyo.">${100 - a.ident} % sin autor</small>`
+      : `<small class="ident">${a.ident} % con autor</small>`}`;
+    FILAS_PER = [...P.filas].sort((a, b) => (a.r < MIN_MUESTRA) - (b.r < MIN_MUESTRA) || b.med - a.med);
+    $('tabla-per').innerHTML = `<thead><tr><th class="izq">Vendedor</th><th>Respuestas${marca('nuevo', 'Nuevo', 'Por WhatsApp, parte de las respuestas salen del celular sin el nombre de quien escribió. Si un vendedor tiene muchas así, su tiempo no es del todo suyo: el supervisor tiene que saberlo antes de juzgarlo.')}</th><th>La mitad, en menos de ▾</th><th>Cambio${marca('nuevo', 'Nuevo', 'Responde quién mejoró y quién empeoró frente al periodo anterior, que era la pregunta que el tablero no contestaba.')}</th><th>9 de cada 10, en menos de</th><th>Más de 30 min</th><th style="width:120px">Reparto por franja</th><th>Últimas 2 semanas${marca('nuevo', 'Nuevo', 'Muestra si la mejora o el empeoramiento viene de varios días o fue un día suelto.')}</th></tr></thead><tbody>` +
+      (FILAS_PER.map((a, k) => { const poca = a.r < MIN_MUESTRA;
+        return `<tr class="${poca ? 'poca' : ''}"><td class="izq nombre">${a.n}${poca ? `<span class="muestra-baja" data-tip="Con menos de 30 respuestas su tiempo no se puede comparar con el resto">pocas respuestas</span>` : ''}</td><td class="resp-cel">${resp(a)}</td>
+        <td><span class="pill p${franjaMin(a.med / 60)} num-pill">${fmt(a.med)}</span></td><td>${cambio(a)}</td><td class="num">${fmt(a.p90)}</td>
         <td class="num" style="${!poca && pct(a.d[3], a.r) >= 15 ? 'color:var(--f3-t);font-weight:700' : ''}">${pct(a.d[3], a.r)} %</td>
         <td><div class="apilada" style="height:10px">${apilada(a.d, (c, j) => `${a.n} · ${FR[j]}: ${pct(c, a.r)} % (${nf(c)})`)}</div></td>
-        <td>${sparkSvg(spark(a, k))}</td></tr>`; }).join('') +
-      `<tr style="font-weight:700"><td class="izq">Equipo</td><td class="num">${nf(TOT)}</td><td><span class="pill p0 num-pill">4 min 12 s</span></td>
-        <td><span class="mini-delta mejor">▼ 38 s · mejoró</span></td><td class="num">29 min</td><td class="num">10 %</td>
-        <td><div class="apilada" style="height:10px">${apilada(TOTAL, (c, j) => `Equipo · ${FR[j]}: ${pct(c, TOT)} %`)}</div></td>
-        <td>${sparkSvg(TREND.slice(-14))}</td></tr></tbody>`;
-  })();
+        <td>${sparkSvg(sparkDe(a, k))}</td></tr>`; }).join('') || `<tr><td colspan="8" class="vacio">Sin vendedores con estos filtros</td></tr>`) +
+      (P.filas.length > 1 ? `<tr style="font-weight:700"><td class="izq">Equipo</td><td class="num">${nf(P.total)}</td><td><span class="pill p${franjaMin(P.med / 60)} num-pill">${fmt(P.med)}</span></td>
+        <td>${P.medAntes ? cambio({ med: P.med, medAntes: P.medAntes }) : '—'}</td><td class="num">${fmt(P.p90)}</td><td class="num">${pct(P.d[3], P.total)} %</td>
+        <td><div class="apilada" style="height:10px">${apilada(P.d, (c, j) => `Equipo · ${FR[j]}: ${pct(c, P.total)} %`)}</div></td>
+        <td>${sparkSvg(P.trend.slice(-14))}</td></tr>` : '') + '</tbody>';
+  }
+  $('btn-excel').addEventListener('click', () => {
+    const filas = [['Vendedor', 'Respuestas', 'Mediana (s)', 'Mediana anterior (s)', '9 de cada 10 (s)', 'Ideal', 'Bueno', 'Regular', 'Crítico', '% más de 30 min']]
+      .concat(FILAS_PER.map(a => [a.n, a.r, Math.round(a.med), a.medAntes ? Math.round(a.medAntes) : '', Math.round(a.p90), ...a.d, pct(a.d[3], a.r)]));
+    const csv = '﻿' + filas.map(f => f.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `pulse-vendedores-${E.per.desde}-a-${E.per.hasta}.csv`; document.body.appendChild(a); a.click(); a.remove();
+    toast('Descargando la tabla de vendedores');
+  });
 
-  // Cuando nos demoramos: dia x hora, color = franja de la mediana
-  (() => {
-    const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    const HORAS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
-    const M = [
-      [9, 12, 6, 4, 5, 8, 7, 4, 3, 4, 5, 7], [4, 5, 4, 3, 4, 9, 8, 4, 3, 3, 4, 6], [4, 4, 3, 3, 4, 10, 7, 3, 3, 4, 4, 6],
-      [5, 4, 4, 3, 4, 9, 8, 4, 4, 3, 5, 7], [4, 5, 4, 4, 5, 11, 9, 5, 4, 5, 6, 9], [6, 7, 8, 9, 16, 22, 35, 41, null, null, null, null]];
-    $('mapa').innerHTML = `<span></span>${HORAS.map(h => `<span class="mh">${h}</span>`).join('')}` +
-      M.map((fila, d) => `<span class="md">${DIAS[d]}</span>` + fila.map((v, h) => v === null
-        ? `<span class="mc fuera" data-tip="${DIAS[d]} ${HORAS[h]}:00 · fuera de horario"></span>`
-        : `<span class="mc c${franja(v)} num" data-tip="${DIAS[d]} ${HORAS[h]}:00 a ${HORAS[h] + 1}:00 · mediana ${v} min · ${FR[franja(v)]}">${v}</span>`).join('')).join('');
-  })();
-
-  // Velocidad y carga: cuadrantes por el objetivo (5 min) y la carga media
-  (() => {
-    const svg = $('carga'), W = 520, H = 330, m = { l: 44, r: 12, t: 18, b: 40 };
-    const xMax = 450, yMax = 10, x = v => m.l + v / xMax * (W - m.l - m.r), y = v => m.t + (1 - Math.min(v, yMax) / yMax) * (H - m.t - m.b);
-    const base = EQUIPO.filter(a => a.r >= MIN_MUESTRA), cargaMedia = base.reduce((t, a) => t + a.r, 0) / base.length;
-    const zonas = [[0, cargaMedia, 5, yMax, 'Revisar cómo trabaja', 'var(--f2-b)'], [cargaMedia, xMax, 5, yMax, 'Necesita apoyo', 'var(--f3-b)'],
-                   [0, cargaMedia, 0, 5, 'Bien', 'var(--superficie-2)'], [cargaMedia, xMax, 0, 5, 'Referente', 'var(--f0-b)']];
-    zonas.forEach(([x0, x1, y0, y1, t, c]) => {
-      s('rect', { x: x(x0), y: y(y1), width: x(x1) - x(x0), height: y(y0) - y(y1), fill: c, 'fill-opacity': .6 }, svg);
-      s('text', { x: x0 ? x(x1) - 8 : x(x0) + 8, y: y1 === yMax ? y(y1) + 16 : y(y0) - 8, 'text-anchor': x0 ? 'end' : 'start', class: 'txt', style: 'fill:var(--apagado);font-weight:700;font-size:11px;letter-spacing:.03em' }, svg, t.toUpperCase());
-    });
-    [0, 5, 10].forEach(v => s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === 5 ? 'fill:var(--f0-t);font-weight:700' : '' }, svg, `${v} min`));
-    [0, 150, 300, 450].forEach(v => s('text', { x: x(v), y: H - m.b + 16, 'text-anchor': 'middle' }, svg, v));
-    s('text', { x: (m.l + W - m.r) / 2, y: H - 6, 'text-anchor': 'middle', class: 'txt' }, svg, 'respuestas en el periodo (carga) →');
-    s('line', { x1: m.l, x2: W - m.r, y1: y(5), y2: y(5), stroke: 'var(--f0)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
-    s('line', { x1: x(cargaMedia), x2: x(cargaMedia), y1: m.t, y2: H - m.b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, svg);
-    s('text', { x: x(cargaMedia), y: m.t - 2, 'text-anchor': 'middle', class: 'txt', style: 'fill:var(--apagado);font-size:10px' }, svg, 'carga media');
-    EQUIPO.forEach(a => {
-      const poca = a.r < MIN_MUESTRA, cx = x(a.r), cy = y(a.med / 60);
-      const c = s('circle', { cx, cy, r: 7, fill: poca ? 'var(--superficie)' : 'var(--tinta)', stroke: poca ? 'var(--apagado)' : 'var(--superficie)', 'stroke-width': 2 }, svg);
-      c.dataset.tip = `${a.n} · ${nf(a.r)} respuestas · la mitad en menos de ${fmt(a.med)}${poca ? ' · pocas respuestas, no comparar' : ''}`;
-      const izq = a.r > 330;
-      s('text', { x: cx + (izq ? -12 : 12), y: cy + 4, 'text-anchor': izq ? 'end' : 'start', class: 'txt', style: `font-weight:600;font-size:12px;fill:${poca ? 'var(--apagado)' : 'var(--tinta)'}` }, svg, a.n);
-    });
-  })();
-
-  // Tendencia + volumen (dos graficos alineados, cada uno con su escala)
-  (() => {
-    const W = 1150, m = { l: 44, r: 60 };
-    const dias = []; const d = new Date(Date.UTC(2026, 8, 8));
-    while (dias.length < TREND.length) { const w = d.getUTCDay(); if (w > 0 && w < 6) dias.push(new Date(d)); d.setUTCDate(d.getUTCDate() + 1); }
-    const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    const fd = dt => `${dt.getUTCDate()} ${MES[dt.getUTCMonth()]}`;
-    const ult = TREND.length - 1, x = i => m.l + i * (W - m.l - m.r) / ult;
-    const svg = $('trend'), H = 210, t = 18, b = 26, yMax = 10, y = v => t + (1 - Math.min(v, yMax) / yMax) * (H - t - b);
-    [0, 5, 10].forEach(v => { s('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: 'grid' }, svg); s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === 5 ? 'fill:var(--f0-t);font-weight:700' : '' }, svg, `${v} min`); });
+  function renderTrend() {
+    const svg = $('trend'), sv = $('volumen'); svg.innerHTML = ''; sv.innerHTML = '';
+    const T = P.trend, V = P.vol, L = P.etiquetas, W = 1150, m = { l: 44, r: 60 }, n = T.length;
+    $('sub-trend').innerHTML = P.porHora ? 'Hoy, hora por hora · la línea verde es el objetivo de 5 min'
+      : 'Cada punto es un día; la línea, la mediana de los últimos 7 días; la línea verde, el objetivo de 5 min';
+    $('lbl-vol').textContent = P.porHora ? 'Respuestas por hora' : 'Respuestas del día';
+    const x = i => n === 1 ? (m.l + W - m.r) / 2 : m.l + i * (W - m.l - m.r) / (n - 1);
+    const H = 210, t = 18, b = 26, yMax = Math.max(10, Math.ceil(Math.max(...T) / 5) * 5), y = v => t + (1 - Math.min(v, yMax) / yMax) * (H - t - b);
+    [0, 5, yMax].forEach(v => { s('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: 'grid' }, svg); s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === 5 ? 'fill:var(--f0-t);font-weight:700' : '' }, svg, `${v} min`); });
     s('line', { x1: m.l, x2: W - m.r, y1: y(5), y2: y(5), stroke: 'var(--f0)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
     const med = a => { const o = [...a].sort((p, q) => p - q), k = o.length >> 1; return o.length % 2 ? o[k] : (o[k - 1] + o[k]) / 2; };
-    const ROLL = TREND.map((_, i) => med(TREND.slice(Math.max(0, i - 6), i + 1)));
-    const pts = ROLL.map((v, i) => `${x(i)},${y(v)}`);
-    s('path', { d: `M${x(0)},${y(0)} L${pts.join(' L')} L${x(ult)},${y(0)} Z`, fill: 'var(--marca)', 'fill-opacity': .07 }, svg);
-    s('path', { d: `M${pts.join(' L')}`, fill: 'none', stroke: 'var(--marca)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
-    TREND.forEach((v, i) => s('circle', { cx: x(i), cy: y(v), r: v > 5 ? 4 : 3, fill: v > 5 ? `var(--f${franja(v)})` : 'var(--apagado)',
-      'fill-opacity': v > 5 ? 1 : .45, stroke: 'var(--superficie)', 'stroke-width': 1.5 }, svg));
-    s('text', { x: x(ult) + 8, y: y(ROLL[ult]) + 4, style: 'fill:var(--marca-tinta);font-weight:700' }, svg, `${String(ROLL[ult].toFixed(1)).replace('.', ',')} min`);
-    const pico = TREND.indexOf(Math.max(...TREND));
-    s('text', { x: x(pico), y: y(TREND[pico]) - 10, 'text-anchor': 'middle', style: 'fill:var(--tinta);font-weight:600' }, svg, `${fd(dias[pico])}: 9,4 min`);
-    [0, 5, 10, 15, 20, ult].forEach(i => s('text', { x: x(i), y: H - 6, 'text-anchor': 'middle' }, svg, fd(dias[i])));
-    // volumen
-    const sv = $('volumen'), HV = 70, vMax = 140, bw = (W - m.l - m.r) / ult * .55, yv = v => 4 + (1 - v / vMax) * (HV - 18);
+    const LINEA = P.porHora ? T : T.map((_, i) => med(T.slice(Math.max(0, i - 6), i + 1)));
+    const pts = LINEA.map((v, i) => `${x(i)},${y(v)}`);
+    if (n > 1) {
+      s('path', { d: `M${x(0)},${y(0)} L${pts.join(' L')} L${x(n - 1)},${y(0)} Z`, fill: 'var(--marca)', 'fill-opacity': .07 }, svg);
+      s('path', { d: `M${pts.join(' L')}`, fill: 'none', stroke: 'var(--marca)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+    }
+    if (!P.porHora) T.forEach((v, i) => s('circle', { cx: x(i), cy: y(v), r: v > 5 ? 4 : 3, fill: v > 5 ? `var(--f${franjaMin(v)})` : 'var(--apagado)', 'fill-opacity': v > 5 ? 1 : .45, stroke: 'var(--superficie)', 'stroke-width': 1.5 }, svg));
+    s('circle', { cx: x(n - 1), cy: y(LINEA[n - 1]), r: 4.5, fill: 'var(--marca)', stroke: 'var(--superficie)', 'stroke-width': 2 }, svg);
+    s('text', { x: x(n - 1) + 8, y: y(LINEA[n - 1]) + 4, style: 'fill:var(--marca-tinta);font-weight:700' }, svg, `${LINEA[n - 1].toFixed(1).replace('.', ',')} min`);
+    if (n > 3) { const pico = T.indexOf(Math.max(...T)); if (T[pico] > 7) s('text', { x: x(pico), y: y(T[pico]) - 10, 'text-anchor': 'middle', style: 'fill:var(--tinta);font-weight:600' }, svg, `${L[pico]}: ${String(T[pico]).replace('.', ',')} min`); }
+    const paso = Math.max(1, Math.ceil(n / 7));
+    L.forEach((l, i) => { if (i % paso === 0 || i === n - 1) s('text', { x: x(i), y: H - 6, 'text-anchor': 'middle' }, svg, l); });
+    const HV = 70, vMax = Math.max(...V) * 1.15, bw = Math.min(28, (W - m.l - m.r) / Math.max(1, n) * .55), yv = v => 4 + (1 - v / vMax) * (HV - 18);
     s('line', { x1: m.l, x2: W - m.r, y1: yv(0), y2: yv(0), class: 'grid' }, sv);
-    s('text', { x: m.l - 8, y: yv(0) + 4, 'text-anchor': 'end' }, sv, '0');
-    VOL.forEach((v, i) => { const r = s('rect', { x: x(i) - bw / 2, y: yv(v), width: bw, height: yv(0) - yv(v), rx: 2, fill: i === pico ? 'var(--apagado)' : 'var(--linea)' }, sv);
-      r.dataset.tip = `${fd(dias[i])} · ${v} respuestas`; });
-    s('text', { x: x(pico) + bw, y: yv(VOL[pico]) + 10, style: 'fill:var(--tinta);font-weight:600' }, sv, `${VOL[pico]} respuestas: el doble de lo normal`);
-    // cursor sobre la tendencia
+    const vPico = V.indexOf(Math.max(...V)), normal = med(V);
+    V.forEach((v, i) => { const r = s('rect', { x: x(i) - bw / 2, y: yv(v), width: bw, height: yv(0) - yv(v), rx: 2, fill: v > normal * 1.6 ? 'var(--apagado)' : 'var(--linea)' }, sv); r.dataset.tip = `${L[i]} · ${v} respuestas`; });
+    if (V[vPico] > normal * 1.6) s('text', { x: x(vPico) + bw, y: yv(V[vPico]) + 10, style: 'fill:var(--tinta);font-weight:600' }, sv, `${V[vPico]} respuestas: ${(V[vPico] / normal).toFixed(1).replace('.', ',')} veces lo normal`);
     const guia = s('line', { y1: t, y2: H - b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '2 3', visibility: 'hidden' }, svg);
     const zona = s('rect', { x: m.l, y: t, width: W - m.l - m.r, height: H - t - b, fill: 'transparent' }, svg);
     zona.addEventListener('pointermove', ev => {
       const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
-      const i = Math.max(0, Math.min(ult, Math.round((px - m.l) / ((W - m.l - m.r) / ult))));
+      const i = n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round((px - m.l) / ((W - m.l - m.r) / (n - 1)))));
       guia.setAttribute('x1', x(i)); guia.setAttribute('x2', x(i)); guia.setAttribute('visibility', 'visible');
-      mostrarTip(ev, `${fd(dias[i])} · ese día ${String(TREND[i]).replace('.', ',')} min · últimos 7 días ${String(ROLL[i].toFixed(1)).replace('.', ',')} min · ${VOL[i]} respuestas`);
+      mostrarTip(ev, P.porHora ? `${L[i]} · mediana ${String(T[i]).replace('.', ',')} min · ${V[i]} respuestas`
+        : `${L[i]} · ese día ${String(T[i]).replace('.', ',')} min · últimos 7 días ${LINEA[i].toFixed(1).replace('.', ',')} min · ${V[i]} respuestas`);
     });
     zona.addEventListener('pointerleave', () => { guia.setAttribute('visibility', 'hidden'); ocultarTip(); });
-  })();
+  }
 
-  // Distribucion: barras por franja (sin dona)
-  // Dona: parte del todo con 4 franjas, en su orden (Ideal arriba, sentido
-  // horario). Anillo fino, aire entre segmentos, el numero que importa al
-  // centro y la leyenda con cantidades al lado: el color nunca va solo.
-  (() => {
-    const svg = $('dona'), cx = 110, cy = 110, r = 84, grosor = 24, C = 2 * Math.PI * r, aire = 3;
+  function renderMapa() {
+    const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'], HORAS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+    const k = P.ratio * P.fueraM, M = MAPA_BASE.map(f => f.map(v => v === null ? null : Math.max(1, Math.round(v * k))));
+    $('mapa').innerHTML = `<span></span>${HORAS.map(h => `<span class="mh">${h}</span>`).join('')}` +
+      M.map((fila, d) => `<span class="md">${DIAS[d]}</span>` + fila.map((v, h) => v === null
+        ? `<span class="mc fuera" data-tip="${DIAS[d]} ${HORAS[h]}:00 · fuera de horario"></span>`
+        : `<span class="mc c${franjaMin(v)} num" data-tip="${DIAS[d]} ${HORAS[h]}:00 a ${HORAS[h] + 1}:00 · mediana ${v} min · ${FR[franjaMin(v)]}">${v}</span>`).join('')).join('');
+    let peor = [0, 0, 0]; M.forEach((f, d) => f.forEach((v, h) => { if (v !== null && v > peor[0]) peor = [v, d, h]; }));
+    const almuerzo = M.slice(0, 5).every(f => franjaMin(f[5]) >= 1);
+    $('hallazgo').innerHTML = `<b>${almuerzo ? 'El almuerzo (13 a 15 h) es lento todos los días' : 'Las esperas se reparten parejo en la semana'}${franjaMin(peor[0]) >= 2 ? `, y lo peor es el ${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][peor[1]]} a las ${HORAS[peor[2]]} h (${peor[0]} min)` : ''}.</b>`;
+  }
+
+  function renderCarga() {
+    const svg = $('carga'); svg.innerHTML = '';
+    const W = 520, H = 330, m = { l: 44, r: 12, t: 18, b: 40 }, filas = P.filas;
+    if (!filas.length) { s('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', class: 'txt' }, svg, 'Sin vendedores con estos filtros'); return; }
+    const xMax = Math.max(10, Math.ceil(Math.max(...filas.map(f => f.r)) * 1.15 / 10) * 10), yMax = Math.max(10, Math.ceil(Math.max(...filas.map(f => f.med / 60)) / 5) * 5);
+    const x = v => m.l + v / xMax * (W - m.l - m.r), y = v => m.t + (1 - Math.min(v, yMax) / yMax) * (H - m.t - m.b);
+    const base = filas.filter(a => a.r >= MIN_MUESTRA * (P.dias / 26)), cargaMedia = (base.length ? sum(base.map(a => a.r)) / base.length : xMax / 2);
+    [[0, cargaMedia, 5, yMax, 'Revisar cómo trabaja', 'var(--f2-b)'], [cargaMedia, xMax, 5, yMax, 'Necesita apoyo', 'var(--f3-b)'],
+     [0, cargaMedia, 0, 5, 'Bien', 'var(--superficie-2)'], [cargaMedia, xMax, 0, 5, 'Referente', 'var(--f0-b)']].forEach(([x0, x1, y0, y1, t, c]) => {
+      s('rect', { x: x(x0), y: y(y1), width: Math.max(0, x(x1) - x(x0)), height: y(y0) - y(y1), fill: c, 'fill-opacity': .6 }, svg);
+      s('text', { x: x0 ? x(x1) - 8 : x(x0) + 8, y: y1 === yMax ? y(y1) + 16 : y(y0) - 8, 'text-anchor': x0 ? 'end' : 'start', class: 'txt', style: 'fill:var(--apagado);font-weight:700;font-size:11px;letter-spacing:.03em' }, svg, t.toUpperCase());
+    });
+    [0, 5, yMax].forEach(v => s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === 5 ? 'fill:var(--f0-t);font-weight:700' : '' }, svg, `${v} min`));
+    [0, xMax / 3, xMax * 2 / 3, xMax].forEach(v => s('text', { x: x(v), y: H - m.b + 16, 'text-anchor': 'middle' }, svg, nf(v)));
+    s('text', { x: (m.l + W - m.r) / 2, y: H - 6, 'text-anchor': 'middle', class: 'txt' }, svg, 'respuestas en el periodo (carga) →');
+    s('line', { x1: m.l, x2: W - m.r, y1: y(5), y2: y(5), stroke: 'var(--f0)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
+    s('line', { x1: x(cargaMedia), x2: x(cargaMedia), y1: m.t, y2: H - m.b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, svg);
+    s('text', { x: x(cargaMedia), y: m.t - 4, 'text-anchor': 'middle', class: 'txt', style: 'fill:var(--apagado);font-size:10px' }, svg, 'carga media');
+    filas.forEach(a => {
+      const poca = a.r < MIN_MUESTRA * (P.dias / 26), cx = x(a.r), cy = y(a.med / 60);
+      const c = s('circle', { cx, cy, r: 7, fill: poca ? 'var(--superficie)' : 'var(--tinta)', stroke: poca ? 'var(--apagado)' : 'var(--superficie)', 'stroke-width': 2 }, svg);
+      c.dataset.tip = `${a.n} · ${nf(a.r)} respuestas · la mitad en menos de ${fmt(a.med)}${poca ? ' · pocas respuestas, no comparar' : ''}`;
+      const izq = cx > W * .62;
+      s('text', { x: cx + (izq ? -12 : 12), y: cy + 4, 'text-anchor': izq ? 'end' : 'start', class: 'txt', style: `font-weight:600;font-size:12px;fill:${poca ? 'var(--apagado)' : 'var(--tinta)'}` }, svg, a.n);
+    });
+  }
+
+  function renderDona() {
+    const svg = $('dona'); svg.innerHTML = '';
+    const cx = 110, cy = 110, r = 84, grosor = 24, C = 2 * Math.PI * r, aire = 3, T = P.d, TOT = P.total;
     s('circle', { cx, cy, r, fill: 'none', stroke: 'var(--carril)', 'stroke-width': grosor }, svg);
     let acum = 0;
-    const segs = TOTAL.map((c, i) => {
-      const largo = c / TOT * C;
-      const seg = s('circle', { cx, cy, r, fill: 'none', stroke: `var(--f${i})`, 'stroke-width': grosor,
-        'stroke-dasharray': `${Math.max(0, largo - aire)} ${C}`, 'stroke-dashoffset': -acum,
-        transform: `rotate(-90 ${cx} ${cy})`, 'data-f': i, style: 'cursor:pointer;transition:opacity .15s' }, svg);
-      acum += largo; return seg;
-    });
-    const linea2 = s('text', { x: cx, y: cy - 24, 'text-anchor': 'middle', class: 'txt', style: 'font-size:12px;font-weight:700' }, svg, '');
-    const cifra = s('text', { x: cx, y: cy + 10, 'text-anchor': 'middle', style: 'font-size:34px;font-weight:800;fill:var(--tinta)' }, svg, '');
-    const linea1 = s('text', { x: cx, y: cy + 32, 'text-anchor': 'middle', class: 'txt', style: 'font-size:12px;fill:var(--apagado)' }, svg, '');
-    const leyenda = $('dona-leyenda');
-    leyenda.innerHTML = TOTAL.map((c, i) => `<button type="button" class="dl-fila" data-f="${i}">
-        <span class="pill p${i}">${FR[i]}</span><span class="dl-rango">${RANGO[i]}</span>
-        <span class="dl-barra"><i class="b${i}" style="width:${pct(c, TOT) * 2}%"></i></span>
-        <span class="num dl-pct">${pct(c, TOT)} %</span><span class="num dl-n">${nf(c)}</span>
-        <span class="dl-ver">Ver leads ›</span></button>`).join('') +
+    const segs = T.map((c, i) => { const largo = TOT ? c / TOT * C : 0;
+      const seg = s('circle', { cx, cy, r, fill: 'none', stroke: `var(--f${i})`, 'stroke-width': grosor, 'stroke-dasharray': `${Math.max(0, largo - aire)} ${C}`,
+        'stroke-dashoffset': -acum, transform: `rotate(-90 ${cx} ${cy})`, 'data-f': i, style: 'cursor:pointer;transition:opacity .15s' }, svg);
+      acum += largo; return seg; });
+    const l2 = s('text', { x: cx, y: cy - 24, 'text-anchor': 'middle', class: 'txt', style: 'font-size:12px;font-weight:700' }, svg, '');
+    const ci = s('text', { x: cx, y: cy + 10, 'text-anchor': 'middle', style: 'font-size:34px;font-weight:800;fill:var(--tinta)' }, svg, '');
+    const l1 = s('text', { x: cx, y: cy + 32, 'text-anchor': 'middle', class: 'txt', style: 'font-size:12px;fill:var(--apagado)' }, svg, '');
+    const ley = $('dona-leyenda');
+    ley.innerHTML = T.map((c, i) => `<button type="button" class="dl-fila" data-f="${i}"><span class="pill p${i}">${FR[i]}</span><span class="dl-rango">${RANGO[i]}</span>
+        <span class="num dl-pct">${pct(c, TOT)} %</span><span class="num dl-n">${nf(c)}</span><span class="dl-ver">Ver leads ›</span></button>`).join('') +
       `<div class="dl-total"><span>Total</span><span class="num">${nf(TOT)} respuestas</span></div>`;
-    const centro = f => {
-      const k = f === null ? 0 : f;
-      linea2.textContent = FR[k].toUpperCase(); linea2.style.fill = `var(--f${k}-t)`;
-      cifra.textContent = `${pct(TOTAL[k], TOT)} %`;
-      linea1.textContent = f === null ? 'en menos de 5 min' : `${nf(TOTAL[k])} respuestas`;
+    const centro = f => { const k = f === null ? 0 : f;
+      l2.textContent = FR[k].toUpperCase(); l2.style.fill = `var(--f${k}-t)`; ci.textContent = `${pct(T[k], TOT)} %`;
+      l1.textContent = f === null ? 'en menos de 5 min' : `${nf(T[k])} respuestas`;
       segs.forEach((g, i) => g.style.opacity = f === null || f === i ? 1 : .3);
-      leyenda.querySelectorAll('.dl-fila').forEach(b => b.classList.toggle('activa', f !== null && Number(b.dataset.f) === f));
-    };
+      ley.querySelectorAll('.dl-fila').forEach(b => b.classList.toggle('activa', f !== null && Number(b.dataset.f) === f)); };
     centro(null);
     const sobre = e => { const t = e.target.closest('[data-f]'); centro(t ? Number(t.dataset.f) : null); };
-    svg.addEventListener('pointerover', sobre); leyenda.addEventListener('pointerover', sobre);
-    svg.addEventListener('pointerleave', () => centro(null)); leyenda.addEventListener('pointerleave', () => centro(null));
-    leyenda.addEventListener('focusin', sobre); leyenda.addEventListener('focusout', () => centro(null));
-  })();
-  $('lentas').innerHTML = LENTAS.map(([lead, quien, seg]) =>
-    `<div><span><b>${lead}</b><small>${quien}</small></span><span class="num" style="font-weight:700;color:var(--tinta)">${fmt(seg)}</span></div>`).join('');
+    svg.onpointerover = sobre; ley.onpointerover = sobre; svg.onpointerleave = () => centro(null); ley.onpointerleave = () => centro(null);
+    const abrir = e => { const t = e.target.closest('[data-f]'); if (t) verLeads(Number(t.dataset.f)); };
+    svg.onclick = abrir; ley.onclick = abrir;
+  }
 
+  function verLeads(f) {
+    const r = rng(`leads${f}${E.per.desde}${E.per.hasta}`), n = P.d[f];
+    const pesos = P.filas.map(a => [a.n, a.d[f]]).filter(p => p[1] > 0);
+    const rango = [[30, 300], [301, 900], [901, 1800], [1801, 14000]][f];
+    const fechas = diasHabiles(E.per.desde, E.per.hasta);
+    const lista = Array.from({ length: Math.min(n, 15) }, () => ({ cliente: persona(r), asesor: pesos.length ? elegirPeso(r, pesos) : '—',
+      seg: rango[0] + Math.floor(r() * (rango[1] - rango[0])), fecha: elegir(r, fechas) })).sort((a, b) => b.seg - a.seg);
+    abrirModal(`${FR[f]} · ${RANGO[f]}`, `${nf(n)} respuestas en el periodo · las más lentas primero`,
+      lista.map(l => `<div class="fila fila-click" data-abrir="${l.cliente}"><div><b>${l.cliente}</b><small>${l.asesor}</small></div>
+        <div class="num" style="text-align:right;color:var(--apagado)">${corta(l.fecha)}</div><div class="espera num">${fmt(l.seg)}</div></div>`).join('') +
+      (n > 15 ? `<p class="sub" style="margin:12px 0 0">y ${nf(n - 15)} más</p>` : ''));
+  }
+  function abrirModal(titulo, sub, html) {
+    const m = $('modal');
+    m.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${titulo}"><div class="modal-cab"><div><h3>${titulo}</h3><p>${sub}</p></div>
+      <button class="cerrar" type="button" aria-label="Cerrar" data-cerrar>×</button></div><div class="modal-cuerpo">${html}</div></div>`;
+    m.hidden = false; m.querySelector('[data-cerrar]').focus();
+  }
+  $('modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-cerrar]')) $('modal').hidden = true; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('modal').hidden = true; cerrarPaneles(); } });
+
+  function renderLentas() {
+    const r = rng(`lentas${E.per.desde}${E.per.hasta}${E.per.modo}`), fechas = diasHabiles(E.per.desde, E.per.hasta);
+    const pesos = P.filas.map(a => [a.n, a.d[3] + .5]).filter(p => p[1] > .5);
+    const n = Math.min(5, Math.max(0, Math.round(P.d[3] / 3)));
+    const lista = Array.from({ length: n }, () => ({ lead: `Lead ${leadId(r)}`, asesor: elegirPeso(r, pesos), fecha: elegir(r, fechas), seg: 7200 + Math.floor(r() * 16000 * (P.fueraM)) }))
+      .sort((a, b) => b.seg - a.seg);
+    $('lentas').innerHTML = lista.length ? lista.map(l => `<div class="fila-click" data-abrir="${l.lead}"><span><b>${l.lead}</b><small>${l.asesor} · ${larga(l.fecha)}</small></span><span class="num" style="font-weight:700;color:var(--tinta)">${fmt(l.seg)}</span></div>`).join('')
+      : `<div class="vacio">Sin conversaciones lentas en este periodo</div>`;
+  }
+
+  // =================== tooltip, abrir chat, marcas ===================
   const tip = $('tip');
   function mostrarTip(ev, txt) {
     tip.textContent = txt; tip.hidden = false;
@@ -813,10 +1124,29 @@ body { -webkit-font-smoothing: antialiased; }
   function ocultarTip() { tip.hidden = true; }
   document.addEventListener('pointermove', ev => {
     const t = ev.target.closest && ev.target.closest('[data-tip]');
-    if (t) mostrarTip(ev, t.dataset.tip); else if (!ev.target.closest('#trend')) ocultarTip();
+    if (t && !(t.classList.contains('cambio') && document.body.classList.contains('sin-marcas'))) mostrarTip(ev, t.dataset.tip);
+    else if (!ev.target.closest('#trend')) ocultarTip();
   });
+  document.addEventListener('click', e => { const f = e.target.closest('[data-abrir]'); if (f) toast(`Abriendo en Kommo: ${f.dataset.abrir}`); });
+  $('salir').addEventListener('click', () => toast('Esta es una demostración: no hay sesión que cerrar'));
+  document.body.classList.add('sin-marcas');
+  $('chk-marcas').addEventListener('change', e => document.body.classList.toggle('sin-marcas', !e.target.checked));
+
+  // =================== arranque ===================
+  multi($('f-tj-resp'), 'Responsables', ASESORES.slice(0, 5), E.hoy.resp, renderHoy);
+  multi($('f-tj-ases'), 'Asesores', ASESORES.slice(0, 5), E.hoy.ases, renderHoy);
+  embudoSel($('f-tj-emb'), E.hoy.emb, renderHoy, false);
+  multi($('f-op-resp'), 'Responsables', ASESORES.slice(0, 5), E.det.resp, renderDetalle);
+  multi($('f-op-ases'), 'Asesores', ASESORES.slice(0, 5), E.det.ases, renderDetalle);
+  embudoSel($('f-op-emb'), E.det.emb, renderDetalle, true);
+  multi($('f-per-resp'), 'Responsables', ASESORES, E.per.resp, renderPer);
+  multi($('f-per-ases'), 'Asesores', ASESORES, E.per.ases, renderPer);
+  embudoSel($('f-per-emb'), E.per.emb, renderPer, false);
+  pintarSelects(); pintarRango();
+  renderHoy(); renderPer();
+
   function ajustar() {
-    const c = document.querySelector('.lienzo-scroll'), app = $('app'); if (!c.clientWidth) return;
+    const c = document.querySelector('.lienzo-scroll'), app = $('app'); if (!c || !c.clientWidth) return;
     const z = c.clientWidth / 1240; app.style.zoom = (z < 1 && z >= .6) ? z : '';
   }
   addEventListener('resize', ajustar); ajustar();
