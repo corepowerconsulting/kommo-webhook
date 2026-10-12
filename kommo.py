@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, session, redirect, url_for
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, send_from_directory
 import bisect
 import html
 import json
@@ -1674,6 +1674,15 @@ def _procesar_webhook(data):
 # ========================
 # ENDPOINTS
 # ========================
+# Propuestas de diseño para mostrarle al cliente con nuestra URL y no con un
+# link de claude.ai (12/10). Son paginas fijas con datos inventados: no leen
+# la base ni muestran nada de ninguna cuenta, por eso no piden login.
+PROPUESTAS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'propuestas')
+
+@app.route('/propuesta')
+def propuesta_supervisor():
+    return send_from_directory(PROPUESTAS_DIR, 'supervisor.html')
+
 @app.route('/')
 @token_requerido
 def home():

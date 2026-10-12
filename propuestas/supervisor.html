@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<style>html{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
+<title>Pulse para supervisores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=Barlow:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: una sola columna de lectura. Bloque HOY (su barra de filtros con la
+   comparacion de dos dias, cifras, ritmo contra el otro dia, cola y asesores)
+   y bloque PERIODO (su barra de filtros, cifras, reparto, tendencia, lentas
+   y tabla por asesor). Pantalla clara, sin modo oscuro. */
+:root {
+  color-scheme: light;
+  --fondo: #ffffff; --app: #f5f7fa; --superficie: #ffffff; --superficie-2: #f8fafc;
+  --tinta: #0f172a; --texto: #334155; --apagado: #64748b; --linea: #e2e8f0; --carril: #f1f5f9;
+  --marca: #1d4ed8; --marca-suave: #e0e9fd; --marca-tinta: #1e3a8a;
+  --f0: #22c55e; --f1: #eab308; --f2: #f97316; --f3: #dc2626;
+  --f0-t: #166534; --f1-t: #92400e; --f2-t: #9a3412; --f3-t: #991b1b;
+  --f0-b: #dcfce7; --f1-b: #fef3c7; --f2-b: #ffedd5; --f3-b: #fee2e2;
+  --sombra: 0 1px 2px rgba(15,23,42,.06), 0 1px 1px rgba(15,23,42,.04);
+  --sombra-panel: 0 12px 28px rgba(15,23,42,.14);
+  --f-texto: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-num: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --t-micro: .75rem; --t-chico: .8125rem; --t-base: .875rem; --t-medio: 1rem;
+  --t-cifra: 2rem;
+}
+* { box-sizing: border-box; }
+body { background: var(--fondo); color: var(--texto); font-family: var(--f-texto); font-size: var(--t-base); line-height: 1.5; padding: 0 20px 64px; }
+.num, .cifra { font-family: var(--f-num); font-variant-numeric: tabular-nums lining-nums; }
+h1, h2, h3 { color: var(--tinta); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--marca); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------- Marco ---------- */
+.marco { max-width: 1280px; margin: 0 auto; display: grid; gap: 14px; padding-block: 24px 0; }
+.intro { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
+.intro h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; }
+.intro p { margin: 4px 0 0; color: var(--apagado); max-width: 72ch; }
+.ejemplo { font-size: var(--t-micro); font-weight: 600; color: var(--f1-t); background: var(--f1-b); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.letrero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: var(--t-chico); color: var(--apagado);
+           background: var(--superficie-2); border: 1px dashed var(--linea); border-radius: 10px; padding: 8px 12px; }
+.letrero label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.letrero select { font: inherit; color: var(--tinta); background: var(--superficie); border: 1px solid var(--linea); border-radius: 8px; padding: 4px 8px; }
+.lienzo-scroll { overflow-x: auto; border-radius: 14px; box-shadow: 0 0 0 1px var(--linea), 0 10px 30px rgba(15,23,42,.08); }
+.app { min-width: 1240px; width: 100%; background: var(--app); }
+
+/* ---------- Producto ---------- */
+.barra-app { display: flex; align-items: center; gap: 16px; padding: 12px 28px; background: var(--superficie); border-bottom: 1px solid var(--linea); }
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo i { width: 30px; height: 30px; border-radius: 8px; background: var(--marca); display: grid; place-items: center; }
+.logo b { color: var(--tinta); font-weight: 800; letter-spacing: .02em; display: block; line-height: 1.1; }
+.logo small { color: var(--apagado); font-size: var(--t-micro); }
+.saltos { display: flex; gap: 4px; margin-left: 18px; }
+.saltos a { padding: 6px 12px; border-radius: 8px; color: var(--apagado); font-weight: 600; font-size: var(--t-chico); text-decoration: none; }
+.saltos a:hover { background: var(--carril); color: var(--tinta); }
+.vivo { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: var(--t-chico); color: var(--apagado); }
+.vivo::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--f0); box-shadow: 0 0 0 3px var(--f0-b); }
+
+.bloque { padding: 22px 28px 26px; display: grid; gap: 14px; }
+.bloque + .bloque { border-top: 1px solid var(--linea); }
+.bloque-cab { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.bloque-cab h2 { font-size: 1.375rem; font-weight: 800; letter-spacing: -.02em; }
+.bloque-cab p { margin: 0; color: var(--apagado); }
+
+.filtros { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; background: var(--superficie);
+           border: 1px solid var(--linea); border-radius: 12px; }
+.filtros .titulo-f { font-size: var(--t-micro); font-weight: 700; color: var(--apagado); letter-spacing: .05em; text-transform: uppercase; margin-right: 4px; }
+.ctl-wrap { position: relative; }
+.ctl { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; background: var(--superficie);
+       border: 1px solid var(--linea); border-radius: 8px; font-size: var(--t-chico); color: var(--texto); white-space: nowrap; cursor: pointer; }
+.ctl:hover { border-color: var(--apagado); }
+.ctl em { font-style: normal; color: var(--apagado); font-weight: 500; }
+.ctl b { color: var(--tinta); font-weight: 600; }
+.ctl svg { color: var(--apagado); flex: none; }
+.ctl.dia { border-color: var(--marca); background: var(--marca-suave); }
+.ctl.dia b { color: var(--marca-tinta); }
+.ctl.contra { border-style: dashed; }
+.vs { font-size: var(--t-micro); font-weight: 700; color: var(--apagado); }
+.seg { display: inline-flex; background: var(--carril); border-radius: 8px; padding: 3px; gap: 2px; }
+.seg button { padding: 5px 12px; border-radius: 6px; font-size: var(--t-chico); color: var(--apagado); font-weight: 600; border: 0; background: none; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--superficie); color: var(--tinta); box-shadow: var(--sombra); }
+.sep { width: 1px; height: 22px; background: var(--linea); margin: 0 4px; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-chico); color: var(--apagado); margin-left: auto; cursor: pointer; }
+.check input { width: 15px; height: 15px; accent-color: var(--marca); }
+.empuja { margin-left: auto; }
+
+.panel { position: absolute; top: 40px; left: 0; z-index: 30; width: 300px; background: var(--superficie); border: 1px solid var(--linea);
+         border-radius: 12px; box-shadow: var(--sombra-panel); padding: 6px; }
+.opc { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 7px; font-size: var(--t-chico); color: var(--texto); }
+.opc:hover { background: var(--superficie-2); }
+.opc.padre { font-weight: 600; color: var(--tinta); }
+.opc small { margin-left: auto; color: var(--apagado); font-size: var(--t-micro); }
+.caja { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--apagado); flex: none; display: grid; place-items: center; }
+.caja.on { background: var(--marca); border-color: var(--marca); }
+.flecha { color: var(--apagado); display: inline-block; width: 10px; }
+.etapas { margin-left: 22px; border-left: 1px solid var(--linea); padding-left: 6px; }
+
+.tarjeta { background: var(--superficie); border: 1px solid var(--linea); border-radius: 12px; }
+.t-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px 0; }
+.t-cab h3 { font-size: var(--t-medio); font-weight: 700; }
+.t-cab p { margin: 2px 0 0; color: var(--apagado); font-size: var(--t-chico); }
+.t-cuerpo { padding: 14px 20px 18px; }
+.lbl { font-size: var(--t-micro); color: var(--apagado); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.sub { font-size: var(--t-chico); color: var(--apagado); }
+.enlace { color: var(--marca); font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; font-size: inherit; }
+.enlace:hover { text-decoration: underline; }
+.cifra { font-size: var(--t-cifra); font-weight: 800; color: var(--tinta); letter-spacing: -.02em; line-height: 1.1; }
+.cifra small { font-size: .5em; font-weight: 700; color: var(--apagado); letter-spacing: 0; margin: 0 .3em 0 .1em; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: var(--t-micro); font-weight: 700; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+.p0 { background: var(--f0-b); color: var(--f0-t); } .p1 { background: var(--f1-b); color: var(--f1-t); }
+.p2 { background: var(--f2-b); color: var(--f2-t); } .p3 { background: var(--f3-b); color: var(--f3-t); }
+.p0::before { background: var(--f0); } .p1::before { background: var(--f1); } .p2::before { background: var(--f2); } .p3::before { background: var(--f3); }
+.num-pill { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.apilada { display: flex; gap: 2px; height: 12px; }
+.apilada > i { display: block; height: 100%; min-width: 3px; }
+.apilada > i:first-child { border-radius: 4px 0 0 4px; } .apilada > i:last-child { border-radius: 0 4px 4px 0; }
+.b0 { background: var(--f0); } .b1 { background: var(--f1); } .b2 { background: var(--f2); } .b3 { background: var(--f3); }
+.boton { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--linea);
+         background: var(--superficie); color: var(--tinta); font-size: var(--t-chico); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.boton:hover { border-color: var(--marca); color: var(--marca); }
+
+/* Comparacion: siempre con flecha y palabra, nunca solo color */
+.cmp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--t-chico); color: var(--apagado); }
+.cmp .contra { font-family: var(--f-num); font-variant-numeric: tabular-nums; color: var(--texto); font-weight: 600; }
+.delta { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; padding: 1px 8px; border-radius: 6px; font-size: var(--t-micro); }
+.delta.mejor { background: var(--f0-b); color: var(--f0-t); }
+.delta.peor { background: var(--f3-b); color: var(--f3-t); }
+
+/* ---------- Hoy ---------- */
+.atencion { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--f3-b);
+            color: var(--f3-t); font-weight: 600; }
+.atencion .boton { margin-left: auto; }
+.kpis-hoy { display: grid; grid-template-columns: repeat(4, 1fr); }
+.kpis-hoy > div { padding: 16px 20px; display: grid; gap: 6px; align-content: start; }
+.kpis-hoy > div + div { border-left: 1px solid var(--linea); }
+.dos { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.chip { padding: 4px 11px; border-radius: 999px; border: 1px solid var(--linea); font-size: var(--t-micro); font-weight: 600;
+        color: var(--texto); display: inline-flex; gap: 6px; align-items: center; background: var(--superficie); cursor: pointer; }
+.chip:hover { border-color: var(--apagado); }
+.chip[aria-pressed="true"] { background: var(--tinta); color: var(--superficie); border-color: var(--tinta); }
+.chip i { width: 7px; height: 7px; border-radius: 50%; }
+.cola { border-top: 1px solid var(--linea); max-height: 486px; overflow-y: auto; }
+.fila { display: grid; grid-template-columns: 4px minmax(0, 1fr) 120px 86px 76px; gap: 12px; align-items: center; padding: 9px 4px 9px 0; border-bottom: 1px solid var(--linea); }
+.fila:hover { background: var(--superficie-2); }
+.marca-f { align-self: stretch; border-radius: 2px; }
+.fila b { color: var(--tinta); font-weight: 600; display: block; }
+.fila small { color: var(--apagado); font-size: var(--t-micro); }
+.espera { text-align: right; font-weight: 700; color: var(--tinta); }
+.pie { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; font-size: var(--t-chico); color: var(--apagado); }
+.graf { width: 100%; height: auto; display: block; overflow: visible; }
+.graf text { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 11px; fill: var(--apagado); }
+.graf text.txt { font-family: var(--f-texto); }
+.graf .grid { stroke: var(--linea); stroke-width: 1; }
+.leyenda { display: flex; gap: 16px; font-size: var(--t-chico); color: var(--apagado); align-items: center; }
+.leyenda i { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--marca); vertical-align: middle; margin-right: 6px; }
+.leyenda i.contra { border-top: 2px dashed var(--apagado); }
+table.tabla { width: 100%; border-collapse: collapse; font-size: var(--t-chico); }
+.tabla th { font-size: var(--t-micro); color: var(--apagado); font-weight: 600; text-align: right; padding: 8px; white-space: nowrap; border-bottom: 1px solid var(--linea); }
+.tabla th.izq, .tabla td.izq { text-align: left; }
+.tabla td { padding: 9px 8px; border-bottom: 1px solid var(--linea); text-align: right; color: var(--tinta); white-space: nowrap; }
+.tabla tr:last-child td { border-bottom: 0; }
+.tabla tbody tr:hover td { background: var(--superficie-2); }
+.tabla .nombre { font-weight: 600; }
+.tabla tr.apagada td { color: var(--apagado); }
+.critico-n { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 7px; border-radius: 6px; background: var(--f3-b); color: var(--f3-t); font-weight: 800; }
+.cero { color: var(--apagado); font-weight: 500; }
+.filtro-tabla { display: flex; gap: 6px; }
+.filtro-tabla .ctl { height: 28px; padding: 0 9px; font-size: var(--t-micro); }
+
+/* ---------- Periodo ---------- */
+.kpis-per { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; }
+.kpis-per > div { padding: 18px 20px; display: grid; gap: 6px; align-content: start; }
+.kpis-per > div + div { border-left: 1px solid var(--linea); }
+.kpis-per .principal .cifra { font-size: 2.75rem; letter-spacing: -.03em; }
+.reparto { display: grid; gap: 8px; }
+.reparto .apilada { height: 34px; gap: 3px; }
+.reparto-pct { display: flex; gap: 3px; }
+.reparto-pct span { display: block; min-width: 0; color: var(--tinta); font-size: var(--t-medio); font-weight: 800; }
+.leyenda-f { display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--t-chico); color: var(--apagado); }
+.leyenda-f b { color: var(--tinta); }
+.lentas > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 9px 0; border-top: 1px solid var(--linea); align-items: center; }
+.lentas > div:first-child { border-top: 0; }
+.lentas b { color: var(--tinta); font-weight: 600; }
+.lentas small { color: var(--apagado); font-size: var(--t-micro); display: block; }
+.barra-pct { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.barra-pct span.carril { width: 90px; height: 8px; border-radius: 4px; background: var(--carril); overflow: hidden; display: block; }
+.barra-pct span.carril i { display: block; height: 100%; background: var(--f0); border-radius: 4px; }
+
+#tip { position: fixed; z-index: 60; pointer-events: none; background: var(--tinta); color: #fff; font-size: var(--t-micro);
+       padding: 6px 9px; border-radius: 7px; box-shadow: 0 6px 16px rgba(0,0,0,.18); max-width: 280px; line-height: 1.4; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<style>
+/* --- Extra para el mockup ordenado --- */
+.cambio { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 5px; font-size: .6875rem; font-weight: 800;
+          letter-spacing: .04em; text-transform: uppercase; vertical-align: middle; margin-left: 8px; white-space: nowrap; }
+.cambio.nuevo { background: #1d4ed8; color: #fff; }
+.cambio.cambia { background: #fef3c7; color: #92400e; box-shadow: inset 0 0 0 1px #f59e0b; }
+.cambio.sube { background: #ede9fe; color: #5b21b6; box-shadow: inset 0 0 0 1px #a78bfa; }
+body.sin-marcas .cambio, body.sin-marcas .quitado { display: none !important; }
+.quitado { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; border: 1px dashed #fca5a5;
+           background: #fff7f7; color: #991b1b; font-size: var(--t-chico); }
+.quitado s { color: #b91c1c; }
+.que-filtra { font-size: var(--t-micro); color: var(--apagado); margin-left: 4px; }
+.cards-hoy { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.kpi-card { padding: 18px 20px 6px; display: grid; gap: 6px; }
+.kpi-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.kpi-top .cifra { font-size: 2.5rem; letter-spacing: -.03em; }
+.kpi-top .nombre-kpi { font-weight: 700; color: var(--tinta); font-size: var(--t-medio); }
+.sev-mini { display: flex; align-items: center; gap: 10px; }
+.sev-mini .apilada { width: 180px; height: 10px; }
+.lista-hoy { border-top: 1px solid var(--linea); max-height: 330px; overflow-y: auto; margin: 10px 20px 16px; }
+.lista-hoy .fila { grid-template-columns: 4px minmax(0, 1fr) 110px 80px; }
+.atend .fila { grid-template-columns: minmax(0, 1fr) 120px 60px; }
+.muestra-baja { font-size: var(--t-micro); color: var(--apagado); font-weight: 600; background: var(--carril); border-radius: 5px; padding: 1px 6px; margin-left: 6px; }
+.tabla tr.poca td { color: var(--apagado); }
+.dist-fila { display: grid; grid-template-columns: 120px minmax(0, 1fr) 70px 60px 90px; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--linea); }
+.dist-fila:first-child { border-top: 0; }
+.dist-carril { height: 14px; background: var(--carril); border-radius: 4px; overflow: hidden; }
+.dist-carril i { display: block; height: 100%; border-radius: 4px; }
+.dist-fila .num { text-align: right; color: var(--tinta); font-weight: 700; }
+.vs-ant { font-size: var(--t-chico); color: var(--apagado); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.interruptor { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.interruptor input { width: 15px; height: 15px; accent-color: var(--marca); }
+.resumen-sup { display: grid; grid-template-columns: repeat(3, 1fr); }
+.rs-item { display: flex; gap: 12px; padding: 14px 18px; align-items: flex-start; }
+.rs-item + .rs-item { border-left: 1px solid var(--linea); }
+.rs-item b { display: block; color: var(--tinta); font-size: var(--t-base); }
+.rs-item span:not(.rs-ico) { display: block; color: var(--apagado); font-size: var(--t-chico); }
+.rs-ico { flex: none; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-weight: 800; font-size: 13px; }
+.rs-ico.mejor { background: var(--f0-b); color: var(--f0-t); }
+.rs-ico.peor { background: var(--f3-b); color: var(--f3-t); }
+.mini-delta { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; padding: 1px 7px; border-radius: 6px; font-size: var(--t-micro);
+              font-family: var(--f-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mini-delta.mejor { background: var(--f0-b); color: var(--f0-t); }
+.mini-delta.peor { background: var(--f3-b); color: var(--f3-t); }
+.pill.pb { background: var(--carril); color: var(--texto); padding: 0 7px; }
+.pill.pb::before { background: var(--apagado); }
+.insiste { color: var(--f3-t); font-weight: 600; }
+.chip-bot[aria-pressed="false"] { border-color: var(--apagado); }
+.aviso-bot { margin: 8px 20px 0; padding: 8px 12px; border-radius: 8px; background: var(--f1-b); color: var(--f1-t); font-size: var(--t-chico); font-weight: 600; }
+.dos-iguales { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+.bloque { grid-template-columns: minmax(0, 1fr); }
+#tabla-per { min-width: 0; }
+.t-cuerpo:has(> #tabla-per) { overflow-x: auto; }
+#tabla-per th, #tabla-per td { padding-left: 6px; padding-right: 6px; }
+.meta-barra { display: flex; align-items: center; gap: 10px; }
+.meta-barra .carril { width: 160px; height: 8px; border-radius: 4px; background: var(--carril); overflow: hidden; display: block; }
+.meta-barra .carril i { display: block; height: 100%; background: var(--f0); border-radius: 4px; }
+.resp-cel { text-align: right; line-height: 1.25; }
+.ident { display: block; font-size: .6875rem; color: var(--apagado); }
+.ident.baja { color: var(--f1-t); font-weight: 700; cursor: help; }
+.hallazgo { margin: 0 0 10px; color: var(--tinta); font-size: var(--t-chico); }
+.mapa { display: grid; grid-template-columns: 38px repeat(12, minmax(0, 1fr)); gap: 3px; }
+.mh { text-align: center; font-size: var(--t-micro); color: var(--apagado); font-family: var(--f-num); }
+.md { font-size: var(--t-micro); color: var(--apagado); font-weight: 600; align-self: center; }
+.mc { height: 30px; border-radius: 5px; display: grid; place-items: center; font-size: var(--t-micro); font-weight: 700; }
+.mc.c0 { background: var(--f0-b); color: var(--f0-t); } .mc.c1 { background: var(--f1-b); color: var(--f1-t); }
+.mc.c2 { background: #fed7aa; color: var(--f2-t); } .mc.c3 { background: var(--f3); color: #fff; }
+.mc.fuera { background: repeating-linear-gradient(45deg, var(--carril), var(--carril) 4px, var(--superficie) 4px, var(--superficie) 8px); }
+.leyenda-mapa { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.cambio.cambia, .cambio.nuevo { cursor: help; background: #ede9fe; color: #5b21b6; box-shadow: inset 0 0 0 1px #a78bfa; }
+.dona-wrap { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 22px; align-items: center; }
+#dona { width: 210px; height: 210px; display: block; }
+#dona text { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+#dona text.txt { font-family: var(--f-texto); letter-spacing: .04em; }
+.dona-leyenda { display: grid; }
+.dl-fila { display: grid; grid-template-columns: 78px minmax(0, 1fr) 64px 44px 44px 72px; gap: 10px; align-items: center; text-align: left;
+           background: none; border: 0; border-top: 1px solid var(--linea); padding: 9px 6px; cursor: pointer; border-radius: 6px; }
+.dl-fila:first-child { border-top: 0; }
+.dl-fila:hover, .dl-fila.activa { background: var(--superficie-2); }
+.dl-rango { color: var(--apagado); font-size: var(--t-chico); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-barra { height: 8px; background: var(--carril); border-radius: 4px; overflow: hidden; display: block; }
+.dl-barra i { display: block; height: 100%; border-radius: 4px; }
+.dl-pct { text-align: right; color: var(--tinta); font-weight: 800; }
+.dl-n { text-align: right; color: var(--apagado); }
+.dl-ver { text-align: right; color: var(--marca); font-weight: 600; font-size: var(--t-micro); opacity: 0; transition: opacity .15s; }
+.dl-fila:hover .dl-ver, .dl-fila.activa .dl-ver, .dl-fila:focus-visible .dl-ver { opacity: 1; }
+.dl-total { display: flex; justify-content: space-between; padding: 9px 6px 0; border-top: 1px solid var(--linea); font-size: var(--t-chico); color: var(--apagado); }
+.dl-total .num { color: var(--tinta); font-weight: 700; }
+
+/* ===== Pulido: letras, ritmo de espacios y alineacion ===== */
+:root {
+  --f-texto: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-num: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --e1: 8px; --e2: 12px; --e3: 16px; --e4: 22px; --e5: 32px;
+}
+body { -webkit-font-smoothing: antialiased; }
+.lbl { letter-spacing: .05em; font-weight: 700; }
+.app { border-radius: 14px; }
+.barra-app { padding: 14px var(--e5); }
+.bloque { padding: var(--e5) var(--e5) 36px; gap: var(--e3); }
+.bloque-cab h2 { font-size: 1.375rem; font-weight: 800; }
+.bloque > p.sub { margin: -10px 0 4px !important; }
+.filtros { padding: 10px 14px; gap: var(--e1); border-radius: 12px; }
+.tarjeta { border-radius: 14px; }
+.t-cab { padding: 18px var(--e4) 0; align-items: flex-start; }
+.t-cab h3 { font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
+.t-cab p { margin-top: 4px; }
+.t-cuerpo { padding: var(--e3) var(--e4) 20px; }
+
+/* Hoy: dos tarjetas con la misma estructura y la misma altura */
+.cards-hoy { gap: var(--e3); align-items: stretch; }
+.cards-hoy > .tarjeta { display: flex; flex-direction: column; }
+.kpi-card { padding: 20px var(--e4) 0; display: grid; grid-template-rows: auto 22px 24px 18px; gap: 10px; align-items: center; }
+.kpi-top { gap: 10px; }
+.kpi-top .cifra { font-size: 2.75rem; line-height: 1; }
+.desglose { display: flex; align-items: center; gap: 10px; }
+.desglose .apilada { width: 200px; height: 10px; }
+.bv { background: var(--marca); } .bb { background: #cbd5e1; }
+.pill.pv { background: var(--marca-suave); color: var(--marca-tinta); } .pill.pv::before { background: var(--marca); }
+.nota-kpi { font-size: var(--t-chico); }
+.fila-chips { padding: var(--e3) var(--e4) 0; }
+.fila-chips .chips { justify-content: flex-start; }
+.lista-hoy { margin: var(--e2) var(--e4) 20px; height: 312px; max-height: none; }
+.aviso-bot { margin: var(--e2) var(--e4) 0; }
+.lista-hoy .fila { padding: 10px 4px 10px 0; }
+
+/* Tablas: columnas con ancho fijo para que todo caiga en su lugar */
+.tabla th { padding: 10px; border-bottom: 1px solid var(--linea); }
+.tabla td { padding: 12px 10px; }
+#tabla-hoy { table-layout: fixed; }
+#tabla-hoy th:nth-child(1) { width: 26%; }
+#tabla-per th, #tabla-per td { padding-left: 8px; padding-right: 8px; }
+#tabla-per td { padding-top: 10px; padding-bottom: 10px; }
+
+/* Periodo: frases, cifras con la comparacion siempre a la misma altura */
+.resumen-sup .rs-item { padding: var(--e3) var(--e4); gap: var(--e2); }
+.rs-item b { font-weight: 800; }
+.kpis-per { grid-template-columns: 1.25fr 1fr 1fr 1fr; }
+.kpis-per > div { display: flex; flex-direction: column; gap: 8px; padding: 20px var(--e4); }
+.kpis-per .cifra { font-size: 2.25rem; line-height: 1; }
+.kpis-per .principal .cifra { font-size: 2.75rem; }
+.kpis-per .vs-ant { margin-top: auto; padding-top: var(--e2); border-top: 1px solid var(--linea); }
+.dos { gap: var(--e3); align-items: stretch; }
+.mapa { gap: 4px; }
+.mc { height: 32px; border-radius: 6px; }
+.leyenda-mapa { margin-top: var(--e2); }
+.lentas > div { padding: 11px 0; }
+.dona-wrap { gap: 28px; }
+.meta-barra .carril { width: 110px; }
+.meta-barra .sub { white-space: nowrap; }
+.dl-fila { grid-template-columns: 82px minmax(0, 1fr) 46px 44px 66px; }
+.dl-barra { display: none; }
+</style>
+
+
+</head>
+<body>
+<div class="marco">
+  <div class="intro">
+    <div>
+      <h1>Pulse para supervisores</h1>
+      <p>El tablero actual con los cambios para el supervisor de ventas, ya ordenado y alineado. La casilla de abajo muestra cada cambio con su porqué. Los datos son inventados.</p>
+    </div>
+    <span class="ejemplo">Números y nombres de ejemplo</span>
+  </div>
+  <div class="letrero">
+    <label class="interruptor" for="chk-marcas"><input type="checkbox" id="chk-marcas"> Mostrar qué cambió y por qué</label>
+    <span class="sep"></span>
+    <span>Texto en Manrope · números en Inter</span>
+  </div>
+
+  <div class="lienzo-scroll"><div class="app" id="app">
+    <div class="barra-app">
+      <div class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 12 6 12 9 4 15 20 18 12 22 12"/></svg></i>
+        <div><b>PULSE</b><small>Cuenta de ejemplo</small></div></div>
+      <span class="sub" style="margin-left:auto">Salir</span>
+    </div>
+
+    <!-- ============ OPERACION EN TIEMPO REAL ============ -->
+    <section class="bloque" aria-labelledby="h-hoy">
+      <div class="bloque-cab"><h2 id="h-hoy">Operación en tiempo real</h2><span class="vivo" style="margin-left:0">actualizado recién</span></div>
+      <p class="sub" style="margin:-8px 0 0">Responde: <b style="color:var(--tinta)">¿qué leads necesitan atención ya, y cómo va el día contra otro día?</b></p>
+
+      <div class="filtros" aria-label="Filtros de las tarjetas">
+        <button class="ctl dia" type="button"><em>Ver</em><b>Hoy</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <button class="ctl contra" type="button"><em>Comparar con</em><b>07/10</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <span class="sep"></span>
+        <button class="ctl" type="button"><em>Responsables</em><b>Todos</b></button>
+        <button class="ctl" type="button"><em>Asesores</em><b>Todos</b></button>
+        <div class="ctl-wrap">
+          <button class="ctl" type="button" data-panel="pan-emb-hoy" aria-expanded="false"><em>Embudos</em><b>Todos</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <div class="panel" id="pan-emb-hoy" hidden></div>
+        </div>
+        <span class="que-filtra">Filtra las dos tarjetas</span>
+        <label class="check" for="chk-cerradas"><input type="checkbox" id="chk-cerradas">Incluir conversaciones cerradas</label>
+      </div>
+
+      <div class="cards-hoy">
+        <div class="tarjeta">
+          <div class="kpi-card">
+            <div class="kpi-top"><span class="cifra">12</span><span class="nombre-kpi">Sin responder</span></div>
+            <div class="desglose"><span class="pill p3 num-pill">4 en Crítico</span><div class="apilada" id="sev-barra"></div></div>
+            <div class="cmp"><span>07/10 a esta hora: <span class="contra">15</span></span><span class="delta mejor">▼ 3 · mejor</span></div>
+            <span class="sub nota-kpi">+ <span class="num">37</span> sin respuesta hace más de 7 días, aparte</span>
+          </div>
+          <div class="fila-chips"><div class="chips" id="chips"></div></div>
+          <div class="lista-hoy" id="cola"></div>
+        </div>
+        <div class="tarjeta">
+          <div class="kpi-card">
+            <div class="kpi-top"><span class="cifra">58</span><span class="nombre-kpi">Atendidos hoy</span></div>
+            <div class="desglose"><span class="pill pv num-pill">49 por vendedores</span><div class="apilada">
+              <i class="bv" style="flex:49" data-tip="49 atendidos por vendedores"></i><i class="bb" style="flex:9" data-tip="9 atendidos solo por el bot"></i></div></div>
+            <div class="cmp"><span>07/10 a esta hora: <span class="contra">51</span></span><span class="delta mejor">▲ 7 · mejor</span></div>
+            <span class="sub nota-kpi">Última respuesta hace 3 min · <span class="num">9</span> solo por el bot</span>
+          </div>
+          <div class="fila-chips"><div class="chips" id="chips-atend"></div></div>
+          <p class="aviso-bot" id="aviso-bot" hidden>El bot contestó, pero ningún vendedor. Revisa si el cliente quedó atendido.</p>
+          <div class="lista-hoy atend" id="atendidos"></div>
+        </div>
+      </div>
+
+      <div class="tarjeta">
+        <div class="t-cab"><div><h3>Detalle por asesor</h3><p>Ahora mismo, ordenados por críticos · responde: <b style="color:var(--tinta)">¿a qué vendedor llamo primero?</b></p></div>
+          <div class="filtro-tabla" style="align-items:center"><span class="que-filtra">Filtra solo esta tabla</span>
+            <button class="ctl" type="button"><em>Responsables</em><b>Todos</b></button><button class="ctl" type="button"><em>Asesores</em><b>Todos</b></button><button class="ctl" type="button"><em>Embudos</em><b>Todos</b></button></div></div>
+        <div class="t-cuerpo" style="padding-top:8px"><table class="tabla" id="tabla-hoy"></table></div>
+      </div>
+    </section>
+
+    <!-- ============ ANALISIS DEL PERIODO ============ -->
+    <section class="bloque" aria-labelledby="h-per">
+      <div class="bloque-cab"><h2 id="h-per">Análisis del periodo</h2></div>
+      <p class="sub" style="margin:-8px 0 0">Responde: <b style="color:var(--tinta)">¿mejoramos, quién se demora y quién mejoró?</b></p>
+
+      <div class="filtros" aria-label="Filtros del periodo">
+        <div class="seg" data-seg><button type="button" aria-pressed="false">Hoy</button><button type="button" aria-pressed="false">7 días</button><button type="button" aria-pressed="true">30 días</button></div>
+        <button class="ctl num" type="button"><em>Desde</em><b>08/09/2026</b></button>
+        <button class="ctl num" type="button"><em>Hasta</em><b>08/10/2026</b></button>
+        <span class="sep"></span>
+        <button class="ctl" type="button"><em>Responsables</em><b>Todos</b></button>
+        <button class="ctl" type="button"><em>Asesores</em><b>Todos</b></button>
+        <div class="ctl-wrap">
+          <button class="ctl" type="button" data-panel="pan-emb-per" aria-expanded="false"><em>Embudos</em><b>Todos</b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <div class="panel" id="pan-emb-per" hidden></div>
+        </div>
+        <div class="seg empuja" data-seg><button type="button" aria-pressed="true">Horario laboral</button><button type="button" aria-pressed="false">Fuera de horario</button></div>
+      </div>
+
+      <div class="tarjeta resumen-sup" aria-label="Lo importante del periodo">
+        <div class="rs-item"><span class="rs-ico mejor">▼</span><div><b>El equipo respondió 38 s más rápido</b><span>que en los 30 días anteriores (4 min 12 s contra 4 min 50 s).</span></div></div>
+        <div class="rs-item"><span class="rs-ico peor">!</span><div><b>Lucía Ferrer es la más lenta y empeoró 2 min</b><span>La mitad de sus clientes espera más de 9 min. El 18 % espera más de 30.</span></div></div>
+        <div class="rs-item"><span class="rs-ico mejor">★</span><div><b>Andrea Solís es la que más mejoró</b><span>Bajó 1 min 10 s y responde a la mitad en menos de 3 min.</span></div></div>
+      </div>
+
+      <div class="tarjeta kpis-per">
+        <div class="principal"><span class="lbl">Respondidas dentro del objetivo (5 min)<span class="cambio cambia" data-tip="La pregunta del supervisor es cuántos clientes atendimos a tiempo. Un porcentaje se entiende sin saber qué es una mediana y no lo esconde la cola de casos lentos.">Primero</span></span>
+          <span class="cifra">50<small>%</small></span>
+          <div class="meta-barra"><span class="carril"><i style="width:50%"></i></span><span class="sub"><span class="num">784</span> de <span class="num">1.562</span> respuestas</span></div>
+          <div class="vs-ant">30 días anteriores: <span class="num" style="color:var(--texto);font-weight:600">44 %</span><span class="delta mejor">▲ 6 puntos</span></div></div>
+        <div><span class="lbl">Esperaron más de 30 min</span><span class="cifra" style="color:var(--f3-t)">10<small>%</small></span><span class="sub"><span class="num">155</span> clientes en Crítico</span>
+          <div class="vs-ant">antes: <span class="num" style="color:var(--texto);font-weight:600">13 %</span><span class="delta mejor">▼ 3 puntos</span></div></div>
+        <div><span class="lbl">La mitad respondida en menos de</span><span class="cifra">4<small>min</small>12<small>s</small></span><span class="sub"><span class="pill p0">Ideal</span></span>
+          <div class="vs-ant">antes: <span class="num" style="color:var(--texto);font-weight:600">4 min 50 s</span><span class="delta mejor">38 s mejor</span></div></div>
+        <div><span class="lbl">9 de cada 10, en menos de</span><span class="cifra">29<small>min</small></span><span class="sub"><span class="pill p2">Regular</span></span>
+          <div class="vs-ant">antes: <span class="num" style="color:var(--texto);font-weight:600">34 min</span><span class="delta mejor">5 min mejor</span></div></div>
+      </div>
+
+      <div class="tarjeta">
+        <div class="t-cab"><div><h3>Cómo va cada vendedor</h3><p>El más lento arriba, con su cambio contra los 30 días anteriores · responde: <b style="color:var(--tinta)">¿quién se demora y quién mejoró?</b></p></div><button class="boton" type="button">Descargar Excel</button></div>
+        <div class="t-cuerpo" style="padding-top:8px"><table class="tabla" id="tabla-per"></table></div>
+      </div>
+
+      <div class="tarjeta">
+        <div class="t-cab"><div><h3>Tendencia diaria<span class="cambio cambia" data-tip="Un solo día malo mueve mucho una línea diaria y asusta sin motivo. Los días quedan como puntos y la línea muestra los últimos 7 días: así se ve si la mejora es real o fue un día suelto.">Cambia</span></h3><p>Cada punto es un día; la línea, la mediana de los últimos 7 días; la línea verde, el objetivo de 5 min · responde: <b style="color:var(--tinta)">¿la mejora es real o fue un día suelto?</b></p></div></div>
+        <div class="t-cuerpo">
+          <svg class="graf" id="trend" viewBox="0 0 1150 210" role="img" aria-label="Mediana diaria del tiempo de respuesta"></svg>
+          <div class="lbl" style="margin:10px 0 2px 44px">Respuestas del día</div>
+          <svg class="graf" id="volumen" viewBox="0 0 1150 70" role="img" aria-label="Cantidad de respuestas por día"></svg>
+        </div>
+      </div>
+
+      <div class="dos dos-iguales">
+        <div class="tarjeta">
+          <div class="t-cab"><div><h3>Cuándo nos demoramos<span class="cambio nuevo" data-tip="Es la única vista que ayuda a decidir turnos: muestra qué día y a qué hora se acumulan las esperas. Usa el mismo semáforo que el resto del tablero.">Nuevo</span></h3>
+            <p>Mediana de respuesta por día y hora, en horario laboral · responde: <b style="color:var(--tinta)">¿a qué hora falta gente?</b></p></div></div>
+          <div class="t-cuerpo">
+            <p class="hallazgo"><b>El almuerzo (13 a 15 h) es lento todos los días, y el sábado desde las 12 h.</b></p>
+            <div class="mapa" id="mapa"></div>
+            <div class="leyenda-mapa"><span class="pill p0">Ideal</span><span class="pill p1">Bueno</span><span class="pill p2">Regular</span><span class="pill p3">Crítico</span><span class="sub">· el número es la mediana en minutos · gris: fuera de horario</span></div>
+          </div>
+        </div>
+        <div class="tarjeta">
+          <div class="t-cab"><div><h3>Velocidad y carga<span class="cambio nuevo" data-tip="Lento con mucha carga no es el mismo problema que lento con poca: el primero necesita apoyo, el segundo revisar cómo trabaja. Sin la carga al lado, el ranking es injusto.">Nuevo</span></h3>
+            <p>Cada punto es un vendedor · responde: <b style="color:var(--tinta)">¿le falta tiempo o le falta método?</b></p></div></div>
+          <div class="t-cuerpo"><svg class="graf" id="carga" viewBox="0 0 520 330" role="img" aria-label="Mediana de respuesta contra cantidad de respuestas por vendedor"></svg></div>
+        </div>
+      </div>
+
+      <div class="dos">
+        <div class="tarjeta">
+          <div class="t-cab"><div><h3>Distribución</h3><p>Cada respuesta en su franja según cuánto esperó el cliente · clic en una franja para ver sus leads</p></div></div>
+          <div class="t-cuerpo dona-wrap">
+            <svg id="dona" viewBox="0 0 220 220" role="img" aria-label="Distribución de respuestas por franja"></svg>
+            <div id="dona-leyenda" class="dona-leyenda"></div>
+          </div>
+        </div>
+        <div class="tarjeta">
+          <div class="t-cab"><div><h3>Conversaciones más lentas</h3><p>Ya respondidas · para revisar caso por caso</p></div></div>
+          <div class="t-cuerpo lentas" id="lentas"></div>
+        </div>
+      </div>
+    </section>
+  </div></div>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+(() => {
+  const PILA = ', system-ui, -apple-system, "Segoe UI", sans-serif';
+  const NUM = [['inter', 'Inter', '"Inter"'], ['geist', 'Geist', '"Geist"'], ['plex', 'IBM Plex Sans', '"IBM Plex Sans"'],
+    ['manrope', 'Manrope', '"Manrope"'], ['dm', 'DM Sans', '"DM Sans"'], ['barlow', 'Barlow', '"Barlow"'],
+    ['source', 'Source Sans 3', '"Source Sans 3"'], ['robotomono', 'Roboto Mono', '"Roboto Mono", monospace'],
+    ['jetbrains', 'JetBrains Mono', '"JetBrains Mono", monospace']];
+  const TXT = [['inter', 'Inter', '"Inter"'], ['geist', 'Geist', '"Geist"'], ['plex', 'IBM Plex Sans', '"IBM Plex Sans"'],
+    ['dm', 'DM Sans', '"DM Sans"'], ['source', 'Source Sans 3', '"Source Sans 3"'], ['manrope', 'Manrope', '"Manrope"']];
+  const leer = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  const montar = (sel, lista, varCss, clave) => {
+    sel.innerHTML = lista.map(([id, n]) => `<option value="${id}">${n}</option>`).join('');
+    const poner = id => { const l = lista.find(x => x[0] === id) || lista[0];
+      document.documentElement.style.setProperty(varCss, l[2] + PILA); sel.value = l[0]; guardar(clave, l[0]); };
+    sel.addEventListener('change', () => poner(sel.value)); poner(leer(clave) || 'inter');
+  };
+
+  document.body.classList.add('sin-marcas');
+  const chkMarcas = document.getElementById('chk-marcas');
+  chkMarcas.addEventListener('change', () => document.body.classList.toggle('sin-marcas', !chkMarcas.checked));
+  const FR = ['Ideal', 'Bueno', 'Regular', 'Crítico'];
+  const RANGO = ['5 min o menos', '5 a 15 min', '15 a 30 min', 'más de 30 min'];
+  const franja = min => min <= 5 ? 0 : min <= 15 ? 1 : min <= 30 ? 2 : 3;
+  const COLA = [
+    ['Rosa Medina', 'Lucía Ferrer', 134, 3, 'WhatsApp'], ['Jorge Salas', 'Marco Ríos', 108, 1, 'Instagram'],
+    ['Ana Cárdenas', 'Lucía Ferrer', 52, 2, 'WhatsApp'], ['Pedro Ibáñez', 'Tomás Vega', 41, 1, 'WhatsApp'],
+    ['Carla Núñez', 'Daniela Paz', 24, 1, 'Facebook'], ['Luis Ortega', 'Marco Ríos', 19, 2, 'WhatsApp'],
+    ['Sofía Herrera', 'Andrea Solís', 16, 1, 'WhatsApp'], ['Diego Paredes', 'Daniela Paz', 11, 1, 'Instagram'],
+    ['Valeria Ruiz', 'Tomás Vega', 7, 1, 'WhatsApp'], ['Miguel Castro', 'Andrea Solís', 4, 1, 'WhatsApp'],
+    ['Elena Vargas', 'Daniela Paz', 2, 1, 'Facebook'], ['Raúl Fuentes', 'Sin asignar', 1, 1, 'WhatsApp'],
+  ].map(([cliente, asesor, min, msj, canal]) => ({ cliente, asesor, min, msj, canal, f: franja(min) }));
+  const ATENDIDOS = [['Patricia León', 'Daniela Paz', '08/10 15:42'], ['Óscar Chávez', 'Tomás Vega', '08/10 15:39'],
+    ['Gabriela Ríos', 'Solo el bot', '08/10 15:37'], ['Hugo Romero', 'Marco Ríos', '08/10 15:31'], ['Inés Palacios', 'Andrea Solís', '08/10 15:28'],
+    ['Julio Campos', 'Lucía Ferrer', '08/10 15:20'], ['Fernando Lazo', 'Solo el bot', '08/10 15:16'], ['Teresa Quispe', 'Daniela Paz', '08/10 15:12'],
+    ['Mónica Salas', 'Solo el bot', '08/10 15:05'], ['Carlos Benítez', 'Marco Ríos', '08/10 14:58']];
+  const EQUIPO = [
+    // medAntes: mediana de los 30 dias anteriores · hoyAntes: atendidos el dia de comparacion a esta hora
+    { n: 'Daniela Paz',  r: 412, med: 190, medAntes: 210, p90: 840,  d: [251, 99, 37, 25], hoy: 14, hoyAntes: 12 },
+    { n: 'Marco Ríos',   r: 388, med: 400, medAntes: 380, p90: 2280, d: [159, 124, 58, 47], hoy: 11, hoyAntes: 13 },
+    { n: 'Lucía Ferrer', r: 297, med: 545, medAntes: 425, p90: 3720, d: [98, 95, 50, 54], hoy: 9, hoyAntes: 7 },
+    { n: 'Tomás Vega',   r: 264, med: 260, medAntes: 300, p90: 1260, d: [143, 74, 26, 21], hoy: 8, hoyAntes: 9 },
+    { n: 'Andrea Solís', r: 201, med: 170, medAntes: 240, p90: 660,  d: [133, 46, 14, 8], hoy: 7, hoyAntes: 6 },
+    { n: 'Kevin Salas',  r: 18,  med: 130, medAntes: null, p90: 420,  d: [13, 4, 1, 0], hoy: 0, hoyAntes: 0 },
+  ];
+  const MIN_MUESTRA = 30;
+  const TOTAL = [784, 438, 185, 155], TOT = 1562;
+  const TREND = [4.6, 4.1, 5.3, 3.9, 4.4, 6.8, 5.1, 4.0, 3.7, 4.2, 9.4, 5.6, 4.8, 4.3, 3.8, 4.1, 4.9, 5.2, 3.6, 4.0, 4.4, 4.2, 4.5];
+  const VOL = [68, 71, 74, 62, 66, 92, 70, 69, 64, 67, 131, 77, 70, 66, 63, 68, 72, 75, 61, 65, 69, 67, 70];
+  const LENTAS = [['Lead 47652208', 'Lucía Ferrer · 12 sep', 21780], ['Lead 47920311', 'Marco Ríos · 22 sep', 15960],
+                  ['Lead 48011872', 'Lucía Ferrer · 15 sep', 12300], ['Lead 47788420', 'Tomás Vega · 8 sep', 9840],
+                  ['Lead 48230109', 'Marco Ríos · 29 sep', 8460]];
+
+  function fmt(seg) {
+    if (seg < 60) return `${seg} s`;
+    if (seg < 3600) { const m = Math.floor(seg / 60), s = seg % 60; return s ? `${m} min ${String(s).padStart(2, '0')} s` : `${m} min`; }
+    const h = Math.floor(seg / 3600), m = Math.round((seg % 3600) / 60); return m ? `${h} h ${String(m).padStart(2, '0')} min` : `${h} h`;
+  }
+  const nf = n => n.toLocaleString('de-DE');
+  const pct = (a, t) => Math.round(a / t * 100);
+  const $ = id => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  function s(tag, a, padre, texto) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (texto !== undefined) e.textContent = texto; padre.appendChild(e); return e; }
+  const apilada = (cuentas, tipFn) => cuentas.map((c, i) => c ? `<i class="b${i}" style="flex:${c}" data-tip="${tipFn(c, i)}"></i>` : '').join('');
+
+  // Embudos con etapas
+  const ARBOL = `
+    <div class="opc padre"><span class="flecha" style="transform:rotate(90deg)">›</span><span class="caja"></span>Ventas<small class="num">9.210</small></div>
+    <div class="etapas"><div class="opc"><span class="caja"></span>Contacto inicial<small class="num">3.402</small></div>
+      <div class="opc"><span class="caja"></span>En conversación<small class="num">2.118</small></div><div class="opc"><span class="caja"></span>Cita agendada<small class="num">1.640</small></div></div>
+    <div class="opc padre"><span class="flecha">›</span><span class="caja"></span>Postventa<small class="num">2.876</small></div>
+    <div class="opc padre"><span class="flecha">›</span><span class="caja"></span>Clientes activos<small class="num">1.305</small></div>`;
+  $('pan-emb-hoy').innerHTML = ARBOL; $('pan-emb-per').innerHTML = ARBOL;
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-panel]');
+    if (e.target.closest('.panel')) return;
+    document.querySelectorAll('.panel').forEach(p => { if (!b || p.id !== b.dataset.panel) p.hidden = true; });
+    if (b) { const p = $(b.dataset.panel); p.hidden = !p.hidden; b.setAttribute('aria-expanded', !p.hidden); }
+  });
+  document.querySelectorAll('[data-seg]').forEach(g => g.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (b) g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  }));
+
+  // Sin responder
+  const porF = [0, 1, 2, 3].map(i => COLA.filter(l => l.f === i).length);
+  $('sev-barra').innerHTML = [3, 2, 1, 0].map(i => porF[i] ? `<i class="b${i}" style="flex:${porF[i]}" data-tip="${porF[i]} en ${FR[i]} (${RANGO[i]})"></i>` : '').join('');
+  let filtroF = null;
+  const pintarChips = () => { $('chips').innerHTML = `<button type="button" class="chip" data-f="" aria-pressed="${filtroF === null}">Todos <span class="num">${COLA.length}</span></button>` +
+    [3, 2, 1, 0].map(i => `<button type="button" class="chip" data-f="${i}" aria-pressed="${filtroF === i}"><i class="b${i}"></i>${FR[i]} <span class="num">${porF[i]}</span></button>`).join(''); };
+  const pintarCola = () => { $('cola').innerHTML = (filtroF === null ? COLA : COLA.filter(l => l.f === filtroF)).map(l => `
+    <div class="fila"><span class="marca-f b${l.f}"></span>
+      <div><b>${l.cliente}</b><small>${l.asesor === 'Sin asignar' ? '<span class="pill pb">Sin vendedor asignado</span>' : l.asesor} · ${l.canal}${l.msj > 1 ? ` · <b class="insiste">${l.msj} mensajes sin responder</b>` : ''}</small></div>
+      <div class="espera num">${fmt(l.min * 60)}</div>
+      <div style="text-align:right"><span class="pill p${l.f}">${FR[l.f]}</span></div></div>`).join(''); };
+  $('chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; filtroF = b.dataset.f === '' ? null : Number(b.dataset.f); pintarChips(); pintarCola(); });
+  pintarChips(); pintarCola();
+  let filtroAt = 'todos';
+  const pintarAtendidos = () => {
+    const bot = ATENDIDOS.filter(x => x[1] === 'Solo el bot');
+    $('chips-atend').innerHTML = [['todos', 'Todos', 58], ['personas', 'Por vendedores', 49], ['bot', 'Solo el bot', 9]]
+      .map(([k, t, n]) => `<button type="button" class="chip${k === 'bot' ? ' chip-bot' : ''}" data-k="${k}" aria-pressed="${filtroAt === k}">${t} <span class="num">${n}</span></button>`).join('');
+    const lista = filtroAt === 'todos' ? ATENDIDOS : filtroAt === 'bot' ? bot : ATENDIDOS.filter(x => x[1] !== 'Solo el bot');
+    $('aviso-bot').hidden = filtroAt !== 'bot';
+    $('atendidos').innerHTML = lista.map(([c, a, h]) => `<div class="fila"><div><b>${c}</b><small>${a === 'Solo el bot' ? '<span class="pill pb">Solo el bot</span>' : a}</small></div>
+      <div class="num" style="text-align:right;color:var(--apagado)">${h}</div><div></div></div>`).join('');
+  };
+  $('chips-atend').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; filtroAt = b.dataset.k; pintarAtendidos(); });
+  pintarAtendidos();
+
+  // Detalle por asesor (hoy)
+  (() => {
+    const filas = EQUIPO.filter(a => a.hoy || COLA.some(l => l.asesor === a.n)).map(a => { const e = COLA.filter(l => l.asesor === a.n);
+      return { n: a.n, esp: e.length, crit: e.filter(l => l.f === 3).length, hoy: a.hoy, antes: a.hoyAntes, peor: e.length ? Math.max(...e.map(l => l.min)) : 0 }; })
+      .sort((a, b) => b.crit - a.crit || b.esp - a.esp);
+    const critN = n => n ? `<span class="critico-n num">${n}</span>` : `<span class="cero num">0</span>`;
+    const dif = (h, a) => { const d = h - a; if (!d) return `<span class="cero">igual</span>`;
+      return `<span class="mini-delta ${d > 0 ? 'mejor' : 'peor'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`; };
+    $('tabla-hoy').innerHTML = `<thead><tr><th class="izq">Vendedor</th><th>Críticos</th><th>Sin responder</th><th>El que más espera</th><th>Atendidos hoy</th><th>vs 07/10 a esta hora</th></tr></thead><tbody>` +
+      filas.map(a => `<tr><td class="izq nombre">${a.n}</td><td>${critN(a.crit)}</td><td class="num">${a.esp}</td>
+        <td class="num">${a.peor ? `<span class="pill p${franja(a.peor)} num-pill">${fmt(a.peor * 60)}</span>` : '—'}</td><td class="num">${a.hoy}</td>
+        <td class="num">${dif(a.hoy, a.antes)} <span class="sub num">(${a.antes})</span></td></tr>`).join('') +
+      `<tr class="apagada"><td class="izq">Sin asignar</td><td>${critN(0)}</td><td class="num">1</td><td class="num">1 min</td><td>—</td><td>—</td></tr>
+       <tr class="apagada"><td class="izq">Solo el bot</td><td>—</td><td>—</td><td>—</td><td class="num">9</td><td class="num">${dif(9, 5)} <span class="sub num">(5)</span></td></tr></tbody>`;
+  })();
+
+  // Por vendedor (periodo): el cambio contra el periodo anterior y la
+  // evolucion de 14 dias van en la fila de cada uno, para ver quien mejoro.
+  (() => {
+    const spark = (a, k) => Array.from({ length: 14 }, (_, i) => {
+      const base = a.medAntes ?? a.med, v = base + (a.med - base) * i / 13;
+      return v / 60 * (1 + .18 * Math.sin(i * 1.4 + k) + .08 * Math.cos(i * 2.3 + k));
+    });
+    const sparkSvg = vals => {
+      const W = 92, H = 32, mx = 10, y = v => 3 + (1 - Math.min(v, mx) / mx) * (H - 6), x = i => 2 + i * (W - 8) / (vals.length - 1), u = vals.length - 1;
+      return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-left:auto" aria-hidden="true">
+        <line x1="2" x2="${W - 6}" y1="${y(5)}" y2="${y(5)}" stroke="var(--f0)" stroke-width="1" stroke-dasharray="3 3"/>
+        <path d="M${vals.map((v, i) => `${x(i)},${y(v)}`).join(' L')}" fill="none" stroke="var(--marca)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="${x(u)}" cy="${y(vals[u])}" r="3" fill="var(--marca)" stroke="var(--superficie)" stroke-width="1.5"/></svg>`;
+    };
+    const cambio = a => {
+      if (a.medAntes == null) return `<span class="cero">sin datos antes</span>`;
+      const d = a.med - a.medAntes;
+      if (Math.abs(d) < 15) return `<span class="cero">igual</span>`;
+      return `<span class="mini-delta ${d < 0 ? 'mejor' : 'peor'}">${d < 0 ? '▼' : '▲'} ${fmt(Math.abs(d))} · ${d < 0 ? 'mejoró' : 'empeoró'}</span>`;
+    };
+    // Parte de las respuestas por WhatsApp llegan sin el nombre de quien las
+    // mando (desde el celular, usuario 0) y se le asignan al responsable.
+    const IDENT = { 'Daniela Paz': 96, 'Marco Ríos': 71, 'Lucía Ferrer': 88, 'Tomás Vega': 93, 'Andrea Solís': 98, 'Kevin Salas': 100 };
+    const resp = a => `<span class="num">${nf(a.r)}</span>${IDENT[a.n] < 80
+      ? `<small class="ident baja" data-tip="${100 - IDENT[a.n]} % de sus respuestas salieron del celular sin nombre y se le asignaron por ser el responsable del lead. Su tiempo puede no ser solo suyo.">${100 - IDENT[a.n]} % sin autor</small>`
+      : `<small class="ident">${IDENT[a.n]} % con autor</small>`}`;
+    const filas = [...EQUIPO].sort((a, b) => (a.r < MIN_MUESTRA) - (b.r < MIN_MUESTRA) || b.med - a.med);
+    $('tabla-per').innerHTML = `<thead><tr><th class="izq">Vendedor</th><th>Respuestas<span class="cambio nuevo" data-tip="Por WhatsApp, parte de las respuestas salen del celular sin el nombre de quien escribió. Si un vendedor tiene muchas así, su tiempo no es del todo suyo: el supervisor tiene que saberlo antes de juzgarlo.">Nuevo</span></th><th>La mitad, en menos de ▾</th><th>Cambio vs 30 días antes</th><th>9 de cada 10, en menos de</th><th>Más de 30 min</th><th style="width:170px">Reparto por franja</th><th>Últimas 2 semanas</th></tr></thead><tbody>` +
+      filas.map((a, k) => { const poca = a.r < MIN_MUESTRA;
+        return `<tr class="${poca ? 'poca' : ''}"><td class="izq nombre">${a.n}${poca ? `<span class="muestra-baja">pocas respuestas, no comparar</span>` : ''}</td><td class="resp-cel">${resp(a)}</td>
+        <td><span class="pill p${franja(a.med / 60)} num-pill">${fmt(a.med)}</span></td><td>${cambio(a)}</td><td class="num">${fmt(a.p90)}</td>
+        <td class="num" style="${!poca && pct(a.d[3], a.r) >= 15 ? 'color:var(--f3-t);font-weight:700' : ''}">${pct(a.d[3], a.r)} %</td>
+        <td><div class="apilada" style="height:10px">${apilada(a.d, (c, j) => `${a.n} · ${FR[j]}: ${pct(c, a.r)} % (${nf(c)})`)}</div></td>
+        <td>${sparkSvg(spark(a, k))}</td></tr>`; }).join('') +
+      `<tr style="font-weight:700"><td class="izq">Equipo</td><td class="num">${nf(TOT)}</td><td><span class="pill p0 num-pill">4 min 12 s</span></td>
+        <td><span class="mini-delta mejor">▼ 38 s · mejoró</span></td><td class="num">29 min</td><td class="num">10 %</td>
+        <td><div class="apilada" style="height:10px">${apilada(TOTAL, (c, j) => `Equipo · ${FR[j]}: ${pct(c, TOT)} %`)}</div></td>
+        <td>${sparkSvg(TREND.slice(-14))}</td></tr></tbody>`;
+  })();
+
+  // Cuando nos demoramos: dia x hora, color = franja de la mediana
+  (() => {
+    const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const HORAS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+    const M = [
+      [9, 12, 6, 4, 5, 8, 7, 4, 3, 4, 5, 7], [4, 5, 4, 3, 4, 9, 8, 4, 3, 3, 4, 6], [4, 4, 3, 3, 4, 10, 7, 3, 3, 4, 4, 6],
+      [5, 4, 4, 3, 4, 9, 8, 4, 4, 3, 5, 7], [4, 5, 4, 4, 5, 11, 9, 5, 4, 5, 6, 9], [6, 7, 8, 9, 16, 22, 35, 41, null, null, null, null]];
+    $('mapa').innerHTML = `<span></span>${HORAS.map(h => `<span class="mh">${h}</span>`).join('')}` +
+      M.map((fila, d) => `<span class="md">${DIAS[d]}</span>` + fila.map((v, h) => v === null
+        ? `<span class="mc fuera" data-tip="${DIAS[d]} ${HORAS[h]}:00 · fuera de horario"></span>`
+        : `<span class="mc c${franja(v)} num" data-tip="${DIAS[d]} ${HORAS[h]}:00 a ${HORAS[h] + 1}:00 · mediana ${v} min · ${FR[franja(v)]}">${v}</span>`).join('')).join('');
+  })();
+
+  // Velocidad y carga: cuadrantes por el objetivo (5 min) y la carga media
+  (() => {
+    const svg = $('carga'), W = 520, H = 330, m = { l: 44, r: 12, t: 18, b: 40 };
+    const xMax = 450, yMax = 10, x = v => m.l + v / xMax * (W - m.l - m.r), y = v => m.t + (1 - Math.min(v, yMax) / yMax) * (H - m.t - m.b);
+    const base = EQUIPO.filter(a => a.r >= MIN_MUESTRA), cargaMedia = base.reduce((t, a) => t + a.r, 0) / base.length;
+    const zonas = [[0, cargaMedia, 5, yMax, 'Revisar cómo trabaja', 'var(--f2-b)'], [cargaMedia, xMax, 5, yMax, 'Necesita apoyo', 'var(--f3-b)'],
+                   [0, cargaMedia, 0, 5, 'Bien', 'var(--superficie-2)'], [cargaMedia, xMax, 0, 5, 'Referente', 'var(--f0-b)']];
+    zonas.forEach(([x0, x1, y0, y1, t, c]) => {
+      s('rect', { x: x(x0), y: y(y1), width: x(x1) - x(x0), height: y(y0) - y(y1), fill: c, 'fill-opacity': .6 }, svg);
+      s('text', { x: x0 ? x(x1) - 8 : x(x0) + 8, y: y1 === yMax ? y(y1) + 16 : y(y0) - 8, 'text-anchor': x0 ? 'end' : 'start', class: 'txt', style: 'fill:var(--apagado);font-weight:700;font-size:11px;letter-spacing:.03em' }, svg, t.toUpperCase());
+    });
+    [0, 5, 10].forEach(v => s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === 5 ? 'fill:var(--f0-t);font-weight:700' : '' }, svg, `${v} min`));
+    [0, 150, 300, 450].forEach(v => s('text', { x: x(v), y: H - m.b + 16, 'text-anchor': 'middle' }, svg, v));
+    s('text', { x: (m.l + W - m.r) / 2, y: H - 6, 'text-anchor': 'middle', class: 'txt' }, svg, 'respuestas en el periodo (carga) →');
+    s('line', { x1: m.l, x2: W - m.r, y1: y(5), y2: y(5), stroke: 'var(--f0)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
+    s('line', { x1: x(cargaMedia), x2: x(cargaMedia), y1: m.t, y2: H - m.b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, svg);
+    s('text', { x: x(cargaMedia), y: m.t - 2, 'text-anchor': 'middle', class: 'txt', style: 'fill:var(--apagado);font-size:10px' }, svg, 'carga media');
+    EQUIPO.forEach(a => {
+      const poca = a.r < MIN_MUESTRA, cx = x(a.r), cy = y(a.med / 60);
+      const c = s('circle', { cx, cy, r: 7, fill: poca ? 'var(--superficie)' : 'var(--tinta)', stroke: poca ? 'var(--apagado)' : 'var(--superficie)', 'stroke-width': 2 }, svg);
+      c.dataset.tip = `${a.n} · ${nf(a.r)} respuestas · la mitad en menos de ${fmt(a.med)}${poca ? ' · pocas respuestas, no comparar' : ''}`;
+      const izq = a.r > 330;
+      s('text', { x: cx + (izq ? -12 : 12), y: cy + 4, 'text-anchor': izq ? 'end' : 'start', class: 'txt', style: `font-weight:600;font-size:12px;fill:${poca ? 'var(--apagado)' : 'var(--tinta)'}` }, svg, a.n);
+    });
+  })();
+
+  // Tendencia + volumen (dos graficos alineados, cada uno con su escala)
+  (() => {
+    const W = 1150, m = { l: 44, r: 60 };
+    const dias = []; const d = new Date(Date.UTC(2026, 8, 8));
+    while (dias.length < TREND.length) { const w = d.getUTCDay(); if (w > 0 && w < 6) dias.push(new Date(d)); d.setUTCDate(d.getUTCDate() + 1); }
+    const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const fd = dt => `${dt.getUTCDate()} ${MES[dt.getUTCMonth()]}`;
+    const ult = TREND.length - 1, x = i => m.l + i * (W - m.l - m.r) / ult;
+    const svg = $('trend'), H = 210, t = 18, b = 26, yMax = 10, y = v => t + (1 - Math.min(v, yMax) / yMax) * (H - t - b);
+    [0, 5, 10].forEach(v => { s('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: 'grid' }, svg); s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === 5 ? 'fill:var(--f0-t);font-weight:700' : '' }, svg, `${v} min`); });
+    s('line', { x1: m.l, x2: W - m.r, y1: y(5), y2: y(5), stroke: 'var(--f0)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
+    const med = a => { const o = [...a].sort((p, q) => p - q), k = o.length >> 1; return o.length % 2 ? o[k] : (o[k - 1] + o[k]) / 2; };
+    const ROLL = TREND.map((_, i) => med(TREND.slice(Math.max(0, i - 6), i + 1)));
+    const pts = ROLL.map((v, i) => `${x(i)},${y(v)}`);
+    s('path', { d: `M${x(0)},${y(0)} L${pts.join(' L')} L${x(ult)},${y(0)} Z`, fill: 'var(--marca)', 'fill-opacity': .07 }, svg);
+    s('path', { d: `M${pts.join(' L')}`, fill: 'none', stroke: 'var(--marca)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+    TREND.forEach((v, i) => s('circle', { cx: x(i), cy: y(v), r: v > 5 ? 4 : 3, fill: v > 5 ? `var(--f${franja(v)})` : 'var(--apagado)',
+      'fill-opacity': v > 5 ? 1 : .45, stroke: 'var(--superficie)', 'stroke-width': 1.5 }, svg));
+    s('text', { x: x(ult) + 8, y: y(ROLL[ult]) + 4, style: 'fill:var(--marca-tinta);font-weight:700' }, svg, `${String(ROLL[ult].toFixed(1)).replace('.', ',')} min`);
+    const pico = TREND.indexOf(Math.max(...TREND));
+    s('text', { x: x(pico), y: y(TREND[pico]) - 10, 'text-anchor': 'middle', style: 'fill:var(--tinta);font-weight:600' }, svg, `${fd(dias[pico])}: 9,4 min`);
+    [0, 5, 10, 15, 20, ult].forEach(i => s('text', { x: x(i), y: H - 6, 'text-anchor': 'middle' }, svg, fd(dias[i])));
+    // volumen
+    const sv = $('volumen'), HV = 70, vMax = 140, bw = (W - m.l - m.r) / ult * .55, yv = v => 4 + (1 - v / vMax) * (HV - 18);
+    s('line', { x1: m.l, x2: W - m.r, y1: yv(0), y2: yv(0), class: 'grid' }, sv);
+    s('text', { x: m.l - 8, y: yv(0) + 4, 'text-anchor': 'end' }, sv, '0');
+    VOL.forEach((v, i) => { const r = s('rect', { x: x(i) - bw / 2, y: yv(v), width: bw, height: yv(0) - yv(v), rx: 2, fill: i === pico ? 'var(--apagado)' : 'var(--linea)' }, sv);
+      r.dataset.tip = `${fd(dias[i])} · ${v} respuestas`; });
+    s('text', { x: x(pico) + bw, y: yv(VOL[pico]) + 10, style: 'fill:var(--tinta);font-weight:600' }, sv, `${VOL[pico]} respuestas: el doble de lo normal`);
+    // cursor sobre la tendencia
+    const guia = s('line', { y1: t, y2: H - b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '2 3', visibility: 'hidden' }, svg);
+    const zona = s('rect', { x: m.l, y: t, width: W - m.l - m.r, height: H - t - b, fill: 'transparent' }, svg);
+    zona.addEventListener('pointermove', ev => {
+      const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+      const i = Math.max(0, Math.min(ult, Math.round((px - m.l) / ((W - m.l - m.r) / ult))));
+      guia.setAttribute('x1', x(i)); guia.setAttribute('x2', x(i)); guia.setAttribute('visibility', 'visible');
+      mostrarTip(ev, `${fd(dias[i])} · ese día ${String(TREND[i]).replace('.', ',')} min · últimos 7 días ${String(ROLL[i].toFixed(1)).replace('.', ',')} min · ${VOL[i]} respuestas`);
+    });
+    zona.addEventListener('pointerleave', () => { guia.setAttribute('visibility', 'hidden'); ocultarTip(); });
+  })();
+
+  // Distribucion: barras por franja (sin dona)
+  // Dona: parte del todo con 4 franjas, en su orden (Ideal arriba, sentido
+  // horario). Anillo fino, aire entre segmentos, el numero que importa al
+  // centro y la leyenda con cantidades al lado: el color nunca va solo.
+  (() => {
+    const svg = $('dona'), cx = 110, cy = 110, r = 84, grosor = 24, C = 2 * Math.PI * r, aire = 3;
+    s('circle', { cx, cy, r, fill: 'none', stroke: 'var(--carril)', 'stroke-width': grosor }, svg);
+    let acum = 0;
+    const segs = TOTAL.map((c, i) => {
+      const largo = c / TOT * C;
+      const seg = s('circle', { cx, cy, r, fill: 'none', stroke: `var(--f${i})`, 'stroke-width': grosor,
+        'stroke-dasharray': `${Math.max(0, largo - aire)} ${C}`, 'stroke-dashoffset': -acum,
+        transform: `rotate(-90 ${cx} ${cy})`, 'data-f': i, style: 'cursor:pointer;transition:opacity .15s' }, svg);
+      acum += largo; return seg;
+    });
+    const linea2 = s('text', { x: cx, y: cy - 24, 'text-anchor': 'middle', class: 'txt', style: 'font-size:12px;font-weight:700' }, svg, '');
+    const cifra = s('text', { x: cx, y: cy + 10, 'text-anchor': 'middle', style: 'font-size:34px;font-weight:800;fill:var(--tinta)' }, svg, '');
+    const linea1 = s('text', { x: cx, y: cy + 32, 'text-anchor': 'middle', class: 'txt', style: 'font-size:12px;fill:var(--apagado)' }, svg, '');
+    const leyenda = $('dona-leyenda');
+    leyenda.innerHTML = TOTAL.map((c, i) => `<button type="button" class="dl-fila" data-f="${i}">
+        <span class="pill p${i}">${FR[i]}</span><span class="dl-rango">${RANGO[i]}</span>
+        <span class="dl-barra"><i class="b${i}" style="width:${pct(c, TOT) * 2}%"></i></span>
+        <span class="num dl-pct">${pct(c, TOT)} %</span><span class="num dl-n">${nf(c)}</span>
+        <span class="dl-ver">Ver leads ›</span></button>`).join('') +
+      `<div class="dl-total"><span>Total</span><span class="num">${nf(TOT)} respuestas</span></div>`;
+    const centro = f => {
+      const k = f === null ? 0 : f;
+      linea2.textContent = FR[k].toUpperCase(); linea2.style.fill = `var(--f${k}-t)`;
+      cifra.textContent = `${pct(TOTAL[k], TOT)} %`;
+      linea1.textContent = f === null ? 'en menos de 5 min' : `${nf(TOTAL[k])} respuestas`;
+      segs.forEach((g, i) => g.style.opacity = f === null || f === i ? 1 : .3);
+      leyenda.querySelectorAll('.dl-fila').forEach(b => b.classList.toggle('activa', f !== null && Number(b.dataset.f) === f));
+    };
+    centro(null);
+    const sobre = e => { const t = e.target.closest('[data-f]'); centro(t ? Number(t.dataset.f) : null); };
+    svg.addEventListener('pointerover', sobre); leyenda.addEventListener('pointerover', sobre);
+    svg.addEventListener('pointerleave', () => centro(null)); leyenda.addEventListener('pointerleave', () => centro(null));
+    leyenda.addEventListener('focusin', sobre); leyenda.addEventListener('focusout', () => centro(null));
+  })();
+  $('lentas').innerHTML = LENTAS.map(([lead, quien, seg]) =>
+    `<div><span><b>${lead}</b><small>${quien}</small></span><span class="num" style="font-weight:700;color:var(--tinta)">${fmt(seg)}</span></div>`).join('');
+
+  const tip = $('tip');
+  function mostrarTip(ev, txt) {
+    tip.textContent = txt; tip.hidden = false;
+    const r = tip.getBoundingClientRect(); let left = ev.clientX + 14, top = ev.clientY + 14;
+    if (left + r.width > innerWidth - 8) left = ev.clientX - r.width - 14;
+    if (top + r.height > innerHeight - 8) top = ev.clientY - r.height - 14;
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  }
+  function ocultarTip() { tip.hidden = true; }
+  document.addEventListener('pointermove', ev => {
+    const t = ev.target.closest && ev.target.closest('[data-tip]');
+    if (t) mostrarTip(ev, t.dataset.tip); else if (!ev.target.closest('#trend')) ocultarTip();
+  });
+  function ajustar() {
+    const c = document.querySelector('.lienzo-scroll'), app = $('app'); if (!c.clientWidth) return;
+    const z = c.clientWidth / 1240; app.style.zoom = (z < 1 && z >= .6) ? z : '';
+  }
+  addEventListener('resize', ajustar); ajustar();
+})();
+</script>
+
+</body>
+</html>
