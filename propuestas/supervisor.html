@@ -390,6 +390,26 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
 .ver-cambios { position: fixed; left: 16px; bottom: 16px; z-index: 70; display: inline-flex; align-items: center; gap: 8px; background: var(--superficie);
                border: 1px solid var(--linea); border-radius: 999px; padding: 6px 12px; font-size: var(--t-micro); color: var(--apagado); box-shadow: var(--sombra); cursor: pointer; }
 .ver-cambios input { accent-color: #7c3aed; margin: 0; }
+.grupo-eti { display: flex; align-items: center; gap: 12px; margin: 14px 0 -2px; font-size: var(--t-micro); font-weight: 800;
+              letter-spacing: .08em; text-transform: uppercase; color: var(--apagado); }
+.grupo-eti::after { content: ""; flex: 1; height: 1px; background: var(--linea); }
+.per-caption { font-size: var(--t-chico); color: var(--apagado); font-weight: 600; }
+.kpis-per .vs-ant { display: grid; gap: 4px; }
+.vs-rot { font-size: var(--t-micro); color: var(--apagado); }
+.vs-val { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.valor-fila { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.kspark svg { display: block; }
+.cifra { font-variant-numeric: lining-nums proportional-nums; }
+.kpis-per .cifra { color: var(--tinta) !important; }
+.tabla-datos-wrap { margin-top: 14px; max-height: 260px; overflow: auto; border-top: 1px solid var(--linea); }
+.tabla-datos td, .tabla-datos th { padding: 7px 10px; }
+.dona-wrap.vertical { grid-template-columns: 1fr; justify-items: center; gap: 14px; }
+.dona-wrap.vertical #dona { width: 190px; height: 190px; }
+.dona-wrap.vertical .dona-leyenda { width: 100%; }
+.mapa { grid-template-columns: 44px repeat(12, minmax(0, 1fr)); }
+.mc:focus-visible { outline: 2px solid var(--tinta); outline-offset: 1px; }
+#tip b { display: block; font-size: .8125rem; font-family: var(--f-num); }
+#tip span { display: block; opacity: .82; }
 .chip-cerrada { background: var(--carril); color: var(--apagado); }
 .resumen-sup.n1 { grid-template-columns: 1fr; } .resumen-sup.n2 { grid-template-columns: 1fr 1fr; }
 #tabla-per th, #tabla-per td { padding-left: 7px; padding-right: 7px; }
@@ -458,7 +478,7 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
 
     <!-- ============ PERIODO ============ -->
     <section class="bloque" aria-labelledby="h-per">
-      <div class="bloque-cab"><h2 id="h-per">Análisis del periodo</h2></div>
+      <div class="bloque-cab"><h2 id="h-per">Análisis del periodo</h2><span class="per-caption" id="per-caption"></span></div>
       <p class="sub" style="margin:-8px 0 0">Cómo venimos respondiendo, quién se demora y quién mejoró</p>
 
       <div class="filtros" aria-label="Filtros del periodo">
@@ -474,61 +494,68 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
 
       <div class="tarjeta resumen-sup" id="resumen" aria-label="Lo importante del periodo"></div>
 
+      <h3 class="grupo-eti">Cómo vamos</h3>
       <div class="tarjeta kpis-per">
         <div class="principal"><span class="lbl">Respondidas dentro del objetivo (5 min)<span class="cambio cambia" data-tip="La pregunta del supervisor es cuántos clientes atendimos a tiempo. Un porcentaje se entiende sin saber qué es una mediana y no lo esconde la cola de casos lentos.">Primero</span></span>
-          <span class="cifra" id="k-ideal">—</span>
+          <div class="valor-fila"><span class="cifra" id="k-ideal">—</span><span class="kspark" id="sp-ideal"></span></div>
           <div class="meta-barra"><span class="carril"><i id="k-ideal-barra" style="width:0"></i></span><span class="sub" id="k-ideal-sub"></span></div>
           <div class="vs-ant" id="k-ideal-ant"></div></div>
-        <div><span class="lbl">Esperaron más de 30 min</span><span class="cifra" style="color:var(--f3-t)" id="k-crit">—</span><span class="sub" id="k-crit-sub"></span>
-          <div class="vs-ant" id="k-crit-ant"></div></div>
-        <div><span class="lbl">La mitad respondida en menos de</span><span class="cifra" id="k-med">—</span><span class="sub" id="k-med-sub"></span>
-          <div class="vs-ant" id="k-med-ant"></div></div>
-        <div><span class="lbl">9 de cada 10, en menos de</span><span class="cifra" id="k-p90">—</span><span class="sub" id="k-p90-sub"></span>
-          <div class="vs-ant" id="k-p90-ant"></div></div>
+        <div><span class="lbl">Esperaron más de 30 min</span>
+          <div class="valor-fila"><span class="cifra" id="k-crit">—</span><span class="kspark" id="sp-crit"></span></div>
+          <span class="sub" id="k-crit-sub"></span><div class="vs-ant" id="k-crit-ant"></div></div>
+        <div><span class="lbl">La mitad respondida en menos de</span>
+          <div class="valor-fila"><span class="cifra" id="k-med">—</span><span class="kspark" id="sp-med"></span></div>
+          <span class="sub" id="k-med-sub"></span><div class="vs-ant" id="k-med-ant"></div></div>
+        <div><span class="lbl">9 de cada 10, en menos de</span>
+          <div class="valor-fila"><span class="cifra" id="k-p90">—</span><span class="kspark" id="sp-p90"></span></div>
+          <span class="sub" id="k-p90-sub"></span><div class="vs-ant" id="k-p90-ant"></div></div>
       </div>
 
+      <div class="dos">
+        <div class="tarjeta">
+          <div class="t-cab"><div><h3>Tendencia<span class="cambio cambia" data-tip="Un solo día malo mueve mucho una línea diaria y asusta sin motivo. Los días quedan como puntos y la línea muestra los últimos 7 días: así se ve si la mejora es real o fue un día suelto.">Cambia</span></h3><p id="sub-trend"></p></div>
+            <button class="boton" type="button" id="btn-trend-datos" aria-expanded="false">Ver datos</button></div>
+          <div class="t-cuerpo">
+            <svg class="graf" id="trend" viewBox="0 0 700 210" role="img" aria-label="Tiempo de respuesta en el periodo"></svg>
+            <div class="lbl" style="margin:10px 0 2px 44px" id="lbl-vol">Respuestas del día</div>
+            <svg class="graf" id="volumen" viewBox="0 0 700 70" role="img" aria-label="Cantidad de respuestas"></svg>
+            <div class="tabla-datos-wrap" id="trend-tabla" hidden></div>
+          </div>
+        </div>
+        <div class="tarjeta">
+          <div class="t-cab"><div><h3>Distribución<span class="cambio cambia" data-tip="La dona se queda. Se le sumó el número clave al centro y una leyenda con cantidades, para que el color nunca vaya solo. Las barras de al lado repetían lo mismo.">Cambia</span></h3><p>Cada respuesta en su franja · clic para ver sus leads</p></div></div>
+          <div class="t-cuerpo dona-wrap vertical">
+            <svg id="dona" viewBox="0 0 220 220" role="img" aria-label="Distribución de respuestas por franja"></svg>
+            <div id="dona-leyenda" class="dona-leyenda"></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="grupo-eti">Quién necesita ayuda</h3>
       <div class="tarjeta">
         <div class="t-cab"><div><h3>Cómo va cada vendedor</h3><p>El más lento arriba, con su cambio contra el periodo anterior</p></div><button class="boton" type="button" id="btn-excel">Descargar Excel</button></div>
         <div class="t-cuerpo" style="padding-top:8px"><table class="tabla" id="tabla-per"></table></div>
       </div>
-
-      <div class="tarjeta">
-        <div class="t-cab"><div><h3>Tendencia<span class="cambio cambia" data-tip="Un solo día malo mueve mucho una línea diaria y asusta sin motivo. Los días quedan como puntos y la línea muestra los últimos 7 días: así se ve si la mejora es real o fue un día suelto.">Cambia</span></h3><p id="sub-trend"></p></div></div>
-        <div class="t-cuerpo">
-          <svg class="graf" id="trend" viewBox="0 0 1150 210" role="img" aria-label="Tiempo de respuesta en el periodo"></svg>
-          <div class="lbl" style="margin:10px 0 2px 44px" id="lbl-vol">Respuestas del día</div>
-          <svg class="graf" id="volumen" viewBox="0 0 1150 70" role="img" aria-label="Cantidad de respuestas"></svg>
-        </div>
-      </div>
-
       <div class="dos dos-iguales">
-        <div class="tarjeta">
-          <div class="t-cab"><div><h3>Cuándo nos demoramos<span class="cambio nuevo" data-tip="Es la única vista que ayuda a decidir turnos: muestra qué día y a qué hora se acumulan las esperas. Usa el mismo semáforo que el resto del tablero.">Nuevo</span></h3>
-            <p>Mediana de respuesta por día y hora</p></div></div>
-          <div class="t-cuerpo">
-            <p class="hallazgo" id="hallazgo"></p>
-            <div class="mapa" id="mapa"></div>
-            <div class="leyenda-mapa"><span class="pill p0">Ideal</span><span class="pill p1">Bueno</span><span class="pill p2">Regular</span><span class="pill p3">Crítico</span><span class="sub">· el número es la mediana en minutos · rayado: fuera de horario</span></div>
-          </div>
-        </div>
         <div class="tarjeta">
           <div class="t-cab"><div><h3>Velocidad y carga<span class="cambio nuevo" data-tip="Lento con mucha carga no es el mismo problema que lento con poca: el primero necesita apoyo, el segundo revisar cómo trabaja. Sin la carga al lado, el ranking es injusto.">Nuevo</span></h3>
             <p>Cada punto es un vendedor: ¿le falta tiempo o le falta método?</p></div></div>
           <div class="t-cuerpo"><svg class="graf" id="carga" viewBox="0 0 520 330" role="img" aria-label="Mediana de respuesta contra cantidad de respuestas por vendedor"></svg></div>
         </div>
-      </div>
-
-      <div class="dos">
-        <div class="tarjeta">
-          <div class="t-cab"><div><h3>Distribución<span class="cambio cambia" data-tip="La dona se queda. Se le sumó el número clave al centro y una leyenda con cantidades, para que el color nunca vaya solo. Las barras de al lado repetían lo mismo.">Cambia</span></h3><p>Cada respuesta en su franja según cuánto esperó el cliente · clic en una franja para ver sus leads</p></div></div>
-          <div class="t-cuerpo dona-wrap">
-            <svg id="dona" viewBox="0 0 220 220" role="img" aria-label="Distribución de respuestas por franja"></svg>
-            <div id="dona-leyenda" class="dona-leyenda"></div>
-          </div>
-        </div>
         <div class="tarjeta">
           <div class="t-cab"><div><h3>Conversaciones más lentas</h3><p>Ya respondidas · clic para abrir el chat</p></div></div>
           <div class="t-cuerpo lentas" id="lentas"></div>
+        </div>
+      </div>
+
+      <h3 class="grupo-eti">Cuándo nos demoramos</h3>
+      <div class="tarjeta">
+        <div class="t-cab"><div><h3>Día y hora<span class="cambio nuevo" data-tip="Es la única vista que ayuda a decidir turnos: muestra qué día y a qué hora se acumulan las esperas. Usa el mismo semáforo que el resto del tablero.">Nuevo</span></h3>
+          <p>Mediana de respuesta en cada hora de la semana · para decidir turnos</p></div></div>
+        <div class="t-cuerpo">
+          <p class="hallazgo" id="hallazgo"></p>
+          <div class="mapa" id="mapa"></div>
+          <div class="leyenda-mapa"><span class="pill p0">Ideal</span><span class="pill p1">Bueno</span><span class="pill p2">Regular</span><span class="pill p3">Crítico</span><span class="sub">· el número es la mediana en minutos · rayado: fuera de horario</span></div>
         </div>
       </div>
     </section>
@@ -896,12 +923,12 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
   let P = null;
   function renderPer() {
     P = periodo(E.per);
-    const rotulo = E.per.rango === 'hoy' ? 'ayer' : 'el periodo anterior';
+    const rotulo = { hoy: 'vs ayer', '7': 'vs 7 días anteriores', '30': 'vs 30 días anteriores' }[E.per.rango] || 'vs periodo anterior';
     const vsAnt = (antes, actual, fmtF, menosEsMejor, unidad) => {
       if (antes == null || !isFinite(antes)) return `<span class="sub">sin datos del periodo anterior</span>`;
       const d = actual - antes, mejor = menosEsMejor ? d < 0 : d > 0, abs = Math.abs(d);
       const txt = unidad === 'pts' ? `${d > 0 ? '▲' : '▼'} ${Math.round(abs)} ${Math.round(abs) === 1 ? 'punto' : 'puntos'}` : `${fmt(abs)} ${mejor ? 'mejor' : 'peor'}`;
-      return `${rotulo === 'ayer' ? 'Ayer' : 'Antes'}: <span class="num" style="color:var(--texto);font-weight:600">${fmtF(antes)}</span>${Math.round(abs) ? `<span class="delta ${mejor ? 'mejor' : 'peor'}">${txt}</span>` : '<span class="sub">igual</span>'}`;
+      return `<span class="vs-rot">${rotulo}</span><span class="vs-val"><span class="num" style="color:var(--texto);font-weight:600">${fmtF(antes)}</span>${Math.round(abs) ? `<span class="delta ${mejor ? 'mejor' : 'peor'}">${txt}</span>` : '<span class="sub">igual</span>'}</span>`;
     };
     const ideal = pct(P.d[0], P.total), idealA = P.totalAntes ? pct(P.dAntes[0], P.totalAntes) : null;
     const crit = pct(P.d[3], P.total), critA = P.totalAntes ? pct(P.dAntes[3], P.totalAntes) : null;
@@ -914,7 +941,22 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
     $('k-med-ant').innerHTML = vsAnt(P.medAntes || null, P.med, fmt, true);
     $('k-p90').innerHTML = P.total ? cifraSeg(P.p90) : '—'; $('k-p90-sub').innerHTML = `<span class="pill p${franjaMin(P.p90 / 60)}">${FR[franjaMin(P.p90 / 60)]}</span>`;
     $('k-p90-ant').innerHTML = vsAnt(P.p90Antes, P.p90, fmt, true);
+    const lim = (v, a, b) => Math.max(a, Math.min(b, v));
+    $('sp-ideal').innerHTML = kspark(P.trend.map(v => lim(100 - (v - 2) * 11, 15, 92)));
+    $('sp-crit').innerHTML = kspark(P.trend.map(v => lim((v - 2.5) * 4, 1, 45)));
+    $('sp-med').innerHTML = kspark(P.trend);
+    $('sp-p90').innerHTML = kspark(P.trend.map(v => v * 6.8));
+    const nombreRango = { hoy: 'Hoy', '7': 'Últimos 7 días', '30': 'Últimos 30 días' }[E.per.rango] || 'Fechas elegidas';
+    $('per-caption').textContent = `${nombreRango} · ${E.per.desde === E.per.hasta ? larga(E.per.hasta) : `${larga(E.per.desde)} – ${larga(E.per.hasta)}`} · ${E.per.modo === 'fuera' ? 'fuera de horario' : 'horario laboral'}`;
     renderResumen(); renderTablaPer(); renderTrend(); renderMapa(); renderCarga(); renderDona(); renderLentas();
+  }
+  // Mini tendencia de una cifra: linea en gris, el ultimo valor en el acento
+  function kspark(vals) {
+    const W = 96, H = 30, mn = Math.min(...vals), mx = Math.max(...vals), rgo = mx - mn || 1;
+    const x = i => 2 + i * (W - 8) / Math.max(1, vals.length - 1), y = v => 3 + (1 - (v - mn) / rgo) * (H - 6), u = vals.length - 1;
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+      <path d="M${vals.map((v, i) => `${x(i)},${y(v)}`).join(' L')}" fill="none" stroke="var(--apagado)" stroke-opacity=".55" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${x(u)}" cy="${y(vals[u])}" r="3.5" fill="var(--marca)" stroke="var(--superficie)" stroke-width="1.5"/></svg>`;
   }
 
   function renderResumen() {
@@ -938,8 +980,8 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
     const W = 84, H = 32, mx = 10, y = v => 3 + (1 - Math.min(v, mx) / mx) * (H - 6), x = i => 2 + i * (W - 8) / Math.max(1, vals.length - 1), u = vals.length - 1;
     return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-left:auto" aria-hidden="true">
       <line x1="2" x2="${W - 6}" y1="${y(5)}" y2="${y(5)}" stroke="var(--f0)" stroke-width="1" stroke-dasharray="3 3"/>
-      <path d="M${vals.map((v, i) => `${x(i)},${y(v)}`).join(' L')}" fill="none" stroke="var(--marca)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="${x(u)}" cy="${y(vals[u])}" r="3" fill="var(--marca)" stroke="var(--superficie)" stroke-width="1.5"/></svg>`;
+      <path d="M${vals.map((v, i) => `${x(i)},${y(v)}`).join(' L')}" fill="none" stroke="var(--apagado)" stroke-opacity=".6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${x(u)}" cy="${y(vals[u])}" r="3.5" fill="var(--marca)" stroke="var(--superficie)" stroke-width="1.5"/></svg>`;
   }
   const sparkDe = (f, k) => Array.from({ length: 14 }, (_, i) => { const b = f.medAntes ?? f.med, v = b + (f.med - b) * i / 13; return v / 60 * (1 + .18 * Math.sin(i * 1.4 + k) + .08 * Math.cos(i * 2.3 + k)); });
   let FILAS_PER = [];
@@ -976,7 +1018,7 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
 
   function renderTrend() {
     const svg = $('trend'), sv = $('volumen'); svg.innerHTML = ''; sv.innerHTML = '';
-    const T = P.trend, V = P.vol, L = P.etiquetas, W = 1150, m = { l: 44, r: 60 }, n = T.length;
+    const T = P.trend, V = P.vol, L = P.etiquetas, W = 700, m = { l: 44, r: 56 }, n = T.length;
     $('sub-trend').innerHTML = P.porHora ? 'Hoy, hora por hora · la línea verde es el objetivo de 5 min'
       : 'Cada punto es un día; la línea, la mediana de los últimos 7 días; la línea verde, el objetivo de 5 min';
     $('lbl-vol').textContent = P.porHora ? 'Respuestas por hora' : 'Respuestas del día';
@@ -995,7 +1037,7 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
     s('circle', { cx: x(n - 1), cy: y(LINEA[n - 1]), r: 4.5, fill: 'var(--marca)', stroke: 'var(--superficie)', 'stroke-width': 2 }, svg);
     s('text', { x: x(n - 1) + 8, y: y(LINEA[n - 1]) + 4, style: 'fill:var(--marca-tinta);font-weight:700' }, svg, `${LINEA[n - 1].toFixed(1).replace('.', ',')} min`);
     if (n > 3) { const pico = T.indexOf(Math.max(...T)); if (T[pico] > 7) s('text', { x: x(pico), y: y(T[pico]) - 10, 'text-anchor': 'middle', style: 'fill:var(--tinta);font-weight:600' }, svg, `${L[pico]}: ${String(T[pico]).replace('.', ',')} min`); }
-    const paso = Math.max(1, Math.ceil(n / 7));
+    const paso = Math.max(1, Math.ceil(n / 5));
     L.forEach((l, i) => { if (i % paso === 0 || i === n - 1) s('text', { x: x(i), y: H - 6, 'text-anchor': 'middle' }, svg, l); });
     const HV = 70, vMax = Math.max(...V) * 1.15, bw = Math.min(28, (W - m.l - m.r) / Math.max(1, n) * .55), yv = v => 4 + (1 - v / vMax) * (HV - 18);
     s('line', { x1: m.l, x2: W - m.r, y1: yv(0), y2: yv(0), class: 'grid' }, sv);
@@ -1008,11 +1050,16 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
       const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
       const i = n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round((px - m.l) / ((W - m.l - m.r) / (n - 1)))));
       guia.setAttribute('x1', x(i)); guia.setAttribute('x2', x(i)); guia.setAttribute('visibility', 'visible');
-      mostrarTip(ev, P.porHora ? `${L[i]} · mediana ${String(T[i]).replace('.', ',')} min · ${V[i]} respuestas`
-        : `${L[i]} · ese día ${String(T[i]).replace('.', ',')} min · últimos 7 días ${LINEA[i].toFixed(1).replace('.', ',')} min · ${V[i]} respuestas`);
+      mostrarTip(ev, P.porHora ? `${String(T[i]).replace('.', ',')} min · ${L[i]} · ${V[i]} respuestas`
+        : `${String(T[i]).replace('.', ',')} min · ${L[i]} · últimos 7 días: ${LINEA[i].toFixed(1).replace('.', ',')} min · ${V[i]} respuestas`);
     });
     zona.addEventListener('pointerleave', () => { guia.setAttribute('visibility', 'hidden'); ocultarTip(); });
+    $('trend-tabla').innerHTML = `<table class="tabla tabla-datos"><thead><tr><th class="izq">${P.porHora ? 'Hora' : 'Día'}</th><th>Mediana ${P.porHora ? 'de la hora' : 'del día'}</th>${P.porHora ? '' : '<th>Últimos 7 días</th>'}<th>Respuestas</th></tr></thead><tbody>` +
+      L.map((l, i) => `<tr><td class="izq">${l}</td><td class="num">${String(T[i]).replace('.', ',')} min</td>${P.porHora ? '' : `<td class="num">${LINEA[i].toFixed(1).replace('.', ',')} min</td>`}<td class="num">${V[i]}</td></tr>`).join('') + '</tbody></table>';
   }
+  $('btn-trend-datos').addEventListener('click', e => {
+    const t = $('trend-tabla'); t.hidden = !t.hidden; e.currentTarget.textContent = t.hidden ? 'Ver datos' : 'Ocultar datos'; e.currentTarget.setAttribute('aria-expanded', !t.hidden);
+  });
 
   function renderMapa() {
     const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'], HORAS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
@@ -1020,7 +1067,7 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
     $('mapa').innerHTML = `<span></span>${HORAS.map(h => `<span class="mh">${h}</span>`).join('')}` +
       M.map((fila, d) => `<span class="md">${DIAS[d]}</span>` + fila.map((v, h) => v === null
         ? `<span class="mc fuera" data-tip="${DIAS[d]} ${HORAS[h]}:00 · fuera de horario"></span>`
-        : `<span class="mc c${franjaMin(v)} num" data-tip="${DIAS[d]} ${HORAS[h]}:00 a ${HORAS[h] + 1}:00 · mediana ${v} min · ${FR[franjaMin(v)]}">${v}</span>`).join('')).join('');
+        : `<span class="mc c${franjaMin(v)} num" tabindex="0" data-tip="${v} min · ${DIAS[d]} de ${HORAS[h]}:00 a ${HORAS[h] + 1}:00 · ${FR[franjaMin(v)]}">${v}</span>`).join('')).join('');
     let peor = [0, 0, 0]; M.forEach((f, d) => f.forEach((v, h) => { if (v !== null && v > peor[0]) peor = [v, d, h]; }));
     const almuerzo = M.slice(0, 5).every(f => franjaMin(f[5]) >= 1);
     $('hallazgo').innerHTML = `<b>${almuerzo ? 'El almuerzo (13 a 15 h) es lento todos los días' : 'Las esperas se reparten parejo en la semana'}${franjaMin(peor[0]) >= 2 ? `, y lo peor es el ${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][peor[1]]} a las ${HORAS[peor[2]]} h (${peor[0]} min)` : ''}.</b>`;
@@ -1047,7 +1094,8 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
     filas.forEach(a => {
       const poca = a.r < MIN_MUESTRA * (P.dias / 26), cx = x(a.r), cy = y(a.med / 60);
       const c = s('circle', { cx, cy, r: 7, fill: poca ? 'var(--superficie)' : 'var(--tinta)', stroke: poca ? 'var(--apagado)' : 'var(--superficie)', 'stroke-width': 2 }, svg);
-      c.dataset.tip = `${a.n} · ${nf(a.r)} respuestas · la mitad en menos de ${fmt(a.med)}${poca ? ' · pocas respuestas, no comparar' : ''}`;
+      const hit = s('circle', { cx, cy, r: 14, fill: 'transparent', style: 'cursor:help' }, svg);
+      hit.dataset.tip = `${fmt(a.med)} · ${a.n} · la mitad de sus clientes, en menos de eso · ${nf(a.r)} respuestas${poca ? ' · pocas respuestas, no comparar' : ''}`;
       const izq = cx > W * .62;
       s('text', { x: cx + (izq ? -12 : 12), y: cy + 4, 'text-anchor': izq ? 'end' : 'start', class: 'txt', style: `font-weight:600;font-size:12px;fill:${poca ? 'var(--apagado)' : 'var(--tinta)'}` }, svg, a.n);
     });
@@ -1115,7 +1163,11 @@ input.ctl-fecha { font: inherit; font-size: var(--t-chico); font-weight: 600; co
   // =================== tooltip, abrir chat, marcas ===================
   const tip = $('tip');
   function mostrarTip(ev, txt) {
-    tip.textContent = txt; tip.hidden = false;
+    const partes = String(txt).split(' · ');
+    tip.replaceChildren();
+    const fuerte = document.createElement('b'); fuerte.textContent = partes[0]; tip.appendChild(fuerte);
+    if (partes.length > 1) { const resto = document.createElement('span'); resto.textContent = partes.slice(1).join(' · '); tip.appendChild(resto); }
+    tip.hidden = false;
     const r = tip.getBoundingClientRect(); let left = ev.clientX + 14, top = ev.clientY + 14;
     if (left + r.width > innerWidth - 8) left = ev.clientX - r.width - 14;
     if (top + r.height > innerHeight - 8) top = ev.clientY - r.height - 14;
