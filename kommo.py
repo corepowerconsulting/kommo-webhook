@@ -2531,6 +2531,21 @@ def cargar_conversaciones():
         conn.close()
     return jsonify({'recibidas': len(crudas), 'guardadas': guardadas, 'invalidas': invalidas})
 
+def _memoria_mb():
+    """RSS actual y pico del proceso, en MB, leidos de /proc (Linux, Render).
+    En otro sistema devuelve None en vez de fallar."""
+    fuera = {'memoria_mb': None, 'memoria_pico_mb': None}
+    try:
+        with open('/proc/self/status') as f:
+            for linea in f:
+                if linea.startswith('VmRSS:'):
+                    fuera['memoria_mb'] = round(int(linea.split()[1]) / 1024)
+                elif linea.startswith('VmHWM:'):
+                    fuera['memoria_pico_mb'] = round(int(linea.split()[1]) / 1024)
+    except OSError:
+        pass
+    return fuera
+
 @app.route('/health/carga')
 def health_carga():
     """Cuantos hilos llega a tener el servidor. Es la prueba que falta.
@@ -2547,6 +2562,11 @@ def health_carga():
 
     Los contadores se reinician con cada deploy o reinicio del servicio."""
     return jsonify({
+        # Memoria del proceso (15/10: Render lo reinicio por pasarse del
+        # limite). memoria_pico_mb es el maximo desde el arranque; si se acerca
+        # al limite del plan, el proximo reinicio es cuestion de tiempo.
+        **_memoria_mb(),
+        'turnos_en_memoria':          {s: len(v[1]) for s, v in _turnos_cache.items()},
         'hilos_ahora':                threading.active_count(),
         'hilos_maximo':               _CARGA['hilos_maximo'],
         'cuando_el_maximo':           _CARGA['cuando_el_maximo'],
@@ -4862,6 +4882,27 @@ def _corte_salientes(cursor, subdomain):
 # registros se construyen aparte, en _registros_de_mensajes.
 _turnos_cache = {}     # subdomain -> (clave, turnos)
 
+# Memoria (15/10, Render reinicio el servicio por pasarse del limite). Armar
+# los turnos carga todos los mensajes de la cuenta desde el corte, y en una
+# cuenta movida la clave cambia a cada rato. Dos personas abriendo el mismo
+# tablero a la vez lo armaban dos veces en paralelo, y varias cuentas juntas
+# sumaban los picos. Ahora: un solo armado por cuenta a la vez (el segundo
+# espera y reusa el del primero) y como mucho dos armados en total.
+_turnos_locks = defaultdict(threading.Lock)
+_turnos_locks_guardia = threading.Lock()
+_turnos_armando = threading.BoundedSemaphore(2)
+FILAS_POR_TANDA = 5000
+
+def _filas_en_tandas(cursor):
+    """Las filas de la ultima consulta, de a FILAS_POR_TANDA. fetchall()
+    armaba todas las filas como diccionarios a la vez antes de pasarlas a
+    tuplas: el doble de memoria en el peor momento."""
+    while True:
+        filas = cursor.fetchmany(FILAS_POR_TANDA)
+        if not filas:
+            return
+        yield from filas
+
 def _turnos_cacheados(cursor, subdomain, corte):
     cursor.execute('SELECT MAX(ts) AS m FROM mensajes_cliente WHERE subdomain = %s', (subdomain,))
     ult_cli = (cursor.fetchone() or {}).get('m')
@@ -4871,6 +4912,20 @@ def _turnos_cacheados(cursor, subdomain, corte):
     v = _turnos_cache.get(subdomain)
     if v and v[0] == clave:
         return v[1]
+    with _turnos_locks_guardia:
+        lock = _turnos_locks[subdomain]
+    with lock:
+        # Quien esperaba el lock puede encontrarlo ya armado por el otro.
+        v = _turnos_cache.get(subdomain)
+        if v and v[0] == clave:
+            return v[1]
+        with _turnos_armando:
+            return _armar_turnos(cursor, subdomain, corte, clave)
+
+def _armar_turnos(cursor, subdomain, corte, clave):
+    # Se suelta el armado anterior antes de leer: si no, durante la lectura
+    # conviven el viejo y el nuevo, y la cuenta pesa el doble.
+    _turnos_cache.pop(subdomain, None)
 
     # Los entrantes se leen desde antes del corte a proposito: un cliente pudo
     # escribir el dia anterior y recibir respuesta despues del corte. Si se
@@ -4879,14 +4934,14 @@ def _turnos_cacheados(cursor, subdomain, corte):
     cursor.execute(
         'SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s AND ts >= %s',
         (subdomain, corte - GAP_REACTIVACION_SEG))
-    entrantes = [(r['lead_id'], r['ts']) for r in cursor.fetchall()]
+    entrantes = [(r['lead_id'], r['ts']) for r in _filas_en_tandas(cursor)]
 
     cursor.execute(
         'SELECT lead_id, ts, autor_nombre, user_id, msg_id FROM mensajes_asesor '
         'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
         (subdomain, corte))
     salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'], r['msg_id'])
-                 for r in cursor.fetchall()]
+                 for r in _filas_en_tandas(cursor)]
 
     turnos = []
     if salientes:
