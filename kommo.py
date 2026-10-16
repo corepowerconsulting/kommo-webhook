@@ -4763,7 +4763,7 @@ def _nombre_conversion(subdomain, fila):
     return nombre_asesor(fila.get('responsible_user_id')) or SIN_ASIGNAR
 
 def _convertidos(cursor, subdomain, desde_ts, hasta_ts, asesor_ids=(), asesores_nombre=(),
-                 embudos_sel=(), etapas_sel=(), con_leads=False):
+                 embudos_sel=(), etapas_sel=(), msj_por_venta=False):
     """Cuantos leads convirtieron entre desde_ts y hasta_ts, por asesor (16/10).
 
     Por ETAPA, no por campos de fecha (ver CONVERSIONES en pulse_config). Un
@@ -4774,8 +4774,8 @@ def _convertidos(cursor, subdomain, desde_ts, hasta_ts, asesor_ids=(), asesores_
     lead ganado hace meses que recibe una edicion hoy aparecia como venta de
     hoy.
 
-    con_leads: ademas, cada conversion suelta, para que la tabla del dia la
-    filtre en pantalla con el mismo criterio que el resto de sus columnas.
+    msj_por_venta: ademas, cuantos mensajes se le mandaron a cada lead de la
+    ULTIMA conversion (la venta) hasta que convirtio. Ver _mensajes_hasta.
 
     None si la cuenta no tiene conversiones configuradas."""
     conv = CONVERSIONES.get(subdomain) or []
@@ -4829,15 +4829,108 @@ def _convertidos(cursor, subdomain, desde_ts, hasta_ts, asesor_ids=(), asesores_
                 continue
             por_asesor[nombre][i] += 1
             total[i] += 1
-            if con_leads:
-                emb, eta = cuando['etapa'].split(':')
-                leads.append({'lead_id': cuando['lead_id'], 'conv': i, 'asesor': nombre,
-                              'responsable_id': cuando.get('responsible_user_id'),
-                              'embudo_id': int(emb), 'etapa_id': int(eta)})
+            if i == len(conv) - 1:
+                leads.append((cuando['lead_id'], cuando['desde_ts'], nombre))
     salida = {'nombres': [c['nombre'] for c in conv], 'por_asesor': dict(por_asesor), 'total': total}
-    if con_leads:
-        salida['leads'] = leads
+    if msj_por_venta:
+        salida['msj_por_venta'], salida['msj_por_venta_total'] = _mensajes_hasta(cursor, subdomain, leads)
     return salida
+
+def _mensajes_hasta(cursor, subdomain, ventas):
+    """Mensajes por venta (16/10, idea de Juan): de cada lead que convirtio,
+    cuantos mensajes le mandamos hasta el momento de la conversion. Cuentan
+    los de personas, desde Kommo o desde el celular; los del bot no.
+
+    Las ventas sin ningun mensaje guardado no entran: son leads que se
+    atendieron antes de que existiera la captura, y con 0 mensajes bajarian el
+    promedio de quien los cerro.
+
+    ventas: [(lead_id, ts, nombre)]. Devuelve ({nombre: [mensajes, ventas]},
+    [mensajes, ventas] del equipo)."""
+    if not ventas:
+        return {}, [0, 0]
+    autos = sorted(remitentes_auto_de(subdomain) - {AUTOR_DESCONOCIDO})
+    cursor.execute('''
+        SELECT v.lead_id, COUNT(m.msg_id) AS n
+          FROM unnest(%s::text[], %s::bigint[]) AS v(lead_id, hasta)
+          JOIN mensajes_asesor m ON m.subdomain = %s AND m.lead_id = v.lead_id AND m.ts <= v.hasta
+         WHERE m.autor_nombre IS NULL OR NOT (m.autor_nombre = ANY(%s))
+         GROUP BY v.lead_id''',
+        ([str(l) for l, _, _ in ventas], [int(t) for _, t, _ in ventas], subdomain, autos))
+    n_por_lead = {r['lead_id']: r['n'] for r in cursor.fetchall()}
+    por_asesor = defaultdict(lambda: [0, 0])
+    total = [0, 0]
+    for lead_id, _, nombre in ventas:
+        n = n_por_lead.get(str(lead_id), 0)
+        if not n:
+            continue
+        por_asesor[nombre][0] += n; por_asesor[nombre][1] += 1
+        total[0] += n; total[1] += 1
+    return dict(por_asesor), total
+
+def _mensajes_por_asesor(cursor, subdomain, desde_ts, hasta_ts, asesor_ids=(), asesores_nombre=(),
+                         embudos_sel=(), etapas_sel=()):
+    """Mensajes enviados en el periodo por cada asesor, partidos en desde
+    Kommo y desde el celular (16/10, pedido de Juan).
+
+    Mismo criterio que asesor_de_registro, mensaje por mensaje: el bot va al
+    bot; si no, el campo Asesor del lead en ese momento; si no, quien lo mando
+    si Kommo lo identifico; si no, el responsable en ese momento.
+
+    'Desde el celular' es todo lo que llega sin usuario de Kommo: la app de
+    WhatsApp, WhatsApp Lite, Wazzup. Incluye los 'Autor desconocido' del
+    registro de eventos, que en WhatsApp son casi siempre personas (Autonica:
+    698 del bot contra 9.580 de personas por el mismo canal) y que la mediana
+    deja afuera porque no se sabe quien fue; para contar mensajes alcanza.
+
+    Devuelve {'por_asesor': {nombre: [kommo, celular]}, 'total': [kommo, celular]}."""
+    if desde_ts is None or hasta_ts is None:
+        return None
+    cursor.execute(
+        'SELECT lead_id, ts, autor_nombre, user_id FROM mensajes_asesor '
+        'WHERE subdomain = %s AND ts BETWEEN %s AND %s AND lead_id IS NOT NULL',
+        (subdomain, desde_ts, hasta_ts))
+    # Tuplas y no dicts: en las cuentas grandes son decenas de miles de filas.
+    mensajes = [(str(r['lead_id']), r['ts'], r['autor_nombre'], r['user_id'])
+                for r in _filas_en_tandas(cursor)]
+    leads = sorted({m[0] for m in mensajes})
+    meta = {}
+    if leads:
+        cursor.execute(
+            'SELECT lead_id, responsible_user_id, asesor_nombre, pipeline_id, status_id '
+            'FROM leads_estado WHERE subdomain = %s AND lead_id = ANY(%s)', (subdomain, leads))
+        meta = {str(r['lead_id']): r for r in cursor.fetchall()}
+    historias = _historias_de(cursor, subdomain, leads)
+    claves = {l: [f['desde_ts'] for f in fs] for l, fs in historias.items()}
+    autos = remitentes_auto_de(subdomain) - {AUTOR_DESCONOCIDO}
+    embudos_set, etapas_set = set(embudos_sel or ()), set(etapas_sel or ())
+    filtra_embudo = bool(embudos_set or etapas_set)
+    ids, nombres = set(asesor_ids or ()), set(asesores_nombre or ())
+    por_asesor = defaultdict(lambda: [0, 0])
+    total = [0, 0]
+    for lead_id, ts, autor, uid in mensajes:
+        estado = _estado_por_turno(historias, claves, lead_id, ts, meta.get(lead_id))
+        if filtra_embudo and not _pasa_embudo(estado, embudos_set, etapas_set):
+            continue
+        if ids and estado.get('responsible_user_id') not in ids:
+            continue
+        if nombres and (estado.get('asesor_nombre') or '') not in nombres:
+            continue
+        campo = (estado.get('asesor_nombre') or '').strip()
+        es_auto = (autor or '') in autos
+        if es_auto:
+            nombre = nombre_de_remitente(uid, autor) or f'usuario {uid}'
+        elif campo:
+            nombre = campo
+        elif uid:
+            nombre = nombre_de_remitente(uid, autor) or f'usuario {uid}'
+        else:
+            nombre = nombre_asesor(estado.get('responsible_user_id')) or SIN_ASIGNAR
+        # El bot no tiene celular: sus mensajes van todos del lado de Kommo.
+        k = 0 if (uid or es_auto) else 1
+        por_asesor[nombre][k] += 1
+        total[k] += 1
+    return {'por_asesor': dict(por_asesor), 'total': total}
 
 def _clientes_por_hora(cursor, subdomain, tz_offset, desde_ts, hasta_ts, asesor_ids=(),
                        sql_embudo='', params_embudo=()):
@@ -5886,21 +5979,7 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                                   tj_sql_embudo, tj_params_embudo, base_es_hoy=base_es_hoy,
                                   nombres=tj_nombres,
                                   incluir_conv_cerradas=incluir_conv_cerradas)
-    # Convertidos del dia que se esta mirando (16/10), para "Detalle por asesor".
-    try:
-        if dia:
-            ini_c = _local_date_to_ts(dia, tz_offset); fin_c = ini_c + 86399
-        else:
-            ini_c, fin_c = _hoy_rango_ts(tz_offset); fin_c -= 1
-        cur_c = conn.cursor(cursor_factory=RealDictCursor)
-        convertidos_dia = _convertidos(cur_c, subdomain, ini_c, fin_c, con_leads=True)
-    except Exception as e:
-        # Un error aca no puede tirar el bloque de operacion entero.
-        print(f'⚠️ convertidos del dia: {e}')
-        convertidos_dia = None
     return {
-        # Otro nombre que el del periodo: /pulse/data manda los dos juntos.
-        'convertidos_dia':    convertidos_dia,
         'no_respondidos':     no_respondidos,
         'no_respondidos_antiguos': antiguos,
         'dias_reciente':      DIAS_SIN_RESPONDER_RECIENTE,
@@ -6586,7 +6665,9 @@ def pulse_data():
         # estan armados y solo se filtran por otras fechas.
         # Convertidos del periodo y clientes por hora (16/10).
         convertidos = _convertidos(c, subdomain, desde_ts, hasta_ts, asesor_ids,
-                                   asesores_nombre, embudos_sel, etapas_sel)
+                                   asesores_nombre, embudos_sel, etapas_sel, msj_por_venta=True)
+        mensajes = _mensajes_por_asesor(c, subdomain, desde_ts, hasta_ts, asesor_ids,
+                                        asesores_nombre, embudos_sel, etapas_sel)
         mapa_clientes = _clientes_por_hora(c, subdomain, tz_offset, desde_ts, hasta_ts,
                                            asesor_ids, sql_embudo, params_embudo)
         _marca('convertidos')
@@ -6926,6 +7007,7 @@ def pulse_data():
             'serie_dias':    dias_serie,
             'mapa_horas':    mapa_horas,
             'mapa_clientes': mapa_clientes,
+            'mensajes':      mensajes,
             # Para la tasa de conversion: clientes distintos que atendio cada
             # uno en el periodo (con el mismo nombre que la tabla).
             'convertidos':   (dict(convertidos,
@@ -6945,7 +7027,6 @@ def pulse_data():
             # Mismo comparativo que en /pulse/snapshot, para que la primera
             # carga ya lo traiga y no haya que esperar al refresco.
             'comparado': comparado,
-            'convertidos_dia': bloque['convertidos_dia'],
             'dia': bloque['dia'],
         })
     except Exception as e:

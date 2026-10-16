@@ -189,6 +189,11 @@
     .mini-tira > i { display:block; height:100%; min-width:3px; }
     .mini-tira > i:first-child { border-radius:4px 0 0 4px; } .mini-tira > i:last-child { border-radius:0 4px 4px 0; }
     .mini-tira > i:only-child { border-radius:4px; }
+    /* Al pasar por un tramo, los demas se difuminan y queda solo ese (16/10). */
+    .mini-tira > i, .linea-rep > i { transition:opacity .15s; }
+    .mini-tira:hover > i, .linea-rep:hover > i { opacity:.22; }
+    .mini-tira:hover > i:hover, .linea-rep:hover > i:hover { opacity:1; }
+    .mini-tira > i[data-tip] { cursor:help; }
     .pill-vend { background:#e0e9fd; color:#1e3a8a; }
     .chips-at { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.6rem; }
     .chip-at { padding:.2rem .7rem; border-radius:99px; border:1px solid var(--linea); background:#fff; font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--texto); cursor:pointer; }
@@ -284,14 +289,29 @@
     .ident.baja { color:var(--franja-1-texto); font-weight:var(--p-medio); cursor:help; }
     .muestra-baja { font-size:.72rem; color:var(--apagado); background:var(--carril); border-radius:5px; padding:1px 6px; margin-left:6px; font-weight:var(--p-medio); }
     .reparto-mini { display:flex; gap:2px; height:.55rem; width:9rem; margin-left:auto; }
-    /* Reparto por franja en recuadros iguales con su % (16/10): la vista va
-       al numero y no al largo de una barra. */
-    .cuadros4 { display:grid; gap:2px; justify-content:end; }
-    .cuadros4 > span { height:1.45rem; border-radius:5px; display:grid; place-items:center; font-size:.7rem; font-weight:800; cursor:help; }
-    .cuadros4 > span.vacio-q { background:var(--carril); color:var(--apagado); font-weight:500; cursor:default; }
+    /* Reparto por franja: una linea pintada; el % y la franja al pasar el
+       mouse (16/10). Los recuadros con numeros cargaban mucho la tabla. */
+    .linea-rep { display:flex; gap:2px; width:120px; height:10px; margin-left:auto; cursor:help; }
+    .linea-rep > i { display:block; height:100%; min-width:3px; }
+    .linea-rep > i:first-child { border-radius:4px 0 0 4px; } .linea-rep > i:last-child { border-radius:0 4px 4px 0; }
+    .linea-rep > i:only-child { border-radius:4px; }
+    /* Mensajes enviados: el numero se toca o se pasa el mouse para ver de
+       donde salieron. Subrayado amarillo con mucho celular. */
+    .msj-num { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; border-bottom:1px dotted var(--apagado); }
+    .msj-num:hover, .msj-num:focus-visible { color:var(--marca); border-bottom-color:var(--marca); outline:none; }
+    .msj-num.alto-cel { border-bottom:2px solid var(--franja-1-texto); }
+    .tip.tip-bloque { display:block; white-space:normal; padding:9px 12px; }
+    .tip-bloque b { display:block; font-size:.8125rem; }
+    .tip-bloque .tb-barra { display:flex; gap:2px; height:8px; width:220px; margin:7px 0 6px; }
+    .tip-bloque .tb-barra i { display:block; border-radius:2px; }
+    .tip-bloque .tb-fila { display:flex; align-items:center; gap:6px; }
+    .tip-bloque .tb-fila i { width:8px; height:8px; border-radius:2px; }
+    .tip-bloque .tb-fila em { margin-left:auto; font-style:normal; font-weight:700; padding-left:14px; }
+    .tip-bloque .tb-nota { display:block; margin-top:6px; max-width:230px; opacity:.8; }
     .conv { display:grid; justify-items:end; line-height:1.2; }
     .conv small { font-size:.68rem; color:var(--apagado); cursor:help; }
     .tabla-vend th:empty { border-bottom:0; }
+    .tabla-vend th.grupo-conv + th.grupo-conv { border-left:12px solid #fff; }
     .tabla-vend th.grupo-conv { text-align:center; border-bottom:2px solid var(--linea); text-transform:uppercase; letter-spacing:.06em; font-size:.66rem; padding-bottom:3px; }
     .th-info { border-bottom:1px dotted var(--apagado); cursor:help; }
     .seg { display:inline-flex; background:var(--carril); border-radius:8px; padding:3px; gap:2px; }
@@ -978,14 +998,14 @@
     <div class="card" id="card-por-asesor">
       <div class="cab-card">
         <div><h2 class="section-title" id="titulo-por-asesor">Cómo va cada asesor</h2>
-          <div class="section-sub">El más lento arriba · al final, los que no compiten: el bot, sin responsable y con pocas respuestas</div></div>
+          <div class="section-sub">Para evaluar: el más lento arriba · al final, los que no compiten · elige Hoy en las fechas para ver solo el día</div></div>
         <button type="button" class="btn-sec" onclick="descargarVendedores()">Descargar Excel</button>
       </div>
       <div class="tabla-scroll"><table class="tabla-vend" id="tabla-vendedores"></table></div>
       <!-- A quien se le cuenta cada respuesta (reunion del 31/08). Describe la
            regla REAL de asesor_de_registro: si cambia una, cambia la otra. -->
       <div class="mt-3 pt-3 border-t border-slate-100 t-micro text-slate-500 lh-corto">
-        Cada respuesta se cuenta, en este orden: al <strong>campo Asesor</strong> del lead; si está vacío, a <strong>quien la mandó</strong> desde el CRM; si Kommo no dice quién (respuestas desde el celular), al <strong>responsable</strong> del lead —eso es lo que marca "sin autor"—; y sin ninguno, queda como <em>Sin asignar</em>. Las del bot van al bot.
+        Cada respuesta se cuenta, en este orden: al <strong>campo Asesor</strong> del lead; si está vacío, a <strong>quien la mandó</strong> desde el CRM; si Kommo no dice quién (respuestas desde el celular), al <strong>responsable</strong> del lead —son los mensajes "desde el celular"—; y sin ninguno, queda como <em>Sin asignar</em>. Las del bot van al bot.
       </div>
     </div>
 
@@ -1481,6 +1501,7 @@ function fmtPct(pct, count) {
     const el = e.target && e.target.closest && e.target.closest('[data-tip]');
     const t = dame();
     if (!el || !t) return;
+    t.classList.remove('tip-bloque');
     t.innerHTML = '';
     const punto = document.createElement('span');
     punto.className = 'tip-punto';
@@ -1660,7 +1681,10 @@ function renderExtraLeads(containerId, leads) {
 const SOLO_BOT = 'Solo el bot';
 const SIN_ASIGNAR_UI = 'Sin asignar';
 
-function renderAsesoresAhora(noResp, trabajados, soloBot, convDia) {
+// Solo lo que sirve para actuar ya (16/10). Los convertidos se evaluan en
+// "Como va cada asesor", que con el atajo Hoy muestra los del dia: asi ningun
+// dato esta en las dos tablas.
+function renderAsesoresAhora(noResp, trabajados, soloBot) {
   const el = document.getElementById('tabla-asesores-ahora');
   const franjas = FRANJAS || [];
   const ultima = franjas.length - 1;
@@ -1685,14 +1709,6 @@ function renderAsesoresAhora(noResp, trabajados, soloBot, convDia) {
   });
   (trabajados || []).forEach(l => { fila(l.asesor || SIN_ASIGNAR_UI).hoy += 1; });
   if ((soloBot || []).length) fila(SOLO_BOT).hoy += soloBot.length;
-  // Convertidos del dia (16/10): llegan como leads sueltos y pasan por el
-  // mismo filtro de la tabla, asi que suman con el mismo criterio.
-  const nConv = convDia ? convDia.nombres.length : 0;
-  (convDia ? convDia.leads : []).forEach(l => {
-    const f = fila(l.asesor || SIN_ASIGNAR_UI);
-    f.conv = f.conv || Array(nConv).fill(0);
-    f.conv[l.conv] += 1;
-  });
 
   const lista = Object.values(filas);
   if (lista.length === 0) {
@@ -1717,10 +1733,8 @@ function renderAsesoresAhora(noResp, trabajados, soloBot, convDia) {
   const num = (n, clase, estilo) => n
     ? `<div class="t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
     : `<div class="t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
-  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 9rem 7.5rem 8.5rem' + ' 6.5rem'.repeat(nConv);
+  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 9rem 7.5rem 8.5rem';
   el.innerHTML = `
-    ${nConv ? `<div class="grid items-center gap-3 px-2" style="${cols}"><div style="grid-column:7 / span ${nConv}" class="t-micro font-bold text-slate-500 text-center uppercase tracking-wider border-b-2 border-slate-100 pb-0.5"
-      data-tip data-tip-label="Convertidos" data-tip-detalle="leads que llegaron este día a la etapa de conversión del embudo">Convertidos</div></div>` : ''}
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
       ${cab('Asesor', '', true)}
       ${cab('Críticos')}
@@ -1728,7 +1742,6 @@ function renderAsesoresAhora(noResp, trabajados, soloBot, convDia) {
       ${cab('Espera más larga')}
       ${cab('Atendidos', ICO_CHECK)}
       ${cab(cmp ? `vs ${fmtDiaCorto(cmp.fecha)}` : 'vs otro día')}
-      ${nConv ? convDia.nombres.map(n => cab(n)).join('') : ''}
     </div>
     <div class="divide-y divide-slate-50">
       ${lista.map(f => {
@@ -1749,7 +1762,6 @@ function renderAsesoresAhora(noResp, trabajados, soloBot, convDia) {
           <div class="text-center">${(() => { const a = antesDe(f.asesor); if (a == null) return '<span class="text-slate-300">—</span>';
             const dd = f.hoy - a; return dd ? `<span class="delta-p ${dd > 0 ? 'mejor' : 'peor'}">${dd > 0 ? '▲' : '▼'} ${Math.abs(dd)}</span> <span class="t-micro text-slate-500">(${a})</span>`
               : `<span class="t-micro text-slate-500">igual (${a})</span>`; })()}</div>
-          ${bot ? '<div class="text-center text-slate-300">—</div>'.repeat(nConv) : Array.from({ length: nConv }, (_, i) => num((f.conv || [])[i] || 0)).join('')}
         </div>`;
       }).join('')}
     </div>`;
@@ -2715,11 +2727,9 @@ let SNAP = null;   // la ultima respuesta del snapshot, sin filtrar
 
 function pintarDetalleAsesores() {
   if (!SNAP) return;
-  const conv = SNAP.convertidos_dia && SNAP.convertidos_dia.leads
-    ? { nombres: SNAP.convertidos_dia.nombres, leads: filtrarLeads(SNAP.convertidos_dia.leads, 'op') } : null;
   renderAsesoresAhora(filtrarLeads(SNAP.no_respondidos, 'op'),
                       filtrarLeads(SNAP.trabajados_hoy, 'op'),
-                      filtrarLeads(SNAP.atendidos_solo_bot, 'op'), conv);
+                      filtrarLeads(SNAP.atendidos_solo_bot, 'op'));
 }
 
 // --- Cabeceras de las tarjetas del ahora (propuesta aprobada, 15/10) -------
@@ -2732,7 +2742,7 @@ function _franjaDe(seg) {
 const _TAGS = ['tag-green', 'tag-amber', 'tag-orange', 'tag-red'];
 function _miniTira(partes) {
   const hay = partes.filter(p => p.n > 0);
-  return `<span class="mini-tira">${hay.map(p => `<i style="flex:${p.n};background:${p.color}" title="${p.titulo}"></i>`).join('')
+  return `<span class="mini-tira">${hay.map(p => `<i style="flex:${p.n};background:${p.color}" data-tip data-tip-color="${p.color}" data-tip-label="${p.titulo}" data-tip-detalle="${p.detalle || ''}"></i>`).join('')
     || '<i style="flex:1;background:var(--carril)"></i>'}</span>`;
 }
 function pintarDesgloses(noResp, trabajados, soloBot) {
@@ -2743,13 +2753,13 @@ function pintarDesgloses(noResp, trabajados, soloBot) {
   const crit = ult >= 0 ? porF[ult] : 0;
   document.getElementById('desglose-no-resp').innerHTML = fr.length
     ? `<span class="tag ${_TAGS[Math.min(ult, 3)]}">${crit} en ${fr[ult].tag}</span>` +
-      _miniTira(fr.map((f, i) => ({ n: porF[i], color: f.color, titulo: `${porF[i]} en ${f.tag}` })).reverse())
+      _miniTira(fr.map((f, i) => ({ n: porF[i], color: f.color, titulo: `${porF[i]} en ${f.tag}`, detalle: f.label })).reverse())
     : '';
   const vend = trabajados.length, bot = soloBot.length;
   document.getElementById('desglose-atendidos').innerHTML =
     `<span class="tag pill-vend">${vend} por vendedores</span>` +
-    _miniTira([{ n: vend, color: 'var(--marca)', titulo: `${vend} atendidos por vendedores` },
-               { n: bot, color: '#cbd5e1', titulo: `${bot} atendidos solo por el bot` }]);
+    _miniTira([{ n: vend, color: 'var(--marca)', titulo: `${vend} por vendedores`, detalle: 'contestó una persona' },
+               { n: bot, color: '#cbd5e1', titulo: `${bot} solo por el bot`, detalle: 'ninguna persona contestó todavía' }]);
 }
 
 // "Atendidos hoy" con filtro: todos, por vendedores o solo el bot (15/10). El
@@ -3055,28 +3065,69 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { const m = 
 // por WhatsApp, las que salen del celular llegan sin nombre y se le asignan
 // al responsable del lead. Si son muchas, su tiempo no es del todo suyo.
 let _VEND = [];
-// Reparto por franja en recuadros del mismo tamaño con su % (16/10). Suman
-// 100: el redondeo se reparte por mayor resto, si no daba 99 o 101.
-function _cuadros(dist) {
-  const d = dist || [], t = d.reduce((s, x) => s + x.count, 0), n = d.length || 4;
-  const grid = `grid-template-columns:repeat(${n}, 2.1rem)`;
-  if (!t) return `<div class="cuadros4" style="${grid}">${'<span class="vacio-q">—</span>'.repeat(n)}</div>`;
+// Reparto por franja como una linea pintada (16/10). El % redondeado suma
+// 100 (mayor resto) y aparece al pasar el mouse con la franja: "32 % Bueno".
+function _lineaRep(dist) {
+  const d = dist || [], t = d.reduce((s, x) => s + x.count, 0);
+  if (!t) return '<div class="linea-rep"><i style="flex:1;background:var(--carril)"></i></div>';
   const p = d.map(x => Math.floor(x.count / t * 100));
   let resto = 100 - p.reduce((a, b) => a + b, 0);
   d.map((x, i) => [x.count / t * 100 - p[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (resto > 0) { p[i]++; resto--; } });
-  return `<div class="cuadros4" style="${grid}">${d.map((x, i) => { const k = Math.min(i, 3);
-    return `<span style="background:var(--franja-${k}-fondo);color:var(--franja-${k}-texto)" data-tip data-tip-color="${x.color}" data-tip-label="${x.tag}" data-tip-detalle="${x.count.toLocaleString('es')} respuestas">${p[i]}%</span>`; }).join('')}</div>`;
+  return `<div class="linea-rep">${d.map((x, i) => x.count ? `<i style="flex:${x.count};background:${x.color}" data-tip data-tip-color="${x.color}" data-tip-label="${p[i]} % ${x.tag}" data-tip-detalle="${x.label} · ${x.count.toLocaleString('es')} respuestas"></i>` : '').join('')}</div>`;
 }
 // Convertidos con su tasa sobre los clientes atendidos. Es aproximada: una
 // venta de hoy puede venir de un cliente atendido el mes pasado.
 function _convCel(n, base) {
   return `<span class="conv"><span>${n.toLocaleString('es')}</span>${base ? `<small data-tip data-tip-label="${Math.round(n / base * 100)}%" data-tip-detalle="de los ${base.toLocaleString('es')} clientes atendidos en el periodo (aproximado)">${Math.round(n / base * 100)}%</small>` : ''}</span>`;
 }
-let _CONV = null;
+// Mensajes enviados: solo el numero. De donde salieron (Kommo o celular) se
+// ve al pasar el mouse o al tocarlo: ver _tipMensajes.
+function _msjCel(par) {
+  if (!par) return '<span class="text-slate-300">—</span>';
+  const [k, c] = par, t = k + c;
+  return `<button type="button" class="msj-num${t && c / t >= .2 ? ' alto-cel' : ''}" data-msj="${k}|${c}">${t.toLocaleString('es')}</button>`;
+}
+function _tipMensajes(ev, el) {
+  const t = document.getElementById('tip');
+  const [k, c] = el.dataset.msj.split('|').map(Number), tot = k + c || 1, pk = Math.round(k / tot * 100);
+  const KOMMO = '#93c5fd', CEL = '#fcd34d';
+  t.classList.add('tip-bloque');
+  t.innerHTML = `<b>${(k + c).toLocaleString('es')} mensajes enviados</b>
+    <div class="tb-barra"><i style="flex:${k || 0.0001};background:${KOMMO}"></i><i style="flex:${c || 0.0001};background:${CEL}"></i></div>
+    <div class="tb-fila"><i style="background:${KOMMO}"></i>Desde Kommo<em>${k.toLocaleString('es')} · ${pk} %</em></div>
+    <div class="tb-fila"><i style="background:${CEL}"></i>Desde el celular<em>${c.toLocaleString('es')} · ${100 - pk} %</em></div>
+    <span class="tb-nota">Lo que sale del celular no dice quién lo mandó: se le asigna al responsable del lead.</span>`;
+  t.classList.remove('hidden');
+  const ancho = t.offsetWidth, alto = t.offsetHeight;
+  const x = ev.clientX + 14 + ancho > window.innerWidth ? ev.clientX - 14 - ancho : ev.clientX + 14;
+  t.style.left = `${Math.max(4, x)}px`;
+  t.style.top = `${Math.max(4, ev.clientY - alto - 12)}px`;
+}
+document.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('[data-msj]'); if (b) _tipMensajes(e, b); });
+document.addEventListener('mouseout', e => { const b = e.target.closest && e.target.closest('[data-msj]');
+  if (b && !b.contains(e.relatedTarget)) document.getElementById('tip').classList.add('hidden'); });
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-msj]'); if (!b) return;
+  const r = b.getBoundingClientRect(); _tipMensajes({ clientX: r.right, clientY: r.top }, b); });
+document.addEventListener('focusout', e => { if (e.target.closest && e.target.closest('[data-msj]')) document.getElementById('tip').classList.add('hidden'); });
+
+let _CONV = null, _MSJ = null;
 const _EXPLICA = {
   med: 'data-tip data-tip-label="Mediana" data-tip-detalle="la mitad de los clientes recibió respuesta en menos de este tiempo"',
   p90: 'data-tip data-tip-label="P90" data-tip-detalle="9 de cada 10 clientes recibieron respuesta en menos de este tiempo"',
 };
+// "Mensajes por venta" con el nombre de la ultima conversion de la cuenta:
+// Ventas -> venta, Citas -> cita, Pedidos -> pedido.
+const _singular = n => { const t = n.toLowerCase(); return t.endsWith('s') ? t.slice(0, -1) : t; };
+function _mpvCel(par, quien) {
+  if (!par || !par[1]) return '<span class="text-slate-300">—</span>';
+  const v = Math.round(par[0] / par[1]), ult = _singular(_CONV.nombres[_CONV.nombres.length - 1]);
+  return `<span class="th-info" data-tip data-tip-label="${v} mensajes por ${ult}" data-tip-detalle="${quien} · promedio sobre ${par[1]} ${par[1] === 1 ? ult : _CONV.nombres[_CONV.nombres.length - 1].toLowerCase()}, contando los mensajes hasta cerrar">${v}</span>`;
+}
+
+// Como va cada asesor (16/10): columnas agrupadas por la pregunta que
+// responden. Velocidad: la Mediana, que ordena la tabla, va al lado del
+// nombre con su cambio y su evolucion. Despues la carga de trabajo y al final
+// los resultados. Se lee de corrido: "es lento, tiene mucha carga, vende bien".
 function renderVendedores(porAsesor, metricas) {
   const tabla = document.getElementById('tabla-vendedores');
   const personas = (porAsesor || []).filter(a => !a.sin_puesto).sort((a, b) => b.mediana_seg - a.mediana_seg);
@@ -3086,33 +3137,36 @@ function renderVendedores(porAsesor, metricas) {
   const convDe = a => (_CONV && _CONV.por_asesor[a.asesor]) || Array(nConv).fill(0);
   const convCols = (vals, base) => vals.map(v => `<td>${_convCel(v, base)}</td>`).join('');
   const pill = seg => `<span class="tag ${_TAGS[Math.min(_franjaDe(seg), 3)]}">${fmtSeg(seg)}</span>`;
-  const resp = a => {
-    if (a.sin_puesto === 'automático') return `${a.total.toLocaleString('es')}`;
-    const sin = a.total ? Math.round((a.por_canal || 0) / a.total * 100) : 0;
-    return `${a.total.toLocaleString('es')}` + (sin >= 20
-      ? `<small class="ident baja" title="${sin}% de sus respuestas salieron del celular sin nombre y se le asignaron por ser el responsable del lead">${sin}% sin autor</small>`
-      : `<small class="ident">${100 - sin}% con autor</small>`);
-  };
+  const msjDe = a => _MSJ ? (_MSJ.por_asesor[a.asesor] || [0, 0]) : null;
+  const finConv = (a, auto) => !nConv ? '' : auto ? '<td class="text-slate-300">—</td>'.repeat(nConv + 1)
+    : convCols(convDe(a), (_CONV.atendidos_por_asesor || {})[a.asesor]) + `<td>${_mpvCel((_CONV.msj_por_venta || {})[a.asesor], a.asesor)}</td>`;
   const fila = (a, apagada) => `<tr class="${apagada ? 'apagada' : ''}"><td class="izq nombre">${a.asesor}${a.sin_puesto ? `<span class="muestra-baja">${a.sin_puesto}</span>` : ''}</td>
-      <td>${resp(a)}</td><td>${_cuadros(a.distribucion)}</td><td>${pill(a.mediana_seg)}</td><td>${fmtSeg(a.p90_seg)}</td><td>${apagada ? '' : _cambioAsesor(a)}</td>
-      ${a.sin_puesto === 'automático' ? '<td class="text-slate-300">—</td>'.repeat(nConv) : convCols(convDe(a), _CONV ? (_CONV.atendidos_por_asesor || {})[a.asesor] : 0)}
-      <td class="spark-cel">${_sparkAsesor(a.serie)}</td></tr>`;
+      <td>${pill(a.mediana_seg)}</td><td>${apagada ? '' : _cambioAsesor(a)}</td><td class="spark-cel">${_sparkAsesor(a.serie)}</td><td>${fmtSeg(a.p90_seg)}</td><td>${_lineaRep(a.distribucion)}</td>
+      <td>${a.total.toLocaleString('es')}</td><td>${_msjCel(msjDe(a))}</td>${finConv(a, a.sin_puesto === 'automático')}</tr>`;
   const cambioEquipo = () => { const a = _ANT && _ANT.metricas && _ANT.metricas.total ? _ANT.metricas : null;
     return a ? _cambioAsesor({ asesor: '__equipo__', mediana_seg: metricas.mediana_seg, _antes: a.mediana_seg }) : ''; };
-  const columnas = 7 + nConv;
-  tabla.innerHTML = '<thead>' + (nConv ? `<tr><th colspan="6"></th><th class="grupo-conv" colspan="${nConv}"><span class="th-info" data-tip data-tip-label="Convertidos" data-tip-detalle="leads que llegaron en el periodo a la etapa de conversión del embudo, sin importar cuándo entraron; debajo, la tasa sobre los clientes atendidos">Convertidos</span></th><th></th></tr>` : '') +
-    `<tr><th class="izq">Asesor</th><th>Respuestas</th><th>Reparto por franja</th><th><span class="th-info" ${_EXPLICA.med}>Mediana</span> ▾</th><th><span class="th-info" ${_EXPLICA.p90}>P90</span></th><th>Cambio</th>${nConv ? _CONV.nombres.map(n => `<th>${n}</th>`).join('') : ''}<th>Últimas 2 semanas</th></tr></thead><tbody>` +
-    (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || `<tr><td colspan="${columnas + 1}" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>`) +
-    (personas.length > 1 && metricas && metricas.total ? `<tr class="equipo"><td class="izq">Equipo</td><td>${metricas.total.toLocaleString('es')}</td><td>${_cuadros(metricas.distribucion)}</td><td>${pill(metricas.mediana_seg)}</td>
-      <td>${fmtSeg(metricas.p90_seg)}</td><td>${cambioEquipo()}</td>${nConv ? convCols(_CONV.total, _CONV.atendidos_total) : ''}
-      <td class="spark-cel">${_sparkAsesor(_SERIE_EQUIPO)}</td></tr>` : '') + '</tbody>';
+  const columnas = 8 + (nConv ? nConv + 1 : 0);
+  const grupo = (txt, n, tip) => `<th class="grupo-conv" colspan="${n}">${tip ? `<span class="th-info" data-tip data-tip-label="${txt}" data-tip-detalle="${tip}">${txt}</span>` : txt}</th>`;
+  tabla.innerHTML = '<thead><tr><th></th>' + grupo('Velocidad', 5) + grupo('Carga de trabajo', 2)
+    + (nConv ? grupo('Convertidos', nConv + 1, 'leads que llegaron en el periodo a la etapa de conversión del embudo, sin importar cuándo entraron; debajo, la tasa sobre los clientes atendidos') : '') + '</tr>'
+    + `<tr><th class="izq">Asesor</th><th><span class="th-info" ${_EXPLICA.med}>Mediana</span> ▾</th><th>Cambio</th><th>Últimas 2 semanas</th><th><span class="th-info" ${_EXPLICA.p90}>P90</span></th><th>Reparto por franja</th>`
+    + `<th>Respuestas</th><th><span class="th-info" data-tip data-tip-label="Mensajes enviados" data-tip-detalle="todos los que mandó en el periodo, no solo las respuestas; pasa el mouse por el número para ver cuántos salieron desde Kommo y cuántos desde el celular">Mensajes enviados</span></th>`
+    + (nConv ? _CONV.nombres.map(n => `<th>${n}</th>`).join('') + `<th>Mensajes<br>por ${_singular(_CONV.nombres[nConv - 1])}</th>` : '') + '</tr></thead><tbody>'
+    + (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || `<tr><td colspan="${columnas}" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>`)
+    + (personas.length > 1 && metricas && metricas.total ? `<tr class="equipo"><td class="izq">Equipo</td><td>${pill(metricas.mediana_seg)}</td><td>${cambioEquipo()}</td>
+      <td class="spark-cel">${_sparkAsesor(_SERIE_EQUIPO)}</td><td>${fmtSeg(metricas.p90_seg)}</td><td>${_lineaRep(metricas.distribucion)}</td>
+      <td>${metricas.total.toLocaleString('es')}</td><td>${_msjCel(_MSJ ? _MSJ.total : null)}</td>
+      ${nConv ? convCols(_CONV.total, _CONV.atendidos_total) + `<td>${_mpvCel(_CONV.msj_por_venta_total, 'el equipo')}</td>` : ''}</tr>` : '') + '</tbody>';
 }
 // Excel: un CSV con separador ; y BOM, que Excel abre con acentos y columnas.
 function descargarVendedores() {
   const nombresConv = _CONV ? _CONV.nombres : [];
-  const filas = [['Asesor', 'Respuestas', 'Sin autor', 'Mediana (s)', 'P90 (s)', ...((FRANJAS || []).map(f => f.tag)), ...nombresConv, 'Clientes atendidos', 'Observación']]
-    .concat(_VEND.map(a => [a.asesor, a.total, a.por_canal || 0, a.mediana_seg, a.p90_seg, ...(a.distribucion || []).map(x => x.count),
-      ...nombresConv.map((_, i) => ((_CONV.por_asesor[a.asesor] || [])[i] || 0)), _CONV ? ((_CONV.atendidos_por_asesor || {})[a.asesor] || 0) : '', a.sin_puesto || '']));
+  const mpv = a => { const p = _CONV && (_CONV.msj_por_venta || {})[a.asesor]; return p && p[1] ? Math.round(p[0] / p[1]) : ''; };
+  const filas = [['Asesor', 'Mediana (s)', 'P90 (s)', ...((FRANJAS || []).map(f => f.tag)), 'Respuestas', 'Sin autor', 'Mensajes enviados', 'Desde Kommo', 'Desde el celular',
+                  ...nombresConv, 'Clientes atendidos', ...(nombresConv.length ? ['Mensajes por ' + _singular(nombresConv[nombresConv.length - 1])] : []), 'Observación']]
+    .concat(_VEND.map(a => { const m = (_MSJ && _MSJ.por_asesor[a.asesor]) || [0, 0];
+      return [a.asesor, a.mediana_seg, a.p90_seg, ...(a.distribucion || []).map(x => x.count), a.total, a.por_canal || 0, m[0] + m[1], m[0], m[1],
+        ...nombresConv.map((_, i) => ((_CONV.por_asesor[a.asesor] || [])[i] || 0)), ...(nombresConv.length ? [(_CONV.atendidos_por_asesor || {})[a.asesor] || 0, mpv(a)] : []), a.sin_puesto || '']; }));
   const csv = '\ufeff' + filas.map(f => f.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -3516,6 +3570,7 @@ async function cargarDatos() {
     renderTendencia(d.tendencia);
     renderDonaPeriodo(d.metricas.distribucion, d.metricas.total);
     _CONV = d.convertidos || null;
+    _MSJ = d.mensajes || null;
     renderVendedores(d.por_asesor, d.metricas);
     renderCarga(d.por_asesor);
     pintarCaptionPeriodo();
