@@ -291,6 +291,11 @@
     .reparto-mini { display:flex; gap:2px; height:.55rem; width:9rem; margin-left:auto; }
     /* Reparto por franja: una linea pintada; el % y la franja al pasar el
        mouse (16/10). Los recuadros con numeros cargaban mucho la tabla. */
+    .ver-mas { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:10px; }
+    .ver-mas:empty { display:none; }
+    .ver-mas button { font:inherit; font-size:var(--t-chico); font-weight:600; color:var(--marca); background:none; border:1px solid var(--linea); border-radius:8px; padding:6px 14px; cursor:pointer; }
+    .ver-mas button:hover { background:var(--fondo-suave); }
+    .ver-mas span { font-size:var(--t-micro); color:var(--apagado); }
     .linea-rep { display:flex; gap:2px; width:120px; height:10px; margin-left:auto; cursor:help; }
     .linea-rep > i { display:block; height:100%; min-width:3px; }
     .linea-rep > i:first-child { border-radius:4px 0 0 4px; } .linea-rep > i:last-child { border-radius:0 4px 4px 0; }
@@ -819,6 +824,7 @@
         </div>
       </div>
       <div id="tabla-asesores-ahora"></div>
+      <div class="ver-mas" id="mas-ahora"></div>
     </div>
     </div>
 
@@ -1002,17 +1008,13 @@
         <button type="button" class="btn-sec" onclick="descargarVendedores()">Descargar Excel</button>
       </div>
       <div class="tabla-scroll"><table class="tabla-vend" id="tabla-vendedores"></table></div>
-      <!-- A quien se le cuenta cada respuesta (reunion del 31/08). Describe la
-           regla REAL de asesor_de_registro: si cambia una, cambia la otra. -->
-      <div class="mt-3 pt-3 border-t border-slate-100 t-micro text-slate-500 lh-corto">
-        Cada respuesta se cuenta, en este orden: al <strong>campo Asesor</strong> del lead; si está vacío, a <strong>quien la mandó</strong> desde el CRM; si Kommo no dice quién (respuestas desde el celular), al <strong>responsable</strong> del lead —son los mensajes "desde el celular"—; y sin ninguno, queda como <em>Sin asignar</em>. Las del bot van al bot.
-      </div>
+      <div class="ver-mas" id="mas-vendedores"></div>
     </div>
 
     <div class="grid-dos iguales">
       <div class="card">
         <div class="cab-card"><div><h2 class="section-title">Velocidad y carga de trabajo</h2>
-          <div class="section-sub">Cada punto es un asesor</div></div></div>
+          <div class="section-sub" id="sub-carga">Cada punto es un asesor</div></div></div>
         <svg class="graf" id="carga" viewBox="0 0 520 330" role="img" aria-label="Mediana de respuesta contra cantidad de respuestas por asesor"></svg>
       </div>
       <!-- Solo las mas lentas. El titulo dice que son del PERIODO y que ya
@@ -1713,10 +1715,13 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   const lista = Object.values(filas);
   if (lista.length === 0) {
     el.innerHTML = '<div class="t-chico text-slate-500 text-center py-4">Sin leads ahora mismo</div>';
+    _botonVerMas('mas-ahora', 'ahora', 0);
     return;
   }
   lista.sort((a, b) => b.criticos - a.criticos || b.sin_responder - a.sin_responder
                     || a.asesor.localeCompare(b.asesor));
+  _botonVerMas('mas-ahora', 'ahora', lista.length, 'los que tienen más críticos primero', pintarDetalleAsesores);
+  if (!_ABIERTA.ahora) lista.splice(FILAS_RECOGIDAS);
 
   // Los encabezados de las dos columnas que vienen del snapshot llevan el
   // MISMO icono que su tarjeta de arriba (reunion del 31/08): el signo de
@@ -3111,6 +3116,21 @@ document.addEventListener('click', e => { const b = e.target.closest && e.target
 document.addEventListener('focusout', e => { if (e.target.closest && e.target.closest('[data-msj]')) document.getElementById('tip').classList.add('hidden'); });
 
 let _CONV = null, _MSJ = null;
+// Las dos tablas de asesores muestran las primeras 8 filas (16/10): en las
+// cuentas grandes, como Camara China, eran 30 filas y empujaban todo hacia
+// abajo. Las primeras son las que importan (mas criticos, mas lentos); el
+// boton abre el resto. Cada tabla recuerda si se abrio mientras dure la pagina.
+const FILAS_RECOGIDAS = 8;
+const _ABIERTA = { ahora: false, vend: false };
+function _botonVerMas(id, clave, total, orden, redibujar) {
+  const el = document.getElementById(id); if (!el) return;
+  if (total <= FILAS_RECOGIDAS) { el.innerHTML = ''; return; }
+  el.innerHTML = _ABIERTA[clave]
+    ? `<button type="button" aria-expanded="true">Ver menos ▴</button>`
+    : `<span>${FILAS_RECOGIDAS} de ${total} · ${orden}</span><button type="button" aria-expanded="false">Ver los ${total} ▾</button>`;
+  el.querySelector('button').onclick = () => { _ABIERTA[clave] = !_ABIERTA[clave]; redibujar(); };
+}
+let _ULT_VEND = null;
 const _EXPLICA = {
   med: 'data-tip data-tip-label="Mediana" data-tip-detalle="la mitad de los clientes recibió respuesta en menos de este tiempo"',
   p90: 'data-tip data-tip-label="P90" data-tip-detalle="9 de cada 10 clientes recibieron respuesta en menos de este tiempo"',
@@ -3129,6 +3149,7 @@ function _mpvCel(par, quien) {
 // nombre con su cambio y su evolucion. Despues la carga de trabajo y al final
 // los resultados. Se lee de corrido: "es lento, tiene mucha carga, vende bien".
 function renderVendedores(porAsesor, metricas) {
+  _ULT_VEND = [porAsesor, metricas];
   const tabla = document.getElementById('tabla-vendedores');
   const personas = (porAsesor || []).filter(a => !a.sin_puesto).sort((a, b) => b.mediana_seg - a.mediana_seg);
   const resto = (porAsesor || []).filter(a => a.sin_puesto);
@@ -3146,13 +3167,16 @@ function renderVendedores(porAsesor, metricas) {
   const cambioEquipo = () => { const a = _ANT && _ANT.metricas && _ANT.metricas.total ? _ANT.metricas : null;
     return a ? _cambioAsesor({ asesor: '__equipo__', mediana_seg: metricas.mediana_seg, _antes: a.mediana_seg }) : ''; };
   const columnas = 8 + (nConv ? nConv + 1 : 0);
+  const todas = personas.map(a => fila(a, false)).concat(resto.map(a => fila(a, true)));
+  const filasHtml = _ABIERTA.vend ? todas : todas.slice(0, FILAS_RECOGIDAS);
+  _botonVerMas('mas-vendedores', 'vend', todas.length, 'los más lentos primero', () => renderVendedores(..._ULT_VEND));
   const grupo = (txt, n, tip) => `<th class="grupo-conv" colspan="${n}">${tip ? `<span class="th-info" data-tip data-tip-label="${txt}" data-tip-detalle="${tip}">${txt}</span>` : txt}</th>`;
   tabla.innerHTML = '<thead><tr><th></th>' + grupo('Velocidad', 5) + grupo('Carga de trabajo', 2)
     + (nConv ? grupo('Convertidos', nConv + 1, 'leads que llegaron en el periodo a la etapa de conversión del embudo, sin importar cuándo entraron; debajo, la tasa sobre los clientes atendidos') : '') + '</tr>'
     + `<tr><th class="izq">Asesor</th><th><span class="th-info" ${_EXPLICA.med}>Mediana</span> ▾</th><th>Cambio</th><th>Últimas 2 semanas</th><th><span class="th-info" ${_EXPLICA.p90}>P90</span></th><th>Reparto por franja</th>`
     + `<th>Respuestas</th><th><span class="th-info" data-tip data-tip-label="Mensajes enviados" data-tip-detalle="todos los que mandó en el periodo, no solo las respuestas; pasa el mouse por el número para ver cuántos salieron desde Kommo y cuántos desde el celular">Mensajes enviados</span></th>`
     + (nConv ? _CONV.nombres.map(n => `<th>${n}</th>`).join('') + `<th>Mensajes<br>por ${_singular(_CONV.nombres[nConv - 1])}</th>` : '') + '</tr></thead><tbody>'
-    + (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || `<tr><td colspan="${columnas}" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>`)
+    + (filasHtml.join('') || `<tr><td colspan="${columnas}" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>`)
     + (personas.length > 1 && metricas && metricas.total ? `<tr class="equipo"><td class="izq">Equipo</td><td>${pill(metricas.mediana_seg)}</td><td>${cambioEquipo()}</td>
       <td class="spark-cel">${_sparkAsesor(_SERIE_EQUIPO)}</td><td>${fmtSeg(metricas.p90_seg)}</td><td>${_lineaRep(metricas.distribucion)}</td>
       <td>${metricas.total.toLocaleString('es')}</td><td>${_msjCel(_MSJ ? _MSJ.total : null)}</td>
@@ -3175,36 +3199,92 @@ function descargarVendedores() {
 }
 
 // Velocidad y carga: lento con mucha carga necesita apoyo; lento con poca,
-// revisar como trabaja. Cuadrantes por el objetivo y la carga media.
+// revisar como trabaja. Cuadrantes por el objetivo y la carga tipica.
+//
+// Con muchos asesores era ilegible (Camara China, 16/10): un usuario
+// compartido con diez veces la carga del resto aplastaba a todos contra el
+// eje, y los 30 nombres se encimaban. Ahora:
+//   - el eje llega hasta el grueso del equipo; quien se pasa queda en el
+//     borde, como anillo, con su numero real;
+//   - la linea vertical es la carga TIPICA (mediana): el promedio lo
+//     arrastraba ese mismo usuario;
+//   - un nombre se escribe solo si entra sin pisar otro, empezando por los
+//     mas lentos; el resto se ve al pasar el mouse.
 function renderCarga(porAsesor) {
   const svg = document.getElementById('carga'); svg.innerHTML = '';
-  const W = 520, H = 330, m = { l: 48, r: 12, t: 18, b: 40 };
+  const W = 520, H = 330, m = { l: 48, r: 14, t: 20, b: 40 };
   const filas = (porAsesor || []).filter(a => !a.sin_puesto);
   if (!filas.length) { _s('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle' }, svg, 'Sin asesores con respuestas suficientes'); return; }
   const obj = OBJETIVO ? OBJETIVO / 60 : 5;
-  const xMax = Math.max(10, Math.ceil(Math.max(...filas.map(f => f.total)) * 1.15 / 10) * 10);
+  const cargas = filas.map(f => f.total).sort((a, b) => a - b);
+  const p85 = cargas[Math.floor(.85 * (cargas.length - 1))];
+  let tope = cargas[cargas.length - 1];
+  if (cargas.length >= 6 && tope > p85 * 2.5) tope = p85 * 1.4;
+  const xMax = Math.max(10, Math.ceil(tope * 1.1 / 10) * 10);
   const yMax = Math.max(obj * 2, Math.ceil(Math.max(...filas.map(f => f.mediana_seg / 60)) / 5) * 5);
-  const x = v => m.l + v / xMax * (W - m.l - m.r), y = v => m.t + (1 - Math.min(v, yMax) / yMax) * (H - m.t - m.b);
-  const media = filas.reduce((t, a) => t + a.total, 0) / filas.length;
-  [[0, media, obj, yMax, 'Revisar cómo trabaja', 'var(--franja-2-fondo)'], [media, xMax, obj, yMax, 'Necesita apoyo', 'var(--franja-3-fondo)'],
-   [0, media, 0, obj, 'Bien', 'var(--fondo-suave)'], [media, xMax, 0, obj, 'Referente', 'var(--franja-0-fondo)']].forEach(([x0, x1, y0, y1, t, c]) => {
+  const x = v => m.l + Math.min(v, xMax) / xMax * (W - m.l - m.r), y = v => m.t + (1 - Math.min(v, yMax) / yMax) * (H - m.t - m.b);
+  const tipica = _medianaDe(cargas);
+  const ocupados = [];
+  const choca = r => r.x0 < m.l || r.x1 > W - 2 || r.y0 < m.t - 2 || r.y1 > H - m.b
+    || ocupados.some(o => r.x0 < o.x1 && r.x1 > o.x0 && r.y0 < o.y1 && r.y1 > o.y0);
+  // Ancho real del texto; si el grafico todavia no se ve (0), una estimacion.
+  const ancho = (t, px, estilo) => { const e = _s('text', { x: 0, y: -50, style: estilo }, svg, t);
+    const w = e.getComputedTextLength ? e.getComputedTextLength() : 0; e.remove(); return w || t.length * px; };
+  const EST_CUAD = 'font-weight:700;font-size:11px;letter-spacing:.03em', EST_NOM = 'font-weight:600;font-size:12px;fill:var(--tinta)';
+  const rotulos = [];
+  [[0, tipica, obj, yMax, 'Revisar cómo trabaja', 'var(--franja-2-fondo)'], [tipica, xMax, obj, yMax, 'Necesita apoyo', 'var(--franja-3-fondo)'],
+   [0, tipica, 0, obj, 'Bien', 'var(--fondo-suave)'], [tipica, xMax, 0, obj, 'Referente', 'var(--franja-0-fondo)']].forEach(([x0, x1, y0, y1, t, c]) => {
     _s('rect', { x: x(x0), y: y(y1), width: Math.max(0, x(x1) - x(x0)), height: Math.max(0, y(y0) - y(y1)), fill: c, 'fill-opacity': .6 }, svg);
-    _s('text', { x: x0 ? x(x1) - 8 : x(x0) + 8, y: y1 === yMax ? y(y1) + 16 : y(y0) - 8, 'text-anchor': x0 ? 'end' : 'start', style: 'font-weight:700;font-size:11px;letter-spacing:.03em' }, svg, t.toUpperCase());
+    // El rotulo del cuadrante solo si entra en el cuadrante; se escribe
+    // despues de los nombres de quienes se salen del eje (ver mas abajo).
+    const w = ancho(t.toUpperCase(), 7.4, EST_CUAD), arriba = y1 === yMax, tx = x0 ? x(x1) - 8 : x(x0) + 8, ty = arriba ? y(y1) + 16 : y(y0) - 8;
+    if (x(x1) - x(x0) < w + 16) return;
+    rotulos.push({ t, tx, ty, anchor: x0 ? 'end' : 'start', caja: { x0: x0 ? tx - w : tx, x1: x0 ? tx : tx + w, y0: ty - 11, y1: ty + 3 } });
   });
   [0, obj, yMax].forEach(v => _s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === obj ? `fill:${_colorF(0)};font-weight:700` : '' }, svg, v ? fmtSeg(Math.round(v * 60)) : '0'));
   [0, xMax / 3, xMax * 2 / 3, xMax].forEach(v => _s('text', { x: x(v), y: H - m.b + 16, 'text-anchor': 'middle' }, svg, Math.round(v).toLocaleString('es')));
   _s('text', { x: (m.l + W - m.r) / 2, y: H - 6, 'text-anchor': 'middle' }, svg, 'respuestas en el periodo (carga) →');
   _s('line', { x1: m.l, x2: W - m.r, y1: y(obj), y2: y(obj), stroke: _colorF(0), 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
-  _s('line', { x1: x(media), x2: x(media), y1: m.t, y2: H - m.b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, svg);
-  _s('text', { x: x(media), y: m.t - 4, 'text-anchor': 'middle', style: 'font-size:10px' }, svg, 'carga media');
-  filas.forEach(a => {
-    const cx = x(a.total), cy = y(a.mediana_seg / 60);
-    _s('circle', { cx, cy, r: 7, fill: 'var(--tinta)', stroke: '#fff', 'stroke-width': 2 }, svg);
-    const hit = _s('circle', { cx, cy, r: 14, fill: 'transparent', style: 'cursor:help' }, svg);
-    hit.addEventListener('mousemove', ev => mostrarTipSimple(ev, fmtSeg(a.mediana_seg), `${a.asesor} · la mitad de sus clientes, en menos de eso · ${a.total} respuestas`));
+  _s('line', { x1: x(tipica), x2: x(tipica), y1: m.t, y2: H - m.b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, svg);
+  _s('text', { x: x(tipica), y: m.t - 6, 'text-anchor': 'middle', style: 'font-size:10px' }, svg, 'carga típica');
+
+  const r = filas.length > 12 ? 5 : 7;
+  const puntos = filas.map(a => ({ a, cx: x(a.total), cy: y(a.mediana_seg / 60), fuera: a.total > xMax }));
+  puntos.forEach(p => ocupados.push({ x0: p.cx - r - 1, x1: p.cx + r + 1, y0: p.cy - r - 1, y1: p.cy + r + 1 }));
+  // Primero los que se salen del eje (su numero es lo unico que lo explica),
+  // despues los mas lentos, que son los que el supervisor busca.
+  let sinNombre = 0;
+  const orden = [...puntos].sort((p, q) => q.fuera - p.fuera || q.a.mediana_seg - p.a.mediana_seg || q.a.total - p.a.total);
+  const nombrar = p => {
+    const t = p.fuera ? `${p.a.asesor} · ${p.a.total.toLocaleString('es')} →` : p.a.asesor, w = ancho(t, 6.9, EST_NOM), h = 17;
+    const lugares = [
+      { x0: p.cx + r + 4, y0: p.cy - h / 2, anchor: 'start' }, { x0: p.cx - r - 4 - w, y0: p.cy - h / 2, anchor: 'end' },
+      { x0: p.cx - w / 2, y0: p.cy - r - 3 - h, anchor: 'middle' }, { x0: p.cx - w / 2, y0: p.cy + r + 3, anchor: 'middle' },
+      { x0: p.cx - r - 2 - w, y0: p.cy - r - h, anchor: 'end' }, { x0: p.cx + r + 2, y0: p.cy - r - h, anchor: 'start' },
+      { x0: p.cx - r - 2 - w, y0: p.cy + r, anchor: 'end' }, { x0: p.cx + r + 2, y0: p.cy + r, anchor: 'start' }];
+    // Quien se sale del eje esta en el borde, entre los de mucha carga: si no
+    // entra al lado, se sube o se baja a la izquierda y se une con una linea.
+    if (p.fuera) for (let k = 1; k <= 8; k++) for (const dy of [-k * 18, k * 18])
+      lugares.push({ x0: p.cx - r - 10 - w, y0: p.cy - h / 2 + dy, anchor: 'end', guia: true });
+    const ok = lugares.map(l => ({ ...l, x1: l.x0 + w, y1: l.y0 + h })).find(l => !choca(l));
+    if (!ok) { sinNombre++; return; }
+    ocupados.push(ok);
+    const tx = ok.anchor === 'start' ? ok.x0 : ok.anchor === 'end' ? ok.x1 : (ok.x0 + ok.x1) / 2;
+    if (ok.guia) _s('line', { x1: ok.x1 + 3, y1: (ok.y0 + ok.y1) / 2, x2: p.cx - r, y2: p.cy, stroke: 'var(--apagado)', 'stroke-width': 1 }, svg);
+    _s('text', { x: tx, y: ok.y1 - 4, 'text-anchor': ok.anchor, style: EST_NOM }, svg, t);
+  };
+  orden.filter(p => p.fuera).forEach(nombrar);
+  rotulos.forEach(q => { if (choca(q.caja)) return; ocupados.push(q.caja);
+    _s('text', { x: q.tx, y: q.ty, 'text-anchor': q.anchor, style: EST_CUAD }, svg, q.t.toUpperCase()); });
+  orden.filter(p => !p.fuera).forEach(nombrar);
+  document.getElementById('sub-carga').textContent = 'Cada punto es un asesor'
+    + (sinNombre ? ` · pasa el mouse por los ${sinNombre} que no tienen nombre` : '');
+  puntos.forEach(p => {
+    _s('circle', p.fuera ? { cx: p.cx, cy: p.cy, r, fill: '#fff', stroke: 'var(--tinta)', 'stroke-width': 2.5 }
+                         : { cx: p.cx, cy: p.cy, r, fill: 'var(--tinta)', stroke: '#fff', 'stroke-width': 2 }, svg);
+    const hit = _s('circle', { cx: p.cx, cy: p.cy, r: Math.max(12, r + 6), fill: 'transparent', style: 'cursor:help' }, svg);
+    hit.addEventListener('mousemove', ev => mostrarTipSimple(ev, p.a.asesor, `la mitad de sus clientes, en menos de ${fmtSeg(p.a.mediana_seg)} · ${p.a.total.toLocaleString('es')} respuestas`));
     hit.addEventListener('mouseleave', ocultarTipSimple);
-    const izq = cx > W * .62;
-    _s('text', { x: cx + (izq ? -12 : 12), y: cy + 4, 'text-anchor': izq ? 'end' : 'start', style: 'font-weight:600;font-size:12px;fill:var(--tinta)' }, svg, a.asesor);
   });
 }
 
