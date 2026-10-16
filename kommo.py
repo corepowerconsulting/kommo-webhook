@@ -4750,6 +4750,29 @@ OTROS = 'Otros'
 # al total.
 MAX_SERIES_TENDENCIA = 5
 
+# Respuestas minimas para pintar una celda del mapa de dia y hora.
+MIN_MUESTRA_MAPA = 3
+
+def _resumen_anterior(registros, rango, franjas, tz_offset):
+    """Las cifras del periodo anterior para comparar (16/10). Sin los leads
+    de cada franja: solo hacen falta los numeros. None si no hay periodo
+    anterior medible (cae antes del corte o el rango no esta definido)."""
+    if registros is None or rango is None:
+        return None
+    persona = [r for r in registros if not r.get('respondio_auto')]
+    metricas = _calc_metricas(persona, franjas, tz_offset)
+    for f in metricas['distribucion']:
+        f.pop('leads', None)
+    grupos = defaultdict(list)
+    for r in registros:
+        grupos[asesor_de_registro(r) or SIN_ASIGNAR].append(r['efectivo_seg'])
+    return {
+        'desde': _ts_to_local(rango[0], tz_offset).strftime('%Y-%m-%d'),
+        'hasta': _ts_to_local(rango[1], tz_offset).strftime('%Y-%m-%d'),
+        'metricas': metricas,
+        'por_asesor': {n: {'mediana_seg': _pctl(v, 50), 'total': len(v)} for n, v in grupos.items()},
+    }
+
 def _calc_por_asesor(registros, franjas):
     """Ranking de asesores por MEDIANA, no por promedio.
 
@@ -5753,6 +5776,11 @@ def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
         # incluye lo viejo inflaria la diferencia.
         'no_respondidos': len(_separar_antiguos(est['no_respondidos'])[0]),
         'trabajados_hoy': len(est['trabajados_hoy']) + len(est['atendidos_solo_bot']),
+        # Para la columna "vs el otro dia" de Detalle por asesor (16/10): cuantos
+        # atendio cada uno ese dia, con el mismo nombre que muestra la tabla.
+        'atendidos_por_asesor': dict(Counter(l.get('asesor') or SIN_ASIGNAR
+                                             for l in est['trabajados_hoy'])),
+        'atendidos_solo_bot': len(est['atendidos_solo_bot']),
     }
 
 def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_ids=None,
@@ -6375,6 +6403,23 @@ def pulse_data():
             embudos_sel, etapas_sel)
         _marca('registros_mensajes')
 
+        # El periodo anterior, de la misma duracion y con los mismos filtros
+        # (16/10): cada cifra del tablero se compara contra el. Sale SOLO de
+        # los mensajes —no de los campos de Kommo—, asi que si ese periodo cae
+        # antes del corte de la cuenta no se compara contra nada: el tablero
+        # dice "sin datos del periodo anterior". Es barato: los turnos ya
+        # estan armados y solo se filtran por otras fechas.
+        registros_antes, rango_antes = None, None
+        if corte and desde_ts is not None and hasta_ts is not None:
+            largo = hasta_ts - desde_ts + 1
+            if desde_ts - largo >= corte:
+                rango_antes = (desde_ts - largo, desde_ts - 1)
+                registros_antes = _registros_de_mensajes(
+                    c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
+                    fuera_horario, rango_antes[0], rango_antes[1], asesor_ids,
+                    asesores_nombre, embudos_sel, etapas_sel)
+        _marca('periodo_anterior')
+
         # Lo que se ofrece en el selector: solo embudos con leads de verdad.
         lista_embudos = _embudos_con_leads(c, subdomain)
         _marca('embudos')
@@ -6512,6 +6557,12 @@ def pulse_data():
         # los mismos datos. Quien comparaba los dos numeros veia una diferencia
         # de horas y concluia que uno estaba roto. El promedio se sigue mandando
         # para el tooltip, donde ver los dos juntos si informa.
+        def _por_franja(segs):
+            cuenta = [0] * len(franjas)
+            for x in segs:
+                cuenta[_get_franja_idx(x, franjas)] += 1
+            return cuenta
+
         tendencia = [
             {
                 'fecha':      dia,
@@ -6519,8 +6570,36 @@ def pulse_data():
                 'promedio_seg': round(sum(v) / len(v)),
                 'promedio_h': round(sum(v) / len(v) / 3600, 1),
                 'total':      len(v),
+                # Para las mini tendencias de las cifras (16/10): el p90 y el
+                # reparto por franja de cada dia.
+                'p90_seg':    _pctl(v, 90),
+                'franjas':    _por_franja(v),
             }
             for dia, v in dias_ordenados
+        ]
+
+        # Mediana diaria de cada asesor en los ultimos 14 dias del periodo,
+        # para la columna "Ultimas 2 semanas" (16/10). None cuando ese dia no
+        # respondio: la linea queda cortada en vez de bajar a cero. El bot va
+        # incluido porque tambien tiene su fila en la tabla.
+        dias_serie = [dia for dia, _ in dias_ordenados][-14:]
+        serie_asesor = defaultdict(lambda: defaultdict(list))
+        for r in registros:
+            dia = _ts_to_local(r['inicio_espera'], tz_offset).strftime('%Y-%m-%d')
+            if dia in dias_serie:
+                serie_asesor[asesor_de_registro(r) or SIN_ASIGNAR][dia].append(r['efectivo_seg'])
+
+        # Cuando nos demoramos (16/10): mediana por dia de la semana y hora de
+        # llegada del cliente. Es lo que sirve para decidir turnos. Solo las
+        # celdas con al menos MIN_MUESTRA_MAPA respuestas: con dos, la mediana
+        # es suerte y pintaria un falso rojo.
+        celdas = defaultdict(list)
+        for r in registros_persona:
+            local = _ts_to_local(r['inicio_espera'], tz_offset)
+            celdas[(local.weekday(), local.hour)].append(r['efectivo_seg'])
+        mapa_horas = [
+            {'d': d_, 'h': h_, 'mediana_seg': _pctl(v, 50), 'n': len(v)}
+            for (d_, h_), v in sorted(celdas.items()) if len(v) >= MIN_MUESTRA_MAPA
         ]
 
         tendencia_por_asesor = None
@@ -6626,6 +6705,9 @@ def pulse_data():
                 # porque el numero de esos dias seria falso.
                 'dias_parciales': sorted(dias_parciales(subdomain, conn)),
                 'modo':        'fuera_horario' if fuera_horario else 'laboral',
+                # Para el mapa de dia y hora: que celdas son fuera de horario.
+                'horario':     [h_ini, h_fin],
+                'dias_laborables': sorted(dias_lab),
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
                 # Solo para explicar una lista vacia en pantalla.
                 'min_respuestas_extremos': MIN_RESPUESTAS_EXTREMOS,
@@ -6658,7 +6740,13 @@ def pulse_data():
             # entera: al filtrar por una persona desaparecia su mediana y su
             # p90, que es justo lo que uno quiere ver de esa persona. Con un
             # solo responsable devuelve una fila.
-            'por_asesor':    _calc_por_asesor(registros, franjas),
+            'por_asesor':    [dict(a, serie=[_pctl(serie_asesor[a['asesor']][dia], 50)
+                                             if serie_asesor[a['asesor']].get(dia) else None
+                                             for dia in dias_serie])
+                              for a in _calc_por_asesor(registros, franjas)],
+            'serie_dias':    dias_serie,
+            'mapa_horas':    mapa_horas,
+            'anterior':      _resumen_anterior(registros_antes, rango_antes, franjas, tz_offset),
             'no_respondidos': no_respondidos,
             'no_respondidos_antiguos': bloque['no_respondidos_antiguos'],
             'dias_reciente': bloque['dias_reciente'],

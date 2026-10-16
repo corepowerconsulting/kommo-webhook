@@ -195,6 +195,36 @@
     .chip-at:hover { border-color:var(--apagado); }
     .chip-at[aria-pressed="true"] { background:var(--tinta); color:#fff; border-color:var(--tinta); }
     .aviso-bot { margin:0 0 .6rem; padding:.45rem .75rem; border-radius:10px; background:var(--franja-1-fondo); color:var(--franja-1-texto); font-size:var(--t-micro); font-weight:var(--p-medio); }
+    /* --- Etapa 2 (16/10): comparaciones, frases y mapa -------------------- */
+    .resumen-sup { display:grid; grid-template-columns:repeat(3, 1fr); padding:0 !important; }
+    .resumen-sup.n1 { grid-template-columns:1fr; } .resumen-sup.n2 { grid-template-columns:1fr 1fr; }
+    .rs-item { display:flex; gap:.75rem; padding:1rem 1.4rem; align-items:flex-start; }
+    .rs-item + .rs-item { border-left:1px solid var(--linea); }
+    .rs-item b { display:block; color:var(--tinta); font-size:var(--t-chico); font-weight:var(--p-fuerte); }
+    .rs-item span.rs-txt { display:block; color:var(--apagado); font-size:var(--t-micro); margin-top:2px; }
+    .rs-ico { flex:none; width:1.65rem; height:1.65rem; border-radius:8px; display:grid; place-items:center; font-weight:var(--p-fuerte); font-size:.8rem; }
+    .rs-ico.mejor { background:var(--franja-0-fondo); color:var(--franja-0-texto); }
+    .rs-ico.peor { background:var(--franja-3-fondo); color:var(--franja-3-texto); }
+    .rs-ico.neutro { background:var(--carril); color:var(--texto); }
+    .vs-ant { margin-top:auto; padding-top:.7rem; border-top:1px solid var(--linea); display:grid; gap:3px; min-height:2.6rem; }
+    .vs-ant:empty { display:none; }
+    .vs-rot { font-size:.72rem; color:var(--apagado); }
+    .vs-val { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:var(--t-micro); color:var(--texto); }
+    .delta-p { display:inline-flex; align-items:center; gap:4px; font-weight:var(--p-fuerte); padding:1px 7px; border-radius:6px; font-size:.72rem; white-space:nowrap; }
+    .delta-p.mejor { background:var(--franja-0-fondo); color:var(--franja-0-texto); }
+    .delta-p.peor { background:var(--franja-3-fondo); color:var(--franja-3-texto); }
+    .delta-p.igual { background:var(--carril); color:var(--apagado); }
+    .hallazgo { margin:0 0 .7rem; color:var(--tinta); font-size:var(--t-chico); font-weight:var(--p-medio); }
+    .mapa { display:grid; grid-template-columns:2.6rem repeat(var(--horas, 12), minmax(0, 1fr)); gap:4px; }
+    .mapa .mh { text-align:center; font-size:var(--t-micro); color:var(--apagado); }
+    .mapa .md { font-size:var(--t-micro); color:var(--apagado); font-weight:var(--p-medio); align-self:center; }
+    .mapa .mc { height:2rem; border-radius:6px; display:grid; place-items:center; font-size:var(--t-micro); font-weight:var(--p-fuerte); cursor:default; }
+    .mapa .mc.c0 { background:var(--franja-0-fondo); color:var(--franja-0-texto); } .mapa .mc.c1 { background:var(--franja-1-fondo); color:var(--franja-1-texto); }
+    .mapa .mc.c2 { background:var(--franja-2-fondo); color:var(--franja-2-texto); } .mapa .mc.c3 { background:var(--franja-3-fondo); color:var(--franja-3-texto); }
+    .mapa .mc.vacia { background:var(--fondo-suave); color:var(--otros); font-weight:var(--p-normal); }
+    .mapa .mc.fuera { background:repeating-linear-gradient(45deg, var(--carril), var(--carril) 4px, #fff 4px, #fff 8px); }
+    .leyenda-mapa { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:.75rem; font-size:var(--t-micro); color:var(--apagado); }
+    .spark-cel svg { display:block; margin-left:auto; }
     /* --- Parte del periodo, diseño aprobado (15/10) ------------------------ */
     /* Sin mayusculas, como el resto del tablero (01/10). */
     .grupo-eti { display:flex; align-items:center; gap:12px; margin:.6rem 0 -.6rem; font-size:var(--t-chico); font-weight:var(--p-fuerte);
@@ -873,29 +903,38 @@
          promedio lo dispara la cola de casos lentos y contradecia a la
          mediana, y el maximo es un solo caso, que ya esta en "Conversaciones
          mas lentas". -->
+    <!-- Lo importante del periodo en tres frases (16/10): el supervisor no
+         tiene que interpretar graficos para saber como le fue al equipo, quien
+         esta mas lento y quien mejoro. Se arman solas con reglas fijas. -->
+    <div class="card resumen-sup" id="resumen-periodo" hidden></div>
+
     <h3 class="grupo-eti">Cómo vamos</h3>
     <div class="card kpis-per">
       <!-- Primero el % dentro del objetivo: es la pregunta del supervisor
            (cuantos clientes atendimos a tiempo) y no la esconde la cola. -->
       <div class="kpi-tile principal">
         <span class="kpi-tile-lbl" id="lbl-ideal">Respondidas dentro del objetivo</span>
-        <div class="valor-fila"><span class="kpi-num-xl" id="k-ideal">—</span></div>
+        <div class="valor-fila"><span class="kpi-num-xl" id="k-ideal">—</span><span class="kspark" id="sp-ideal"></span></div>
         <div class="meta-barra"><span class="carril-meta"><i id="k-ideal-barra" style="width:0"></i></span><span class="t-micro text-slate-500" id="k-ideal-sub"></span></div>
+        <div class="vs-ant" id="k-ideal-ant"></div>
       </div>
       <div class="kpi-tile">
         <span class="kpi-tile-lbl" id="lbl-crit">Esperaron más de 30 min</span>
-        <div class="valor-fila"><span class="kpi-num" id="k-crit">—</span></div>
+        <div class="valor-fila"><span class="kpi-num" id="k-crit">—</span><span class="kspark" id="sp-crit"></span></div>
         <span class="t-micro text-slate-500" id="k-crit-sub"></span>
+        <div class="vs-ant" id="k-crit-ant"></div>
       </div>
       <div class="kpi-tile">
         <span class="kpi-tile-lbl" id="label-promedio">La mitad respondida en menos de</span>
         <div class="valor-fila"><span class="kpi-num" id="k-med">—</span><span class="kspark" id="sp-med"></span></div>
         <span id="k-med-sub"></span>
+        <div class="vs-ant" id="k-med-ant"></div>
       </div>
       <div class="kpi-tile">
         <span class="kpi-tile-lbl">9 de cada 10, en menos de</span>
-        <div class="valor-fila"><span class="kpi-num" id="k-p90">—</span></div>
+        <div class="valor-fila"><span class="kpi-num" id="k-p90">—</span><span class="kspark" id="sp-p90"></span></div>
         <span id="k-p90-sub"></span>
+        <div class="vs-ant" id="k-p90-ant"></div>
       </div>
     </div>
 
@@ -950,6 +989,17 @@
           <div class="section-sub" id="sub-extremos">Ya respondidas · clic para abrir el chat</div></div></div>
         <div id="tabla-extremos"></div>
       </div>
+    </div>
+
+    <h3 class="grupo-eti">Cuándo nos demoramos</h3>
+    <!-- Dia de la semana por hora de llegada del cliente (16/10). Es la unica
+         vista que ayuda a decidir turnos. Usa el mismo semaforo que el resto. -->
+    <div class="card">
+      <div class="cab-card"><div><h2 class="section-title">Día y hora</h2>
+        <div class="section-sub">Mediana de respuesta según el día y la hora en que escribió el cliente · para decidir turnos</div></div></div>
+      <p class="hallazgo" id="hallazgo"></p>
+      <div class="mapa" id="mapa"></div>
+      <div class="leyenda-mapa" id="leyenda-mapa"></div>
     </div>
 
   </div>
@@ -1604,6 +1654,10 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   };
   const filas = {};
   const fila = n => (filas[n] = filas[n] || { asesor: n, criticos: 0, sin_responder: 0, hoy: 0, peor: 0 });
+  // Atendidos del dia de comparacion, por asesor (16/10). Sale del mismo
+  // comparativo que las tarjetas de arriba.
+  const cmp = (typeof SNAP !== 'undefined' && SNAP && SNAP.comparado) || null;
+  const antesDe = n => !cmp ? null : n === SOLO_BOT ? (cmp.atendidos_solo_bot ?? null) : ((cmp.atendidos_por_asesor || {})[n] ?? 0);
   (noResp || []).forEach(l => {
     const f = fila(l.asesor || SIN_ASIGNAR_UI);
     f.sin_responder += 1;
@@ -1638,7 +1692,7 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   const num = (n, clase, estilo) => n
     ? `<div class="t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
     : `<div class="t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
-  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 9rem 7.5rem';
+  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 9rem 7.5rem 8.5rem';
   el.innerHTML = `
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
       ${cab('Asesor', '', true)}
@@ -1646,6 +1700,7 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
       ${cab('Sin responder', ICO_ALERTA)}
       ${cab('El que más espera')}
       ${cab('Atendidos hoy', ICO_CHECK)}
+      ${cab(cmp ? `vs ${fmtDiaCorto(cmp.fecha)}` : 'vs otro día')}
     </div>
     <div class="divide-y divide-slate-50">
       ${lista.map(f => {
@@ -1663,6 +1718,9 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
           ${num(f.sin_responder)}
           <div class="text-center">${f.peor ? `<span class="tag ${_TAGS[Math.min(_franjaDe(f.peor), 3)]}">${fmtSeg(f.peor)}</span>` : '<span class="text-slate-300">—</span>'}</div>
           ${num(f.hoy)}
+          <div class="text-center">${(() => { const a = antesDe(f.asesor); if (a == null) return '<span class="text-slate-300">—</span>';
+            const dd = f.hoy - a; return dd ? `<span class="delta-p ${dd > 0 ? 'mejor' : 'peor'}">${dd > 0 ? '▲' : '▼'} ${Math.abs(dd)}</span> <span class="t-micro text-slate-500">(${a})</span>`
+              : `<span class="t-micro text-slate-500">igual (${a})</span>`; })()}</div>
         </div>`;
       }).join('')}
     </div>`;
@@ -2982,13 +3040,17 @@ function renderVendedores(porAsesor, metricas) {
   };
   const crit = a => { const d = a.distribucion || []; const c = d[d.length - 1] || { pct: 0 }; return c.pct; };
   const fila = (a, apagada) => `<tr class="${apagada ? 'apagada' : ''}"><td class="izq nombre">${a.asesor}${a.sin_puesto ? `<span class="muestra-baja">${a.sin_puesto}</span>` : ''}</td>
-      <td>${resp(a)}</td><td>${pill(a.mediana_seg)}</td><td>${fmtSeg(a.p90_seg)}</td>
-      <td style="${!apagada && crit(a) >= 15 ? 'color:var(--franja-3-texto);font-weight:700' : ''}">${crit(a)}%</td><td>${tira(a.distribucion)}</td></tr>`;
+      <td>${resp(a)}</td><td>${pill(a.mediana_seg)}</td><td>${apagada ? '' : _cambioAsesor(a)}</td><td>${fmtSeg(a.p90_seg)}</td>
+      <td style="${!apagada && crit(a) >= 15 ? 'color:var(--franja-3-texto);font-weight:700' : ''}">${crit(a)}%</td><td>${tira(a.distribucion)}</td>
+      <td class="spark-cel">${_sparkAsesor(a.serie)}</td></tr>`;
   const ult = (FRANJAS[FRANJAS.length - 2] || {}).max_seg;
-  tabla.innerHTML = `<thead><tr><th class="izq">Asesor</th><th>Respuestas</th><th>La mitad, en menos de ▾</th><th>9 de cada 10, en menos de</th><th>Más de ${ult ? fmtSeg(ult) : '30m'}</th><th>Reparto por franja</th></tr></thead><tbody>` +
-    (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || '<tr><td colspan="6" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>') +
+  const cambioEquipo = () => { const a = _ANT && _ANT.metricas && _ANT.metricas.total ? _ANT.metricas : null;
+    return a ? _cambioAsesor({ asesor: '__equipo__', mediana_seg: metricas.mediana_seg, _antes: a.mediana_seg }) : ''; };
+  tabla.innerHTML = `<thead><tr><th class="izq">Asesor</th><th>Respuestas</th><th>La mitad, en menos de ▾</th><th>Cambio</th><th>9 de cada 10, en menos de</th><th>Más de ${ult ? fmtSeg(ult) : '30m'}</th><th>Reparto por franja</th><th>Últimas 2 semanas</th></tr></thead><tbody>` +
+    (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || '<tr><td colspan="8" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>') +
     (personas.length > 1 && metricas && metricas.total ? `<tr class="equipo"><td class="izq">Equipo</td><td>${metricas.total.toLocaleString('es')}</td><td>${pill(metricas.mediana_seg)}</td>
-      <td>${fmtSeg(metricas.p90_seg)}</td><td>${(metricas.distribucion[metricas.distribucion.length - 1] || {}).pct || 0}%</td><td>${tira(metricas.distribucion)}</td></tr>` : '') + '</tbody>';
+      <td>${cambioEquipo()}</td><td>${fmtSeg(metricas.p90_seg)}</td><td>${(metricas.distribucion[metricas.distribucion.length - 1] || {}).pct || 0}%</td><td>${tira(metricas.distribucion)}</td>
+      <td class="spark-cel">${_sparkAsesor(_SERIE_EQUIPO)}</td></tr>` : '') + '</tbody>';
 }
 // Excel: un CSV con separador ; y BOM, que Excel abre con acentos y columnas.
 function descargarVendedores() {
@@ -3039,6 +3101,135 @@ function pintarCaptionPeriodo() {
   const el = document.getElementById('per-caption'); if (!el) return;
   const d = document.getElementById('desde').value, h = document.getElementById('hasta').value;
   el.textContent = `${d === h ? _mesCorto(d) : `${_mesCorto(d)} – ${_mesCorto(h)}`} · ${MODO === 'fuera_horario' ? 'fuera de horario' : 'horario laboral'}`;
+}
+
+// ============================================================================
+// Etapa 2 (16/10): comparacion con el periodo anterior, frases, serie por
+// asesor y mapa de dia y hora. Todo sale de /pulse/data.
+// ============================================================================
+let _ANT = null;
+function _rotuloAnterior() {
+  if (!_ANT) return '';
+  return `vs ${_ANT.desde === _ANT.hasta ? _mesCorto(_ANT.desde) : `${_mesCorto(_ANT.desde)} – ${_mesCorto(_ANT.hasta)}`}`;
+}
+// Comparacion de una cifra con el periodo anterior. Con color solo cuando la
+// diferencia dice algo; si no, "igual".
+function _vsAnterior(antes, actual, fmtV, menosEsMejor, puntos) {
+  if (!_ANT) return '<span class="vs-rot">Sin datos del periodo anterior para comparar</span>';
+  if (antes == null) return '';
+  const d = actual - antes, mejor = menosEsMejor ? d < 0 : d > 0;
+  const chico = puntos ? Math.round(Math.abs(d)) === 0 : Math.abs(d) < 5;
+  const txt = chico ? 'igual'
+    : puntos ? `${d > 0 ? '▲' : '▼'} ${Math.round(Math.abs(d))} ${Math.round(Math.abs(d)) === 1 ? 'punto' : 'puntos'}`
+    : `${fmtSeg(Math.round(Math.abs(d)))} ${mejor ? 'mejor' : 'peor'}`;
+  return `<span class="vs-rot">${_rotuloAnterior()}</span><span class="vs-val">${fmtV(antes)}<span class="delta-p ${chico ? 'igual' : mejor ? 'mejor' : 'peor'}">${txt}</span></span>`;
+}
+function pintarComparacionPeriodo(d) {
+  _ANT = d.anterior || null;
+  const m = d.metricas, a = _ANT && _ANT.metricas && _ANT.metricas.total ? _ANT.metricas : null;
+  const ult = (m.distribucion || []).length - 1;
+  const pctDe = (mm, i) => mm.total ? Math.round(mm.distribucion[i].count / mm.total * 100) : 0;
+  const hay = m.total > 0;
+  const poner = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = hay ? html : ''; };
+  if (_ANT && !a) { ['k-ideal-ant', 'k-crit-ant', 'k-med-ant', 'k-p90-ant'].forEach(id => poner(id, '<span class="vs-rot">Sin respuestas en el periodo anterior</span>')); return; }
+  poner('k-ideal-ant', _vsAnterior(a ? pctDe(a, 0) : null, pctDe(m, 0), v => `${v}%`, false, true));
+  poner('k-crit-ant', _vsAnterior(a ? pctDe(a, ult) : null, pctDe(m, ult), v => `${v}%`, true, true));
+  poner('k-med-ant', _vsAnterior(a ? a.mediana_seg : null, m.mediana_seg, fmtSeg, true, false));
+  poner('k-p90-ant', _vsAnterior(a ? a.p90_seg : null, m.p90_seg, fmtSeg, true, false));
+  // Mini tendencias de las cifras, con los dias del periodo.
+  const t = (d.tendencia || []).filter(x => x.total > 0 && x.franjas).slice(-14);
+  document.getElementById('sp-ideal').innerHTML = _kspark(t.map(x => x.franjas[0] / x.total * 100));
+  document.getElementById('sp-crit').innerHTML = _kspark(t.map(x => x.franjas[x.franjas.length - 1] / x.total * 100));
+  document.getElementById('sp-p90').innerHTML = _kspark(t.map(x => x.p90_seg));
+}
+
+// Tres frases: el equipo, el mas lento y quien mas mejoro.
+function renderResumenPeriodo(d) {
+  const el = document.getElementById('resumen-periodo');
+  const items = [], m = d.metricas, a = _ANT && _ANT.metricas && _ANT.metricas.total ? _ANT.metricas : null;
+  const personas = (d.por_asesor || []).filter(x => !x.sin_puesto);
+  const antesDe = n => (_ANT && _ANT.por_asesor && _ANT.por_asesor[n] && _ANT.por_asesor[n].total >= (MIN_MUESTRA_UI || 10)) ? _ANT.por_asesor[n].mediana_seg : null;
+  if (m.total && a) {
+    const dd = m.mediana_seg - a.mediana_seg;
+    items.push(Math.abs(dd) < 5
+      ? ['neutro', '=', 'El equipo responde igual que antes', `La mitad de los clientes recibe respuesta en menos de ${fmtSeg(m.mediana_seg)}.`]
+      : [dd < 0 ? 'mejor' : 'peor', dd < 0 ? '▼' : '▲', `El equipo respondió ${fmtSeg(Math.abs(dd))} más ${dd < 0 ? 'rápido' : 'lento'}`,
+         `${fmtSeg(m.mediana_seg)} contra ${fmtSeg(a.mediana_seg)} del periodo anterior.`]);
+  }
+  if (personas.length > 1) {
+    const lento = [...personas].sort((x, y) => y.mediana_seg - x.mediana_seg)[0];
+    const ant = antesDe(lento.asesor), dl = ant != null ? lento.mediana_seg - ant : 0;
+    const crit = (lento.distribucion || [])[(lento.distribucion || []).length - 1] || { pct: 0 };
+    items.push(['peor', '!', `${lento.asesor} tiene el tiempo más alto${dl > 15 ? ` y empeoró ${fmtSeg(dl)}` : ''}`,
+      `La mitad de sus clientes espera más de ${fmtSeg(lento.mediana_seg)}. El ${crit.pct}% espera más de ${fmtSeg((FRANJAS[FRANJAS.length - 2] || {}).max_seg || 1800)}.`]);
+    const mejoras = personas.map(x => ({ x, ant: antesDe(x.asesor) })).filter(o => o.ant != null && o.x.mediana_seg < o.ant - 15)
+      .sort((p, q) => (p.x.mediana_seg - p.ant) - (q.x.mediana_seg - q.ant));
+    if (mejoras.length) { const o = mejoras[0];
+      items.push(['mejor', '★', `${o.x.asesor} es quien más mejoró`, `Bajó ${fmtSeg(o.ant - o.x.mediana_seg)} y responde a la mitad en menos de ${fmtSeg(o.x.mediana_seg)}.`]); }
+  }
+  el.hidden = !items.length;
+  el.className = `card resumen-sup n${Math.max(1, Math.min(3, items.length))}`;
+  el.innerHTML = items.map(([c, ico, b, t]) => `<div class="rs-item"><span class="rs-ico ${c}">${ico}</span><div><b>${b}</b><span class="rs-txt">${t}</span></div></div>`).join('');
+}
+let MIN_MUESTRA_UI = 10;
+let _SERIE_EQUIPO = [];
+
+// Mini linea de un asesor (ultimas 2 semanas), con la linea del objetivo.
+function _sparkAsesor(serie) {
+  const vals = (serie || []).map(v => v == null ? null : v / 60);
+  const conDato = vals.filter(v => v != null);
+  if (conDato.length < 2) return '<span class="text-slate-300">—</span>';
+  const W = 84, H = 30, obj = OBJETIVO ? OBJETIVO / 60 : 5, mx = Math.max(obj * 2, ...conDato);
+  const x = i => 2 + i * (W - 8) / (vals.length - 1), y = v => 3 + (1 - Math.min(v, mx) / mx) * (H - 6);
+  let d = '', abierto = false;
+  vals.forEach((v, i) => { if (v == null) { abierto = false; return; } d += `${abierto ? 'L' : 'M'}${x(i)},${y(v)} `; abierto = true; });
+  let u = vals.length - 1; while (u > 0 && vals[u] == null) u--;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    <line x1="2" x2="${W - 6}" y1="${y(obj)}" y2="${y(obj)}" stroke="${_colorF(0)}" stroke-width="1" stroke-dasharray="3 3"/>
+    <path d="${d}" fill="none" stroke="var(--apagado)" stroke-opacity=".6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(u)}" cy="${y(vals[u])}" r="3.5" fill="var(--marca)" stroke="#fff" stroke-width="1.5"/></svg>`;
+}
+function _cambioAsesor(a) {
+  if (!_ANT) return '<span class="text-slate-300">—</span>';
+  const p = a._antes != null ? { mediana_seg: a._antes, total: Infinity } : (_ANT.por_asesor && _ANT.por_asesor[a.asesor]);
+  if (!p || p.total < (MIN_MUESTRA_UI || 10)) return '<span class="t-micro text-slate-500">sin datos antes</span>';
+  const dd = a.mediana_seg - p.mediana_seg;
+  if (Math.abs(dd) < 15) return '<span class="t-micro text-slate-500">igual</span>';
+  return `<span class="delta-p ${dd < 0 ? 'mejor' : 'peor'}" title="${dd < 0 ? 'Mejoró' : 'Empeoró'} ${fmtSeg(Math.abs(dd))} (antes ${fmtSeg(p.mediana_seg)})">${dd < 0 ? '▼' : '▲'} ${fmtSeg(Math.abs(dd))}</span>`;
+}
+
+// Cuando nos demoramos: dia x hora, color = franja de la mediana.
+function renderMapaHoras(celdas, horario, diasLab) {
+  const el = document.getElementById('mapa'), hall = document.getElementById('hallazgo');
+  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  const [h0, h1] = horario && horario.length === 2 ? horario : [8, 18];
+  const horas = []; for (let h = Math.max(0, Math.min(h0, 23)); h < Math.min(24, Math.max(h1, h0 + 1)); h++) horas.push(h);
+  const dias = (diasLab && diasLab.length ? diasLab : [0, 1, 2, 3, 4]).slice().sort((a, b) => a - b);
+  const idx = {}; (celdas || []).forEach(c => { idx[`${c.d}-${c.h}`] = c; });
+  el.style.setProperty('--horas', horas.length);
+  el.innerHTML = `<span></span>${horas.map(h => `<span class="mh">${h}</span>`).join('')}` +
+    dias.map(d => `<span class="md">${DIAS[d]}</span>` + horas.map(h => {
+      const c = idx[`${d}-${h}`];
+      if (!c) return `<span class="mc vacia" title="${DIAS[d]} ${h}:00 · menos de 3 respuestas">·</span>`;
+      const f = Math.min(_franjaDe(c.mediana_seg), 3), min = Math.max(1, Math.round(c.mediana_seg / 60));
+      return `<span class="mc c${f}" tabindex="0" data-mapa="${c.mediana_seg}|${DIAS[d]} de ${h}:00 a ${h + 1}:00 · ${_tagF(f)} · ${c.n} respuestas">${min}</span>`;
+    }).join('')).join('');
+  el.querySelectorAll('[data-mapa]').forEach(c => {
+    const [seg, ctx] = c.dataset.mapa.split('|');
+    c.addEventListener('mousemove', ev => mostrarTipSimple(ev, fmtSeg(Number(seg)), ctx));
+    c.addEventListener('mouseleave', ocultarTipSimple);
+  });
+  document.getElementById('leyenda-mapa').innerHTML = (FRANJAS || []).map((f, i) => `<span class="tag ${_TAGS[Math.min(i, 3)]}">${f.tag}</span>`).join('') +
+    '<span>· el número es la mediana en minutos · punto: menos de 3 respuestas</span>';
+  // La frase de arriba: la peor hora con muestra suficiente.
+  const conDato = (celdas || []).filter(c => dias.includes(c.d) && horas.includes(c.h));
+  if (!conDato.length) { hall.textContent = 'Todavía no hay respuestas suficientes para ver patrones por hora.'; return; }
+  const peor = conDato.reduce((p, c) => c.mediana_seg > p.mediana_seg ? c : p);
+  const objetivo = (FRANJAS[0] || {}).max_seg || 300;
+  const fueraObj = conDato.filter(c => c.mediana_seg > objetivo).length;
+  hall.textContent = peor.mediana_seg > objetivo
+    ? `Lo más lento: el ${LARGOS[peor.d]} de ${peor.h} a ${peor.h + 1} h (${fmtSeg(peor.mediana_seg)}). ${fueraObj} de ${conDato.length} horas quedan fuera del objetivo.`
+    : 'Todas las horas con respuestas quedan dentro del objetivo.';
 }
 
 async function cargarDatos() {
@@ -3216,8 +3407,14 @@ async function cargarDatos() {
     // linea del grafico— pero ya no se explica con un renglon de texto.
     OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;
 
-    // Parte del periodo, diseño aprobado (15/10).
+    // Parte del periodo, diseño aprobado (15/10) y etapa 2 (16/10).
+    MIN_MUESTRA_UI = d.config.min_muestra_asesor || 10;
+    _ANT = d.anterior || null;
+    _SERIE_EQUIPO = (d.serie_dias || []).map(dia => { const t = (d.tendencia || []).find(x => x.fecha === dia); return t ? t.mediana_seg : null; });
     renderKpisPeriodo(d);
+    pintarComparacionPeriodo(d);
+    renderResumenPeriodo(d);
+    renderMapaHoras(d.mapa_horas, d.config.horario, d.config.dias_laborables);
     renderTendencia(d.tendencia);
     renderDonaPeriodo(d.metricas.distribucion, d.metricas.total);
     renderVendedores(d.por_asesor, d.metricas);
