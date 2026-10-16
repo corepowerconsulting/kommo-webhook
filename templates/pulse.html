@@ -284,6 +284,20 @@
     .ident.baja { color:var(--franja-1-texto); font-weight:var(--p-medio); cursor:help; }
     .muestra-baja { font-size:.72rem; color:var(--apagado); background:var(--carril); border-radius:5px; padding:1px 6px; margin-left:6px; font-weight:var(--p-medio); }
     .reparto-mini { display:flex; gap:2px; height:.55rem; width:9rem; margin-left:auto; }
+    /* Reparto por franja en recuadros iguales con su % (16/10): la vista va
+       al numero y no al largo de una barra. */
+    .cuadros4 { display:grid; gap:2px; justify-content:end; }
+    .cuadros4 > span { height:1.45rem; border-radius:5px; display:grid; place-items:center; font-size:.7rem; font-weight:800; cursor:help; }
+    .cuadros4 > span.vacio-q { background:var(--carril); color:var(--apagado); font-weight:500; cursor:default; }
+    .conv { display:grid; justify-items:end; line-height:1.2; }
+    .conv small { font-size:.68rem; color:var(--apagado); cursor:help; }
+    .tabla-vend th:empty { border-bottom:0; }
+    .tabla-vend th.grupo-conv { text-align:center; border-bottom:2px solid var(--linea); text-transform:uppercase; letter-spacing:.06em; font-size:.66rem; padding-bottom:3px; }
+    .th-info { border-bottom:1px dotted var(--apagado); cursor:help; }
+    .seg { display:inline-flex; background:var(--carril); border-radius:8px; padding:3px; gap:2px; }
+    .seg button { padding:5px 12px; border-radius:6px; font-size:var(--t-chico); color:var(--apagado); font-weight:600; border:0; background:none; cursor:pointer; }
+    .seg button[aria-pressed="true"] { background:#fff; color:var(--tinta); box-shadow:0 1px 2px rgba(15,23,42,.08); }
+    .mapa .mc.neutro { background:#fff; color:var(--tinta); border:1px solid var(--linea); }
     .reparto-mini > i { display:block; height:100%; min-width:2px; }
     .reparto-mini > i:first-child { border-radius:4px 0 0 4px; } .reparto-mini > i:last-child { border-radius:0 4px 4px 0; }
     .modal-fondo { position:fixed; inset:0; background:rgba(15,23,42,.35); display:grid; place-items:center; z-index:80; padding:20px; }
@@ -925,13 +939,13 @@
         <div class="vs-ant" id="k-crit-ant"></div>
       </div>
       <div class="kpi-tile">
-        <span class="kpi-tile-lbl" id="label-promedio">La mitad respondida en menos de</span>
+        <span class="kpi-tile-lbl"><span class="th-info" id="label-promedio" data-tip data-tip-label="Mediana" data-tip-detalle="la mitad de los clientes recibió respuesta en menos de este tiempo">Mediana</span></span>
         <div class="valor-fila"><span class="kpi-num" id="k-med">—</span><span class="kspark" id="sp-med"></span></div>
         <span id="k-med-sub"></span>
         <div class="vs-ant" id="k-med-ant"></div>
       </div>
       <div class="kpi-tile">
-        <span class="kpi-tile-lbl">9 de cada 10, en menos de</span>
+        <span class="kpi-tile-lbl"><span class="th-info" data-tip data-tip-label="P90" data-tip-detalle="9 de cada 10 clientes recibieron respuesta en menos de este tiempo">P90</span></span>
         <div class="valor-fila"><span class="kpi-num" id="k-p90">—</span><span class="kspark" id="sp-p90"></span></div>
         <span id="k-p90-sub"></span>
         <div class="vs-ant" id="k-p90-ant"></div>
@@ -977,8 +991,8 @@
 
     <div class="grid-dos iguales">
       <div class="card">
-        <div class="cab-card"><div><h2 class="section-title">Velocidad y carga</h2>
-          <div class="section-sub">Cada punto es un asesor: ¿le falta tiempo o le falta método?</div></div></div>
+        <div class="cab-card"><div><h2 class="section-title">Velocidad y carga de trabajo</h2>
+          <div class="section-sub">Cada punto es un asesor</div></div></div>
         <svg class="graf" id="carga" viewBox="0 0 520 330" role="img" aria-label="Mediana de respuesta contra cantidad de respuestas por asesor"></svg>
       </div>
       <!-- Solo las mas lentas. El titulo dice que son del PERIODO y que ya
@@ -995,8 +1009,11 @@
     <!-- Dia de la semana por hora de llegada del cliente (16/10). Es la unica
          vista que ayuda a decidir turnos. Usa el mismo semaforo que el resto. -->
     <div class="card">
+      <!-- Pedido de Luis (16/10): con la misma grilla, ver tambien si en esa
+           hora llego mucho o poco. -->
       <div class="cab-card"><div><h2 class="section-title">Día y hora</h2>
-        <div class="section-sub">Mediana de respuesta según el día y la hora en que escribió el cliente · para decidir turnos</div></div></div>
+        <div class="section-sub" id="sub-mapa">Mediana de respuesta según el día y la hora en que escribió el cliente · para decidir turnos</div></div>
+        <div class="seg" id="seg-mapa"><button type="button" data-v="mediana" aria-pressed="true">Mediana</button><button type="button" data-v="clientes" aria-pressed="false">Clientes por hora</button></div></div>
       <p class="hallazgo" id="hallazgo"></p>
       <div class="mapa" id="mapa"></div>
       <div class="leyenda-mapa" id="leyenda-mapa"></div>
@@ -1643,7 +1660,7 @@ function renderExtraLeads(containerId, leads) {
 const SOLO_BOT = 'Solo el bot';
 const SIN_ASIGNAR_UI = 'Sin asignar';
 
-function renderAsesoresAhora(noResp, trabajados, soloBot) {
+function renderAsesoresAhora(noResp, trabajados, soloBot, convDia) {
   const el = document.getElementById('tabla-asesores-ahora');
   const franjas = FRANJAS || [];
   const ultima = franjas.length - 1;
@@ -1668,6 +1685,14 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   });
   (trabajados || []).forEach(l => { fila(l.asesor || SIN_ASIGNAR_UI).hoy += 1; });
   if ((soloBot || []).length) fila(SOLO_BOT).hoy += soloBot.length;
+  // Convertidos del dia (16/10): llegan como leads sueltos y pasan por el
+  // mismo filtro de la tabla, asi que suman con el mismo criterio.
+  const nConv = convDia ? convDia.nombres.length : 0;
+  (convDia ? convDia.leads : []).forEach(l => {
+    const f = fila(l.asesor || SIN_ASIGNAR_UI);
+    f.conv = f.conv || Array(nConv).fill(0);
+    f.conv[l.conv] += 1;
+  });
 
   const lista = Object.values(filas);
   if (lista.length === 0) {
@@ -1692,15 +1717,18 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   const num = (n, clase, estilo) => n
     ? `<div class="t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
     : `<div class="t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
-  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 9rem 7.5rem 8.5rem';
+  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 9rem 7.5rem 8.5rem' + ' 6.5rem'.repeat(nConv);
   el.innerHTML = `
+    ${nConv ? `<div class="grid items-center gap-3 px-2" style="${cols}"><div style="grid-column:7 / span ${nConv}" class="t-micro font-bold text-slate-500 text-center uppercase tracking-wider border-b-2 border-slate-100 pb-0.5"
+      data-tip data-tip-label="Convertidos" data-tip-detalle="leads que llegaron este día a la etapa de conversión del embudo">Convertidos</div></div>` : ''}
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
       ${cab('Asesor', '', true)}
       ${cab('Críticos')}
       ${cab('Sin responder', ICO_ALERTA)}
-      ${cab('El que más espera')}
-      ${cab('Atendidos hoy', ICO_CHECK)}
+      ${cab('Espera más larga')}
+      ${cab('Atendidos', ICO_CHECK)}
       ${cab(cmp ? `vs ${fmtDiaCorto(cmp.fecha)}` : 'vs otro día')}
+      ${nConv ? convDia.nombres.map(n => cab(n)).join('') : ''}
     </div>
     <div class="divide-y divide-slate-50">
       ${lista.map(f => {
@@ -1721,6 +1749,7 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
           <div class="text-center">${(() => { const a = antesDe(f.asesor); if (a == null) return '<span class="text-slate-300">—</span>';
             const dd = f.hoy - a; return dd ? `<span class="delta-p ${dd > 0 ? 'mejor' : 'peor'}">${dd > 0 ? '▲' : '▼'} ${Math.abs(dd)}</span> <span class="t-micro text-slate-500">(${a})</span>`
               : `<span class="t-micro text-slate-500">igual (${a})</span>`; })()}</div>
+          ${bot ? '<div class="text-center text-slate-300">—</div>'.repeat(nConv) : Array.from({ length: nConv }, (_, i) => num((f.conv || [])[i] || 0)).join('')}
         </div>`;
       }).join('')}
     </div>`;
@@ -2686,9 +2715,11 @@ let SNAP = null;   // la ultima respuesta del snapshot, sin filtrar
 
 function pintarDetalleAsesores() {
   if (!SNAP) return;
+  const conv = SNAP.convertidos_dia && SNAP.convertidos_dia.leads
+    ? { nombres: SNAP.convertidos_dia.nombres, leads: filtrarLeads(SNAP.convertidos_dia.leads, 'op') } : null;
   renderAsesoresAhora(filtrarLeads(SNAP.no_respondidos, 'op'),
                       filtrarLeads(SNAP.trabajados_hoy, 'op'),
-                      filtrarLeads(SNAP.atendidos_solo_bot, 'op'));
+                      filtrarLeads(SNAP.atendidos_solo_bot, 'op'), conv);
 }
 
 // --- Cabeceras de las tarjetas del ahora (propuesta aprobada, 15/10) -------
@@ -3024,12 +3055,36 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { const m = 
 // por WhatsApp, las que salen del celular llegan sin nombre y se le asignan
 // al responsable del lead. Si son muchas, su tiempo no es del todo suyo.
 let _VEND = [];
+// Reparto por franja en recuadros del mismo tamaño con su % (16/10). Suman
+// 100: el redondeo se reparte por mayor resto, si no daba 99 o 101.
+function _cuadros(dist) {
+  const d = dist || [], t = d.reduce((s, x) => s + x.count, 0), n = d.length || 4;
+  const grid = `grid-template-columns:repeat(${n}, 2.1rem)`;
+  if (!t) return `<div class="cuadros4" style="${grid}">${'<span class="vacio-q">—</span>'.repeat(n)}</div>`;
+  const p = d.map(x => Math.floor(x.count / t * 100));
+  let resto = 100 - p.reduce((a, b) => a + b, 0);
+  d.map((x, i) => [x.count / t * 100 - p[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (resto > 0) { p[i]++; resto--; } });
+  return `<div class="cuadros4" style="${grid}">${d.map((x, i) => { const k = Math.min(i, 3);
+    return `<span style="background:var(--franja-${k}-fondo);color:var(--franja-${k}-texto)" data-tip data-tip-color="${x.color}" data-tip-label="${x.tag}" data-tip-detalle="${x.count.toLocaleString('es')} respuestas">${p[i]}%</span>`; }).join('')}</div>`;
+}
+// Convertidos con su tasa sobre los clientes atendidos. Es aproximada: una
+// venta de hoy puede venir de un cliente atendido el mes pasado.
+function _convCel(n, base) {
+  return `<span class="conv"><span>${n.toLocaleString('es')}</span>${base ? `<small data-tip data-tip-label="${Math.round(n / base * 100)}%" data-tip-detalle="de los ${base.toLocaleString('es')} clientes atendidos en el periodo (aproximado)">${Math.round(n / base * 100)}%</small>` : ''}</span>`;
+}
+let _CONV = null;
+const _EXPLICA = {
+  med: 'data-tip data-tip-label="Mediana" data-tip-detalle="la mitad de los clientes recibió respuesta en menos de este tiempo"',
+  p90: 'data-tip data-tip-label="P90" data-tip-detalle="9 de cada 10 clientes recibieron respuesta en menos de este tiempo"',
+};
 function renderVendedores(porAsesor, metricas) {
   const tabla = document.getElementById('tabla-vendedores');
   const personas = (porAsesor || []).filter(a => !a.sin_puesto).sort((a, b) => b.mediana_seg - a.mediana_seg);
   const resto = (porAsesor || []).filter(a => a.sin_puesto);
   _VEND = personas.concat(resto);
-  const tira = dist => `<div class="reparto-mini">${(dist || []).filter(x => x.count > 0).map(x => `<i style="flex:${x.count};background:${x.color}" title="${x.tag}: ${x.pct}% (${x.count})"></i>`).join('')}</div>`;
+  const nConv = _CONV ? _CONV.nombres.length : 0;
+  const convDe = a => (_CONV && _CONV.por_asesor[a.asesor]) || Array(nConv).fill(0);
+  const convCols = (vals, base) => vals.map(v => `<td>${_convCel(v, base)}</td>`).join('');
   const pill = seg => `<span class="tag ${_TAGS[Math.min(_franjaDe(seg), 3)]}">${fmtSeg(seg)}</span>`;
   const resp = a => {
     if (a.sin_puesto === 'automático') return `${a.total.toLocaleString('es')}`;
@@ -3038,24 +3093,26 @@ function renderVendedores(porAsesor, metricas) {
       ? `<small class="ident baja" title="${sin}% de sus respuestas salieron del celular sin nombre y se le asignaron por ser el responsable del lead">${sin}% sin autor</small>`
       : `<small class="ident">${100 - sin}% con autor</small>`);
   };
-  const crit = a => { const d = a.distribucion || []; const c = d[d.length - 1] || { pct: 0 }; return c.pct; };
   const fila = (a, apagada) => `<tr class="${apagada ? 'apagada' : ''}"><td class="izq nombre">${a.asesor}${a.sin_puesto ? `<span class="muestra-baja">${a.sin_puesto}</span>` : ''}</td>
-      <td>${resp(a)}</td><td>${pill(a.mediana_seg)}</td><td>${apagada ? '' : _cambioAsesor(a)}</td><td>${fmtSeg(a.p90_seg)}</td>
-      <td style="${!apagada && crit(a) >= 15 ? 'color:var(--franja-3-texto);font-weight:700' : ''}">${crit(a)}%</td><td>${tira(a.distribucion)}</td>
+      <td>${resp(a)}</td><td>${_cuadros(a.distribucion)}</td><td>${pill(a.mediana_seg)}</td><td>${fmtSeg(a.p90_seg)}</td><td>${apagada ? '' : _cambioAsesor(a)}</td>
+      ${a.sin_puesto === 'automático' ? '<td class="text-slate-300">—</td>'.repeat(nConv) : convCols(convDe(a), _CONV ? (_CONV.atendidos_por_asesor || {})[a.asesor] : 0)}
       <td class="spark-cel">${_sparkAsesor(a.serie)}</td></tr>`;
-  const ult = (FRANJAS[FRANJAS.length - 2] || {}).max_seg;
   const cambioEquipo = () => { const a = _ANT && _ANT.metricas && _ANT.metricas.total ? _ANT.metricas : null;
     return a ? _cambioAsesor({ asesor: '__equipo__', mediana_seg: metricas.mediana_seg, _antes: a.mediana_seg }) : ''; };
-  tabla.innerHTML = `<thead><tr><th class="izq">Asesor</th><th>Respuestas</th><th>La mitad, en menos de ▾</th><th>Cambio</th><th>9 de cada 10, en menos de</th><th>Más de ${ult ? fmtSeg(ult) : '30m'}</th><th>Reparto por franja</th><th>Últimas 2 semanas</th></tr></thead><tbody>` +
-    (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || '<tr><td colspan="8" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>') +
-    (personas.length > 1 && metricas && metricas.total ? `<tr class="equipo"><td class="izq">Equipo</td><td>${metricas.total.toLocaleString('es')}</td><td>${pill(metricas.mediana_seg)}</td>
-      <td>${cambioEquipo()}</td><td>${fmtSeg(metricas.p90_seg)}</td><td>${(metricas.distribucion[metricas.distribucion.length - 1] || {}).pct || 0}%</td><td>${tira(metricas.distribucion)}</td>
+  const columnas = 7 + nConv;
+  tabla.innerHTML = '<thead>' + (nConv ? `<tr><th colspan="6"></th><th class="grupo-conv" colspan="${nConv}"><span class="th-info" data-tip data-tip-label="Convertidos" data-tip-detalle="leads que llegaron en el periodo a la etapa de conversión del embudo, sin importar cuándo entraron; debajo, la tasa sobre los clientes atendidos">Convertidos</span></th><th></th></tr>` : '') +
+    `<tr><th class="izq">Asesor</th><th>Respuestas</th><th>Reparto por franja</th><th><span class="th-info" ${_EXPLICA.med}>Mediana</span> ▾</th><th><span class="th-info" ${_EXPLICA.p90}>P90</span></th><th>Cambio</th>${nConv ? _CONV.nombres.map(n => `<th>${n}</th>`).join('') : ''}<th>Últimas 2 semanas</th></tr></thead><tbody>` +
+    (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || `<tr><td colspan="${columnas + 1}" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>`) +
+    (personas.length > 1 && metricas && metricas.total ? `<tr class="equipo"><td class="izq">Equipo</td><td>${metricas.total.toLocaleString('es')}</td><td>${_cuadros(metricas.distribucion)}</td><td>${pill(metricas.mediana_seg)}</td>
+      <td>${fmtSeg(metricas.p90_seg)}</td><td>${cambioEquipo()}</td>${nConv ? convCols(_CONV.total, _CONV.atendidos_total) : ''}
       <td class="spark-cel">${_sparkAsesor(_SERIE_EQUIPO)}</td></tr>` : '') + '</tbody>';
 }
 // Excel: un CSV con separador ; y BOM, que Excel abre con acentos y columnas.
 function descargarVendedores() {
-  const filas = [['Asesor', 'Respuestas', 'Sin autor', 'Mediana (s)', '9 de cada 10 (s)', ...((FRANJAS || []).map(f => f.tag)), 'Observación']]
-    .concat(_VEND.map(a => [a.asesor, a.total, a.por_canal || 0, a.mediana_seg, a.p90_seg, ...(a.distribucion || []).map(x => x.count), a.sin_puesto || '']));
+  const nombresConv = _CONV ? _CONV.nombres : [];
+  const filas = [['Asesor', 'Respuestas', 'Sin autor', 'Mediana (s)', 'P90 (s)', ...((FRANJAS || []).map(f => f.tag)), ...nombresConv, 'Clientes atendidos', 'Observación']]
+    .concat(_VEND.map(a => [a.asesor, a.total, a.por_canal || 0, a.mediana_seg, a.p90_seg, ...(a.distribucion || []).map(x => x.count),
+      ...nombresConv.map((_, i) => ((_CONV.por_asesor[a.asesor] || [])[i] || 0)), _CONV ? ((_CONV.atendidos_por_asesor || {})[a.asesor] || 0) : '', a.sin_puesto || '']));
   const csv = '\ufeff' + filas.map(f => f.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -3198,13 +3255,54 @@ function _cambioAsesor(a) {
   return `<span class="delta-p ${dd < 0 ? 'mejor' : 'peor'}" title="${dd < 0 ? 'Mejoró' : 'Empeoró'} ${fmtSeg(Math.abs(dd))} (antes ${fmtSeg(p.mediana_seg)})">${dd < 0 ? '▼' : '▲'} ${fmtSeg(Math.abs(dd))}</span>`;
 }
 
-// Cuando nos demoramos: dia x hora, color = franja de la mediana.
-function renderMapaHoras(celdas, horario, diasLab) {
-  const el = document.getElementById('mapa'), hall = document.getElementById('hallazgo');
-  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+// Cuando nos demoramos: dia x hora. Dos vistas sobre la misma grilla (16/10):
+// la mediana con el semaforo, o cuantos clientes escriben (sin color: no es
+// bueno ni malo, es volumen).
+let _MAPA = null, VISTA_MAPA = 'mediana';
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('#seg-mapa button'); if (!b) return;
+  VISTA_MAPA = b.dataset.v;
+  document.querySelectorAll('#seg-mapa button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  if (_MAPA) renderMapaHoras(..._MAPA);
+});
+function _rejillaMapa(horario, diasLab) {
   const [h0, h1] = horario && horario.length === 2 ? horario : [8, 18];
   const horas = []; for (let h = Math.max(0, Math.min(h0, 23)); h < Math.min(24, Math.max(h1, h0 + 1)); h++) horas.push(h);
   const dias = (diasLab && diasLab.length ? diasLab : [0, 1, 2, 3, 4]).slice().sort((a, b) => a - b);
+  return [horas, dias];
+}
+function renderMapaClientes(celdas, horario, diasLab) {
+  const el = document.getElementById('mapa'), hall = document.getElementById('hallazgo');
+  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  const [horas, dias] = _rejillaMapa(horario, diasLab);
+  const idx = {}; (celdas || []).forEach(c => { idx[`${c.d}-${c.h}`] = c; });
+  const fmtP = v => v.toLocaleString('es', { maximumFractionDigits: v < 10 ? 1 : 0 });
+  document.getElementById('sub-mapa').textContent = 'Clientes distintos que escribieron en cada hora, promedio por día · para ver si llegó mucho o poco';
+  el.style.setProperty('--horas', horas.length);
+  el.innerHTML = `<span></span>${horas.map(h => `<span class="mh">${h}</span>`).join('')}` +
+    dias.map(d => `<span class="md">${DIAS[d]}</span>` + horas.map(h => {
+      const c = idx[`${d}-${h}`];
+      if (!c || !c.prom) return `<span class="mc vacia" title="${DIAS[d]} ${h}:00 · ningún cliente">0</span>`;
+      return `<span class="mc neutro" tabindex="0" data-mapa="${fmtP(c.prom)} clientes|${DIAS[d]} de ${h}:00 a ${h + 1}:00 · promedio por día">${fmtP(c.prom)}</span>`;
+    }).join('')).join('');
+  el.querySelectorAll('[data-mapa]').forEach(c => {
+    const [v, ctx] = c.dataset.mapa.split('|');
+    c.addEventListener('mousemove', ev => mostrarTipSimple(ev, v, ctx));
+    c.addEventListener('mouseleave', ocultarTipSimple);
+  });
+  document.getElementById('leyenda-mapa').innerHTML = '<span>El número es el promedio de clientes que escribieron en esa hora, por día. Un cliente que manda varios mensajes cuenta una vez.</span>';
+  const conDato = (celdas || []).filter(c => dias.includes(c.d) && horas.includes(c.h) && c.prom);
+  if (!conDato.length) { hall.textContent = 'Todavía no hay mensajes de clientes en este periodo.'; return; }
+  const pico = conDato.reduce((p, c) => c.prom > p.prom ? c : p);
+  hall.textContent = `La hora con más clientes es el ${LARGOS[pico.d]} de ${pico.h} a ${pico.h + 1} h: ${fmtP(pico.prom)} en promedio.`;
+}
+function renderMapaHoras(celdas, horario, diasLab, clientes) {
+  _MAPA = [celdas, horario, diasLab, clientes];
+  if (VISTA_MAPA === 'clientes') return renderMapaClientes(clientes, horario, diasLab);
+  document.getElementById('sub-mapa').textContent = 'Mediana de respuesta según el día y la hora en que escribió el cliente · para decidir turnos';
+  const el = document.getElementById('mapa'), hall = document.getElementById('hallazgo');
+  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  const [horas, dias] = _rejillaMapa(horario, diasLab);
   const idx = {}; (celdas || []).forEach(c => { idx[`${c.d}-${c.h}`] = c; });
   el.style.setProperty('--horas', horas.length);
   el.innerHTML = `<span></span>${horas.map(h => `<span class="mh">${h}</span>`).join('')}` +
@@ -3293,8 +3391,8 @@ async function cargarDatos() {
     // Textos que cambian segun el modo horario laboral / fuera de horario
     const esFueraHorario = d.config.modo === 'fuera_horario';
     document.getElementById('label-promedio').textContent = esFueraHorario
-      ? 'La mitad, en tiempo real, en menos de'
-      : 'La mitad respondida en menos de';
+      ? 'Mediana, en tiempo real'
+      : 'Mediana';
     document.getElementById('titulo-distribucion').textContent = esFueraHorario
       ? 'Distribución — fuera de horario'
       : 'Distribución';
@@ -3414,9 +3512,10 @@ async function cargarDatos() {
     renderKpisPeriodo(d);
     pintarComparacionPeriodo(d);
     renderResumenPeriodo(d);
-    renderMapaHoras(d.mapa_horas, d.config.horario, d.config.dias_laborables);
+    renderMapaHoras(d.mapa_horas, d.config.horario, d.config.dias_laborables, d.mapa_clientes);
     renderTendencia(d.tendencia);
     renderDonaPeriodo(d.metricas.distribucion, d.metricas.total);
+    _CONV = d.convertidos || null;
     renderVendedores(d.por_asesor, d.metricas);
     renderCarga(d.por_asesor);
     pintarCaptionPeriodo();

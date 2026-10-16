@@ -339,3 +339,51 @@ PULSE_CONFIG = {
         ]
     },
 }
+
+
+# --- Conversiones por cuenta (16/10/2026) ------------------------------------
+# Que cuenta como "convertido" en el tablero. Se mide por ETAPA del embudo, no
+# por campos de fecha de Kommo: los cambios de etapa ya llegan por el webhook y
+# no dependen de que una automatizacion este bien. Un lead convierte la primera
+# vez que se lo VE pasar a una de estas etapas desde otra que no lo es; si ya
+# estaba ahi cuando lo conocimos, no se cuenta (no sabemos cuando convirtio).
+# Cada etapa va como "pipeline_id:status_id" (Kommo repite 142 y 143 en todos
+# los embudos). Las listas incluyen las etapas POSTERIORES a la conversion,
+# porque un lead puede saltarse pasos. Propuesta de Claude pendiente de que la
+# confirmen Juan y Luis; cambiarla es solo editar esta lista.
+CONVERSIONES = {
+    # VENTAS
+    'lizondrohomes': [
+        {'nombre': 'Reuniones', 'etapas': ['8969355:69982707', '8969355:70022071', '8969355:70794607', '8969355:73074263', '8969355:70452851', '8969355:142']},
+        {'nombre': 'Ventas', 'etapas': ['8969355:142']},
+    ],
+    # VENTAS
+    'corepowerconsulting': [
+        {'nombre': 'Reuniones', 'etapas': ['3688433:57697879', '3688433:36374159', '3688433:58368555', '3688433:142']},
+        {'nombre': 'Ventas', 'etapas': ['3688433:142']},
+    ],
+    # Embudo de ventas
+    'autonica': [
+        {'nombre': 'Citas', 'etapas': ['13502959:142']},
+    ],
+    # los 5 embudos (son iguales)
+    'ecoambientalgroup': [
+        {'nombre': 'Matriculados', 'etapas': ['14498871:112009443', '14498871:112009447', '14498871:142', '14478067:111830383', '14478067:112008435', '14478067:142', '14498875:111988767', '14498875:112009507', '14498875:142', '14498879:112009731', '14498879:112009735', '14498879:142', '14498883:111988799', '14498883:112009975', '14498883:142']},
+        {'nombre': 'Certificados', 'etapas': ['14498871:142', '14478067:142', '14498875:142', '14498879:142', '14498883:142']},
+    ],
+    # MARKETING
+    'worldimportadospy': [
+        {'nombre': 'Cotizaciones', 'etapas': ['14439567:111534899', '14439567:111534903', '14439567:111534907', '14439567:111534911', '14439567:142']},
+        {'nombre': 'Pedidos', 'etapas': ['14439567:111534903', '14439567:111534907', '14439567:111534911', '14439567:142']},
+    ],
+    # VENTAS
+    'ventasdirectas': [
+        {'nombre': 'Cotizados', 'etapas': ['14030632:108417204', '14030632:108966512', '14030632:108976184', '14030632:108562788', '14030632:108417208', '14030632:110303012', '14030632:142']},
+        {'nombre': 'Ventas', 'etapas': ['14030632:142']},
+    ],
+    # VENTAS
+    'gruporegalado': [
+        {'nombre': 'Liquidados', 'etapas': ['7008155:58964555', '7008155:58474135', '7008155:58474143', '7008155:73578024', '7008155:142']},
+        {'nombre': 'Ventas', 'etapas': ['7008155:73578024', '7008155:142']},
+    ],
+}

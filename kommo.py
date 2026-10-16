@@ -17,7 +17,7 @@ from collections import defaultdict, Counter, deque
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
-from pulse_config import PULSE_CONFIG, ASESORES, REMITENTES_AUTOMATICOS
+from pulse_config import PULSE_CONFIG, ASESORES, REMITENTES_AUTOMATICOS, CONVERSIONES
 # Todos los colores salen de paleta.py, con el porque de cada eleccion escrito
 # ahi. Se importan con alias porque en este archivo OTROS ya es una etiqueta de
 # texto y ASESORES ya es la lista de personas.
@@ -4753,6 +4753,139 @@ MAX_SERIES_TENDENCIA = 5
 # Respuestas minimas para pintar una celda del mapa de dia y hora.
 MIN_MUESTRA_MAPA = 3
 
+def _nombre_conversion(subdomain, fila):
+    """A quien se le cuenta una conversion: el campo Asesor en las cuentas que
+    lo usan (Camara China, Lizandro), si no el responsable del lead. Es el
+    estado de ESE momento: si despues se reasigna, la venta no se le pasa a
+    otro."""
+    if campo_quien_atendio_de(subdomain) and (fila.get('asesor_nombre') or '').strip():
+        return fila['asesor_nombre'].strip()
+    return nombre_asesor(fila.get('responsible_user_id')) or SIN_ASIGNAR
+
+def _convertidos(cursor, subdomain, desde_ts, hasta_ts, asesor_ids=(), asesores_nombre=(),
+                 embudos_sel=(), etapas_sel=(), con_leads=False):
+    """Cuantos leads convirtieron entre desde_ts y hasta_ts, por asesor (16/10).
+
+    Por ETAPA, no por campos de fecha (ver CONVERSIONES en pulse_config). Un
+    lead convierte la primera vez que se lo ve PASAR a una etapa de la lista
+    desde otra que no lo es. Si ya estaba en la lista cuando lo conocimos, no
+    cuenta: la historia se reconstruyo desde los eventos que llegaron, y su
+    primera fila es cuando lo vimos, no cuando convirtio. Sin esta regla, un
+    lead ganado hace meses que recibe una edicion hoy aparecia como venta de
+    hoy.
+
+    con_leads: ademas, cada conversion suelta, para que la tabla del dia la
+    filtre en pantalla con el mismo criterio que el resto de sus columnas.
+
+    None si la cuenta no tiene conversiones configuradas."""
+    conv = CONVERSIONES.get(subdomain) or []
+    if not conv or desde_ts is None or hasta_ts is None:
+        return None
+    todas = sorted({e for c in conv for e in c['etapas']})
+    # Solo los leads que tocaron alguna etapa de conversion en el rango, y de
+    # ellos toda su historia hasta el final del rango: hace falta saber si ya
+    # habian estado ahi antes.
+    cursor.execute('''
+        SELECT lc.lead_id, lc.desde_ts, lc.responsible_user_id, lc.asesor_nombre,
+               lc.pipeline_id::text || ':' || lc.status_id::text AS etapa
+          FROM leads_cambios lc
+         WHERE lc.subdomain = %s AND lc.desde_ts <= %s
+           AND lc.lead_id IN (SELECT DISTINCT lead_id FROM leads_cambios
+                               WHERE subdomain = %s AND desde_ts BETWEEN %s AND %s
+                                 AND pipeline_id::text || ':' || status_id::text = ANY(%s))
+         ORDER BY lc.lead_id, lc.desde_ts''',
+        (subdomain, hasta_ts, subdomain, desde_ts, hasta_ts, todas))
+    historias = defaultdict(list)
+    for f in _filas_en_tandas(cursor):
+        historias[f['lead_id']].append(f)
+    ids = set(asesor_ids or ())
+    nombres = set(asesores_nombre or ())
+    embs = {str(e) for e in (embudos_sel or ())}
+    etas = set(etapas_sel or ())
+    por_asesor = defaultdict(lambda: [0] * len(conv))
+    total = [0] * len(conv)
+    leads = []
+    for filas in historias.values():
+        for i, c in enumerate(conv):
+            etapas = set(c['etapas'])
+            visto, cuando = False, None
+            anterior = None
+            for f in filas:
+                if f['etapa'] in etapas:
+                    if not visto and anterior is not None and anterior not in etapas:
+                        cuando = f
+                    visto = True
+                    if cuando:
+                        break
+                anterior = f['etapa']
+            if not cuando or not (desde_ts <= cuando['desde_ts'] <= hasta_ts):
+                continue
+            nombre = _nombre_conversion(subdomain, cuando)
+            if ids and cuando.get('responsible_user_id') not in ids:
+                continue
+            if nombres and nombre not in nombres:
+                continue
+            if (embs or etas) and not (cuando['etapa'].split(':')[0] in embs or cuando['etapa'] in etas):
+                continue
+            por_asesor[nombre][i] += 1
+            total[i] += 1
+            if con_leads:
+                emb, eta = cuando['etapa'].split(':')
+                leads.append({'lead_id': cuando['lead_id'], 'conv': i, 'asesor': nombre,
+                              'responsable_id': cuando.get('responsible_user_id'),
+                              'embudo_id': int(emb), 'etapa_id': int(eta)})
+    salida = {'nombres': [c['nombre'] for c in conv], 'por_asesor': dict(por_asesor), 'total': total}
+    if con_leads:
+        salida['leads'] = leads
+    return salida
+
+def _clientes_por_hora(cursor, subdomain, tz_offset, desde_ts, hasta_ts, asesor_ids=(),
+                       sql_embudo='', params_embudo=()):
+    """Cuantos clientes escriben en cada hora de la semana, promedio por dia
+    (16/10, pedido de Luis para el mapa). Un cliente cuenta una vez por hora
+    aunque mande varios mensajes: 5 mensajes seguidos son una sola atencion.
+    Promedio y no total, para que se lea igual con 7 o con 30 dias."""
+    if desde_ts is None or hasta_ts is None:
+        return []
+    filtro, params = '', [tz_offset * 3600, subdomain, desde_ts, hasta_ts]
+    if asesor_ids or sql_embudo:
+        filtro = ' AND lead_id IN (SELECT lead_id FROM leads_estado WHERE subdomain = %s'
+        params.append(subdomain)
+        if asesor_ids:
+            filtro += ' AND responsible_user_id = ANY(%s)'
+            params.append(list(asesor_ids))
+        if sql_embudo:
+            filtro += sql_embudo
+            params.extend(params_embudo)
+        filtro += ')'
+    cursor.execute('''
+        SELECT EXTRACT(DOW FROM t)::int AS dow, EXTRACT(HOUR FROM t)::int AS h,
+               COUNT(DISTINCT (lead_id, t::date)) AS n
+          FROM (SELECT lead_id, to_timestamp(ts + %s) AT TIME ZONE 'UTC' AS t
+                  FROM mensajes_cliente WHERE subdomain = %s AND ts BETWEEN %s AND %s''' + filtro + ''') x
+         GROUP BY 1, 2''', params)
+    filas = cursor.fetchall()
+    # Cuantas veces aparece cada dia de la semana en el rango, para promediar.
+    veces = Counter()
+    dia = _ts_to_local(desde_ts, tz_offset).date()
+    fin = _ts_to_local(hasta_ts, tz_offset).date()
+    while dia <= fin:
+        veces[dia.weekday()] += 1
+        dia += timedelta(days=1)
+    salida = []
+    for f in filas:
+        d = (f['dow'] + 6) % 7          # Postgres: domingo = 0; aca lunes = 0
+        if veces[d]:
+            salida.append({'d': d, 'h': f['h'], 'prom': round(f['n'] / veces[d], 1)})
+    return salida
+
+def _atendidos_por_asesor(registros):
+    """Clientes distintos que atendio cada asesor, para la tasa de conversion."""
+    leads = defaultdict(set)
+    for r in registros:
+        leads[asesor_de_registro(r) or SIN_ASIGNAR].add(r['lead_id'])
+    return {n: len(v) for n, v in leads.items()}
+
 def _resumen_anterior(registros, rango, franjas, tz_offset):
     """Las cifras del periodo anterior para comparar (16/10). Sin los leads
     de cada franja: solo hacen falta los numeros. None si no hay periodo
@@ -5753,7 +5886,21 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                                   tj_sql_embudo, tj_params_embudo, base_es_hoy=base_es_hoy,
                                   nombres=tj_nombres,
                                   incluir_conv_cerradas=incluir_conv_cerradas)
+    # Convertidos del dia que se esta mirando (16/10), para "Detalle por asesor".
+    try:
+        if dia:
+            ini_c = _local_date_to_ts(dia, tz_offset); fin_c = ini_c + 86399
+        else:
+            ini_c, fin_c = _hoy_rango_ts(tz_offset); fin_c -= 1
+        cur_c = conn.cursor(cursor_factory=RealDictCursor)
+        convertidos_dia = _convertidos(cur_c, subdomain, ini_c, fin_c, con_leads=True)
+    except Exception as e:
+        # Un error aca no puede tirar el bloque de operacion entero.
+        print(f'⚠️ convertidos del dia: {e}')
+        convertidos_dia = None
     return {
+        # Otro nombre que el del periodo: /pulse/data manda los dos juntos.
+        'convertidos_dia':    convertidos_dia,
         'no_respondidos':     no_respondidos,
         'no_respondidos_antiguos': antiguos,
         'dias_reciente':      DIAS_SIN_RESPONDER_RECIENTE,
@@ -6437,6 +6584,13 @@ def pulse_data():
         # antes del corte de la cuenta no se compara contra nada: el tablero
         # dice "sin datos del periodo anterior". Es barato: los turnos ya
         # estan armados y solo se filtran por otras fechas.
+        # Convertidos del periodo y clientes por hora (16/10).
+        convertidos = _convertidos(c, subdomain, desde_ts, hasta_ts, asesor_ids,
+                                   asesores_nombre, embudos_sel, etapas_sel)
+        mapa_clientes = _clientes_por_hora(c, subdomain, tz_offset, desde_ts, hasta_ts,
+                                           asesor_ids, sql_embudo, params_embudo)
+        _marca('convertidos')
+
         registros_antes = None
         if rango_antes:
             registros_antes = _registros_de_mensajes(
@@ -6771,6 +6925,13 @@ def pulse_data():
                               for a in _calc_por_asesor(registros, franjas)],
             'serie_dias':    dias_serie,
             'mapa_horas':    mapa_horas,
+            'mapa_clientes': mapa_clientes,
+            # Para la tasa de conversion: clientes distintos que atendio cada
+            # uno en el periodo (con el mismo nombre que la tabla).
+            'convertidos':   (dict(convertidos,
+                                   atendidos_por_asesor=_atendidos_por_asesor(registros),
+                                   atendidos_total=len({r['lead_id'] for r in registros_persona}))
+                              if convertidos else None),
             'anterior':      _resumen_anterior(registros_antes, rango_antes, franjas, tz_offset),
             'no_respondidos': no_respondidos,
             'no_respondidos_antiguos': bloque['no_respondidos_antiguos'],
@@ -6784,6 +6945,7 @@ def pulse_data():
             # Mismo comparativo que en /pulse/snapshot, para que la primera
             # carga ya lo traiga y no haya que esperar al refresco.
             'comparado': comparado,
+            'convertidos_dia': bloque['convertidos_dia'],
             'dia': bloque['dia'],
         })
     except Exception as e:
