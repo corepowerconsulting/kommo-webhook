@@ -9,7 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
       /* --- Colores: bajan de paleta.py, no se escriben aca --------------
@@ -90,7 +90,21 @@
        18 era grande para un tablero y obligaba a hacer scroll. Como todo
        esta en rem, baja proporcionalmente y nada se desalinea. */
     html { font-size: 16px; }
-    * { font-family: 'Inter', sans-serif; }
+    /* Texto en Manrope y numeros en Inter (Juan, 12/10, elegido entre nueve
+       letras sobre el tablero entero). En vez de marcar cada cifra a mano,
+       'PulseCifras' es Inter limitada a digitos y signos de numero: el
+       navegador la usa solo para esos caracteres y para el resto cae en
+       Manrope. Asi tambien quedan en Inter los numeros dentro de una frase y
+       los de los graficos. */
+    @font-face {
+      font-family: 'PulseCifras';
+      font-style: normal;
+      font-weight: 400 800;
+      font-display: swap;
+      src: url(https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2) format('woff2');
+      unicode-range: U+0030-0039, U+0025, U+002B, U+002C, U+002E, U+003A, U+2212;
+    }
+    * { font-family: 'PulseCifras', 'Manrope', 'Inter', sans-serif; }
     /* Cifras tabulares: todos los digitos con el mismo ancho.
        Inter las trae pero no vienen activadas, asi que por defecto un 1 ocupa
        menos que un 8. Eso desalinea las columnas de numeros del ranking y de
@@ -164,6 +178,88 @@
     /* Sin mayusculas (01/10): repartidas en cada etiqueta —numeros grandes,
        filtros, encabezados de tabla— perdian fuerza y costaban leer a este
        tamaño. En minuscula se leen igual de claro. */
+    /* Cabecera de las tarjetas del ahora (propuesta aprobada, 15/10). */
+    .kpi-cab { display:grid; gap:.55rem; padding-right:2.6rem; align-content:start; }
+    .kpi-cab-fila { display:flex; align-items:baseline; gap:.65rem; }
+    .kpi-cab .kpi-num { font-size:2.6rem; }
+    .kpi-nombre { font-size:var(--t-base); font-weight:var(--p-fuerte); color:var(--tinta); }
+    .kpi-cab .cmp-graf { justify-content:flex-start; }
+    .kpi-desglose { display:flex; align-items:center; gap:.6rem; min-height:1.35rem; }
+    .mini-tira { display:flex; gap:2px; width:11rem; height:.55rem; }
+    .mini-tira > i { display:block; height:100%; min-width:3px; }
+    .mini-tira > i:first-child { border-radius:4px 0 0 4px; } .mini-tira > i:last-child { border-radius:0 4px 4px 0; }
+    .mini-tira > i:only-child { border-radius:4px; }
+    .pill-vend { background:#e0e9fd; color:#1e3a8a; }
+    .chips-at { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.6rem; }
+    .chip-at { padding:.2rem .7rem; border-radius:99px; border:1px solid var(--linea); background:#fff; font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--texto); cursor:pointer; }
+    .chip-at:hover { border-color:var(--apagado); }
+    .chip-at[aria-pressed="true"] { background:var(--tinta); color:#fff; border-color:var(--tinta); }
+    .aviso-bot { margin:0 0 .6rem; padding:.45rem .75rem; border-radius:10px; background:var(--franja-1-fondo); color:var(--franja-1-texto); font-size:var(--t-micro); font-weight:var(--p-medio); }
+    /* --- Parte del periodo, diseño aprobado (15/10) ------------------------ */
+    /* Sin mayusculas, como el resto del tablero (01/10). */
+    .grupo-eti { display:flex; align-items:center; gap:12px; margin:.6rem 0 -.6rem; font-size:var(--t-chico); font-weight:var(--p-fuerte);
+                 color:var(--apagado); }
+    .grupo-eti::after { content:""; flex:1; height:1px; background:var(--linea); }
+    .per-caption { font-size:var(--t-chico); color:var(--apagado); font-weight:var(--p-medio); }
+    .kpis-per { display:grid; grid-template-columns:1.3fr 1fr 1fr 1fr; padding:0 !important; }
+    .kpi-tile { display:flex; flex-direction:column; gap:.5rem; padding:1.25rem 1.4rem; }
+    .kpi-tile + .kpi-tile { border-left:1px solid var(--linea); }
+    .kpi-tile-lbl { font-size:var(--t-chico); font-weight:var(--p-medio); color:var(--apagado); }
+    .kpi-tile .kpi-num-xl { font-size:2.9rem; }
+    .kpi-tile .kpi-num { font-size:2.2rem; }
+    .valor-fila { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
+    .kspark svg { display:block; }
+    .meta-barra { display:flex; align-items:center; gap:10px; }
+    .carril-meta { width:7rem; height:8px; border-radius:4px; background:var(--carril); overflow:hidden; display:block; flex:none; }
+    .carril-meta i { display:block; height:100%; border-radius:4px; }
+    .grid-dos { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:1rem; align-items:stretch; }
+    .grid-dos.iguales { grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); }
+    @media (max-width: 1023px) { .grid-dos, .grid-dos.iguales, .kpis-per { grid-template-columns:1fr; } .kpi-tile + .kpi-tile { border-left:0; border-top:1px solid var(--linea); } }
+    .cab-card { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:1rem; }
+    .btn-sec { display:inline-flex; align-items:center; height:2rem; padding:0 .8rem; border-radius:9px; border:1px solid var(--linea); background:#fff;
+               color:var(--tinta); font-size:var(--t-micro); font-weight:var(--p-medio); white-space:nowrap; cursor:pointer; }
+    .btn-sec:hover { border-color:var(--marca); color:var(--marca); }
+    .graf { width:100%; height:auto; display:block; overflow:visible; }
+    .graf text { font-size:11px; fill:var(--apagado); }
+    .graf .grid { stroke:var(--linea); stroke-width:1; }
+    .tabla-datos-wrap { margin-top:.9rem; max-height:16rem; overflow:auto; border-top:1px solid var(--linea); }
+    .tabla-datos-wrap table { width:100%; border-collapse:collapse; font-size:var(--t-chico); }
+    .tabla-datos-wrap th { text-align:right; color:var(--apagado); font-weight:var(--p-medio); font-size:var(--t-micro); padding:.45rem .6rem; position:sticky; top:0; background:#fff; }
+    .tabla-datos-wrap td { text-align:right; padding:.4rem .6rem; border-top:1px solid var(--linea); color:var(--tinta); }
+    .tabla-datos-wrap .izq { text-align:left; }
+    .dona-wrap { display:grid; justify-items:center; gap:1rem; }
+    #dona { width:12rem; height:12rem; display:block; }
+    .dona-leyenda { width:100%; display:grid; }
+    .dl-fila { display:grid; grid-template-columns:5.2rem minmax(0,1fr) 3rem 3rem 4.5rem; gap:.6rem; align-items:center; text-align:left; background:none;
+               border:0; border-top:1px solid var(--linea); padding:.55rem .4rem; cursor:pointer; border-radius:6px; }
+    .dl-fila:first-child { border-top:0; }
+    .dl-fila:hover, .dl-fila.activa { background:var(--fondo-suave); }
+    .dl-rango { color:var(--apagado); font-size:var(--t-chico); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .dl-pct { text-align:right; color:var(--tinta); font-weight:var(--p-fuerte); }
+    .dl-n { text-align:right; color:var(--apagado); font-size:var(--t-chico); }
+    .dl-ver { text-align:right; color:var(--marca); font-weight:var(--p-medio); font-size:var(--t-micro); opacity:0; transition:opacity .15s; }
+    .dl-fila:hover .dl-ver, .dl-fila.activa .dl-ver, .dl-fila:focus-visible .dl-ver { opacity:1; }
+    .dl-total { display:flex; justify-content:space-between; padding:.55rem .4rem 0; border-top:1px solid var(--linea); font-size:var(--t-chico); color:var(--apagado); }
+    .dl-total b { color:var(--tinta); }
+    .tabla-scroll { overflow-x:auto; }
+    .tabla-vend { width:100%; border-collapse:collapse; font-size:var(--t-chico); }
+    .tabla-vend th { font-size:var(--t-micro); color:var(--apagado); font-weight:var(--p-medio); text-align:right; padding:.55rem .6rem; border-bottom:1px solid var(--linea); white-space:nowrap; }
+    .tabla-vend td { padding:.7rem .6rem; border-bottom:1px solid var(--linea); text-align:right; color:var(--tinta); white-space:nowrap; }
+    .tabla-vend .izq { text-align:left; }
+    .tabla-vend tbody tr:hover td { background:var(--fondo-suave); }
+    .tabla-vend tr.apagada td { color:var(--apagado); }
+    .tabla-vend tr.equipo td { font-weight:var(--p-fuerte); background:var(--fondo-suave); border-bottom:0; }
+    .tabla-vend .nombre { font-weight:var(--p-medio); }
+    .ident { display:block; font-size:.72rem; color:var(--apagado); }
+    .ident.baja { color:var(--franja-1-texto); font-weight:var(--p-medio); cursor:help; }
+    .muestra-baja { font-size:.72rem; color:var(--apagado); background:var(--carril); border-radius:5px; padding:1px 6px; margin-left:6px; font-weight:var(--p-medio); }
+    .reparto-mini { display:flex; gap:2px; height:.55rem; width:9rem; margin-left:auto; }
+    .reparto-mini > i { display:block; height:100%; min-width:2px; }
+    .reparto-mini > i:first-child { border-radius:4px 0 0 4px; } .reparto-mini > i:last-child { border-radius:0 4px 4px 0; }
+    .modal-fondo { position:fixed; inset:0; background:rgba(15,23,42,.35); display:grid; place-items:center; z-index:80; padding:20px; }
+    .modal-caja { width:min(640px,100%); max-height:80vh; overflow:auto; background:#fff; border-radius:16px; box-shadow:0 24px 60px rgba(15,23,42,.3); }
+    .modal-cab { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:1.2rem 1.3rem .6rem; position:sticky; top:0; background:#fff; }
+    .modal-cerrar { border:0; background:var(--carril); width:2rem; height:2rem; border-radius:8px; cursor:pointer; font-size:1.1rem; line-height:1; color:var(--texto); }
     .kpi-label{ font-size:var(--t-chico); font-weight:var(--p-medio); color:var(--apagado); margin-top:6px; }
     .kpi-label-sm{ font-size:var(--t-micro); font-weight:var(--p-medio); color:var(--apagado); margin-top:5px; }
     .section-title { font-size:var(--t-titulo); font-weight:var(--p-fuerte); color:var(--tinta); letter-spacing:-0.01em; }
@@ -560,46 +656,39 @@
                no en la fila: con justify-between el bloque del medio se corre
                a la izquierda para dejarle lugar y no queda centrado de verdad.
                Sacandolo del flujo, el contenido se centra contra la tarjeta. -->
-          <button type="button" class="relative w-full text-center flex items-start justify-center"
+          <!-- Cabecera alineada a la izquierda, igual en las dos tarjetas
+               (propuesta aprobada por Luis, 15/10): numero y nombre, el
+               desglose, la comparacion con el otro dia y una nota. Las dos
+               tarjetas tienen las mismas filas, asi todo cae a la misma altura
+               de un lado y del otro. -->
+          <button type="button" class="kpi-cab relative w-full text-left"
                   aria-expanded="true" aria-controls="panel-no-respondidos"
                   onclick="toggleExtra('no-respondidos')">
-            <span class="flex items-start gap-3.5">
-              <span class="icon-chip bg-red-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--alerta)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              </span>
-              <span>
-                <!-- La cifra en tinta: el borde izquierdo rojo y el icono ya
-                     dicen que esta tarjeta es la de alerta. Pintar tambien el
-                     numero no agregaba nada, porque nunca dejaba de ser rojo. -->
-                <span class="kpi-num block" id="kpi-no-respondidos">—</span>
-                <span class="kpi-label block">Sin responder</span>
-                <span class="t-micro block mt-1.5" id="cmp-no-respondidos"></span>
-                <!-- Lo de mas de 7 dias, aparte (Luis, 01/10): el numero grande
-                     es lo que se puede atender hoy. -->
-                <span class="t-micro block mt-1 text-slate-500" id="antiguos-no-respondidos"></span>
-              </span>
-            </span>
-            <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
+            <span class="kpi-cab-fila"><span class="kpi-num" id="kpi-no-respondidos">—</span><span class="kpi-nombre">Sin responder</span></span>
+            <!-- Cuantos ya estan en Critico (15/10): un total de 12 no dice si
+                 es urgente; pueden ser 12 clientes de hace dos minutos. -->
+            <span class="kpi-desglose" id="desglose-no-resp"></span>
+            <span class="t-micro block" id="cmp-no-respondidos"></span>
+            <!-- Lo de mas de 7 dias, aparte (Luis, 01/10): el numero grande
+                 es lo que se puede atender hoy. -->
+            <span class="t-micro block text-slate-500" id="antiguos-no-respondidos"></span>
+            <span class="chev-chip absolute right-0 top-0" aria-hidden="true">
               <svg id="chev-no-respondidos" class="chevron" style="transform:rotate(180deg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </button>
           <div id="panel-no-respondidos" class="mt-4"></div>
         </div>
         <div class="card card-clic abierta tarjeta-atendidos">
-          <button type="button" class="relative w-full text-center flex items-start justify-center"
+          <button type="button" class="kpi-cab relative w-full text-left"
                   aria-expanded="true" aria-controls="panel-trabajados-hoy"
                   onclick="toggleExtra('trabajados-hoy')">
-            <span class="flex items-start gap-3.5">
-              <span class="icon-chip bg-green-50">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              </span>
-              <span>
-                <span class="kpi-num block" id="kpi-trabajados-hoy">—</span>
-                <span class="kpi-label block">Atendidos hoy</span>
-                <span class="t-micro block mt-1.5" id="cmp-trabajados-hoy"></span>
-              </span>
-            </span>
-            <span class="chev-chip absolute right-0 top-1/2 -translate-y-1/2" aria-hidden="true">
+            <span class="kpi-cab-fila"><span class="kpi-num" id="kpi-trabajados-hoy">—</span><span class="kpi-nombre">Atendidos hoy</span></span>
+            <!-- Vendedores contra bot (15/10): el bot saluda a todos los leads
+                 nuevos y el lead sale de Sin responder sin que nadie lo mire. -->
+            <span class="kpi-desglose" id="desglose-atendidos"></span>
+            <span class="t-micro block" id="cmp-trabajados-hoy"></span>
+            <span class="t-micro block text-slate-500" id="nota-atendidos"></span>
+            <span class="chev-chip absolute right-0 top-0" aria-hidden="true">
               <svg id="chev-trabajados-hoy" class="chevron" style="transform:rotate(180deg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </button>
@@ -682,6 +771,7 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
         <h2 class="section-title parte-titulo">Análisis del periodo</h2>
+        <span class="per-caption" id="per-caption"></span>
       </div>
       <div class="section-sub">Cómo se atendió entre las fechas elegidas en la barra de abajo · nada de esta parte depende del ahora</div>
     </div>
@@ -777,196 +867,89 @@
       </div>
     </div>
 
-    <!-- KPIs de tiempo de respuesta: es a lo que viene el dashboard, va primero.
-         La mediana ocupa dos tercios y va mas grande; las otras dos son
-         contexto y van al costado, mas chicas. Con los tres del mismo tamaño el
-         38.5% en rojo era lo que mas saltaba de la pantalla, y la metrica del
-         producto es la mediana: el ojo iba al lugar equivocado. -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <!-- Centrado, no pegado a la izquierda. Esta tarjeta tiene UN dato y
-           ocupa dos tercios del ancho: alineado a la izquierda dejaba medio
-           recuadro vacio a la derecha y el numero no se leia como el centro de
-           la pantalla, que es lo que es. Las tres lineas —cifra, etiqueta y
-           los tres percentiles— comparten eje vertical. -->
-      <!-- Dos zonas: el numero, centrado en el espacio que sobra; y la
-           leyenda, abajo a la izquierda y justificada (pedido de Juan, 04/09).
-           Antes la leyenda iba centrada bajo el numero y se mezclaba con el. -->
-      <div id="card-mediana" class="card kpi-franja lg:col-span-2 flex flex-col">
-        <div class="flex-1 flex flex-col justify-center items-center text-center">
-          <div class="flex items-center justify-center gap-3 flex-wrap">
-            <!-- En tinta, no en azul. Un numero azul al lado de una etiqueta
-                 roja dice dos cosas distintas sobre el mismo dato, y el veredicto
-                 lo da la etiqueta. -->
-            <span class="kpi-num-xl" id="kpi-promedio">—</span>
-            <!-- Esta etiqueta es lo unico del dashboard que dice si el numero
-                 esta BIEN o MAL. Existia hace tiempo, pero a 10px al lado de un
-                 numero de 38 no la veia nadie. Con .tag-kpi pasa a leerse. -->
-            <span id="kpi-badge-prom" class="tag-kpi hidden"></span>
-          </div>
-          <div class="kpi-label" id="label-promedio">Tiempo de respuesta (mediana)</div>
-          <div class="mt-2 t-micro text-slate-500">
-            p90 <span id="kpi-p90" class="font-semibold text-slate-500">—</span>
-            <span class="text-slate-300">·</span>
-            prom <span id="kpi-prom-sec" class="font-semibold text-slate-500">—</span>
-            <span class="text-slate-300">·</span>
-            máx <span id="kpi-maximo" class="font-semibold text-slate-500">—</span>
-          </div>
-        </div>
-        <!-- Leyenda pedida en la reunion del 31/08: quien mira el tablero no
-             es estadista. Dos renglones en micro, para que el numero siga
-             mandando. Abajo a la izquierda, justificada: es texto, no cifra. -->
-        <!-- Cada definicion en su propia linea (Juan, 04/09): mediana en una,
-             p90 en la siguiente. Como parrafo corrido se mezclaban. -->
-        <div class="self-start text-left mt-4 t-micro text-slate-500 lh-corto" style="opacity:.85">
-          <div><strong>Mediana</strong>: la mitad de los clientes esperó menos que este tiempo.</div>
-          <div class="mt-0.5"><strong>p90</strong>: 9 de cada 10 clientes esperaron menos que este tiempo.</div>
-        </div>
+    <!-- Parte del periodo con el diseño aprobado por Luis (15/10), agrupada
+         por la pregunta que responde cada bloque: como vamos, quien necesita
+         ayuda. Se lee de lo general al detalle. Sin promedio ni maximo: el
+         promedio lo dispara la cola de casos lentos y contradecia a la
+         mediana, y el maximo es un solo caso, que ya esta en "Conversaciones
+         mas lentas". -->
+    <h3 class="grupo-eti">Cómo vamos</h3>
+    <div class="card kpis-per">
+      <!-- Primero el % dentro del objetivo: es la pregunta del supervisor
+           (cuantos clientes atendimos a tiempo) y no la esconde la cola. -->
+      <div class="kpi-tile principal">
+        <span class="kpi-tile-lbl" id="lbl-ideal">Respondidas dentro del objetivo</span>
+        <div class="valor-fila"><span class="kpi-num-xl" id="k-ideal">—</span></div>
+        <div class="meta-barra"><span class="carril-meta"><i id="k-ideal-barra" style="width:0"></i></span><span class="t-micro text-slate-500" id="k-ideal-sub"></span></div>
       </div>
-      <!-- Las dos secundarias comparten la tercera columna, apiladas. -->
-      <div class="grid grid-cols-2 lg:grid-cols-1 gap-4">
-        <!-- Centradas igual que la grande: con la principal centrada y estas
-             dos a la izquierda, las tres tarjetas de la misma fila no
-             compartian eje y la banda se leia torcida. -->
-        <div class="card !p-4 flex flex-col justify-center items-center text-center">
-          <!-- Sin verde. Un 4% en verde decia "bien" cuando es justo lo
-               contrario, porque el color no miraba el numero. -->
-          <div class="kpi-num-sm" id="kpi-pct-ideal">—</div>
-          <div class="kpi-label-sm">Respondieron en &lt; 5 min</div>
-          <div class="mt-1 t-micro text-slate-500" id="kpi-sub-ideal"></div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-lbl" id="lbl-crit">Esperaron más de 30 min</span>
+        <div class="valor-fila"><span class="kpi-num" id="k-crit">—</span></div>
+        <span class="t-micro text-slate-500" id="k-crit-sub"></span>
+      </div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-lbl" id="label-promedio">La mitad respondida en menos de</span>
+        <div class="valor-fila"><span class="kpi-num" id="k-med">—</span><span class="kspark" id="sp-med"></span></div>
+        <span id="k-med-sub"></span>
+      </div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-lbl">9 de cada 10, en menos de</span>
+        <div class="valor-fila"><span class="kpi-num" id="k-p90">—</span></div>
+        <span id="k-p90-sub"></span>
+      </div>
+    </div>
+
+    <div class="grid-dos">
+      <div class="card">
+        <div class="cab-card">
+          <div><h2 class="section-title">Tendencia</h2>
+            <div class="section-sub" id="sub-trend">Cada punto es un día; la línea, la mediana de los últimos 7 días; la línea verde, el objetivo</div></div>
+          <button type="button" class="btn-sec" id="btn-trend-datos" aria-expanded="false" onclick="toggleDatosTendencia(this)">Ver datos</button>
         </div>
-        <div class="card !p-4 flex flex-col justify-center items-center text-center">
-          <!-- Este SI se pinta, pero solo cuando hay de que preocuparse: si
-               esta franja pesa mas que la de menos de 5 minutos. La regla no
-               necesita un umbral nuevo, sale de los mismos datos. -->
-          <div class="kpi-num-sm" id="kpi-pct-critico">—</div>
-          <div class="kpi-label-sm">Esperaron más de 30 min</div>
-          <div class="mt-1 t-micro text-slate-500" id="kpi-sub-critico"></div>
+        <svg class="graf" id="trend" viewBox="0 0 700 210" role="img" aria-label="Mediana diaria del tiempo de respuesta"></svg>
+        <div class="kpi-label-sm mt-2" style="margin-left:44px">Respuestas del día</div>
+        <svg class="graf" id="volumen" viewBox="0 0 700 70" role="img" aria-label="Cantidad de respuestas por día"></svg>
+        <div class="tabla-datos-wrap" id="trend-tabla" hidden></div>
+      </div>
+      <div class="card">
+        <div class="cab-card"><div><h2 class="section-title" id="titulo-distribucion">Distribución</h2>
+          <div class="section-sub">Cada respuesta en su franja · clic para ver sus leads</div></div></div>
+        <div class="dona-wrap">
+          <svg id="dona" viewBox="0 0 220 220" role="img" aria-label="Distribución de respuestas por franja"></svg>
+          <div id="dona-leyenda" class="dona-leyenda"></div>
         </div>
       </div>
     </div>
 
-    <!-- Distribución.
-         Va ANTES del ranking por asesor: primero cuanto tarda la cuenta
-         entera y como se reparte, despues quien. El ranking se lee mucho
-         mejor sabiendo si el problema es de todos o de algunos. -->
-    <div class="card">
-      <div class="flex items-center gap-3 mb-5">
-        <div class="icon-chip bg-slate-100">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
-        </div>
-        <div>
-          <h2 class="section-title" id="titulo-distribucion">Distribución</h2>
-          <div class="section-sub" id="sub-distribucion">Clic en una franja para ver los leads</div>
-        </div>
-      </div>
-      <div class="flex flex-col lg:flex-row gap-8 items-start">
-
-        <!-- La dona: cuanto pesa cada franja sobre el total. El total va en el
-             centro, que es para lo que existe el agujero, y es el denominador
-             de los cuatro porcentajes de la derecha.
-             En rem y no en px para que crezca con el resto del dashboard. -->
-        <div class="flex-shrink-0 flex flex-col items-center w-full lg:w-auto">
-          <div class="relative mx-auto" style="width:11.8rem;height:11.8rem">
-            <canvas id="chart-dist"></canvas>
-            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <div class="t-titulo font-extrabold text-slate-800" id="donut-total">—</div>
-              <div class="t-chico text-slate-500">respuestas</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Las barras, al lado. Las cuatro franjas ESTAN ordenadas —0-5,
-             5-15, 15-30, +30 min— y en la dona ese orden no se ve porque un
-             circulo no tiene principio ni fin. Las barras comparten linea de
-             base y escala, asi que ahi si se comparan de un vistazo.
-             Van DENTRO de la fila que se puede abrir para ver los leads. -->
-        <div class="flex-1 w-full min-w-0 divide-y divide-slate-50" id="legend-dist"></div>
-      </div>
-    </div>
-
-    <!-- Por asesor -->
+    <h3 class="grupo-eti">Quién necesita ayuda</h3>
     <div class="card" id="card-por-asesor">
-      <div class="flex items-center gap-3 mb-5">
-        <div class="icon-chip bg-slate-100">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        </div>
-        <div>
-          <!-- El titulo cambia segun la cuenta y por eso se arma en JS.
-               Por defecto el tiempo se atribuye al DUEÑO del lead, que no
-               siempre es quien contesto: Kommo no manda los mensajes
-               salientes. Pero las cuentas que cargan el campo custom "Asesor"
-               si tienen a la persona real, y ahi el titulo lo dice. -->
-          <!-- Sin subtitulo ni leyenda a proposito. Los dos renglones que
-               estaban aca explicaban con palabras lo que el dibujo tiene que
-               decir solo, y el titulo ya distingue "por asesor" de "por
-               responsable", que era la mitad de lo que aclaraba el subtitulo.
-               La tira usa los mismos cuatro colores de la tarjeta de arriba,
-               asi que su leyenda ya esta puesta dos tarjetas antes. -->
-          <h2 class="section-title" id="titulo-por-asesor">Tiempo de respuesta por responsable</h2>
-        </div>
+      <div class="cab-card">
+        <div><h2 class="section-title" id="titulo-por-asesor">Cómo va cada asesor</h2>
+          <div class="section-sub">El más lento arriba · al final, los que no compiten: el bot, sin responsable y con pocas respuestas</div></div>
+        <button type="button" class="btn-sec" onclick="descargarVendedores()">Descargar Excel</button>
       </div>
-      <div class="divide-y divide-slate-50" id="tabla-asesores"></div>
-      <!-- A quien se le cuenta cada respuesta. Pedido en la reunion del 31/08:
-           un nombre de canal (WhatsApp Lite) en esta lista desconcierta si
-           nadie explica por que esta ahi. Describe la regla REAL de
-           asesor_de_registro, no la deseada: si cambia una, cambia la otra. -->
+      <div class="tabla-scroll"><table class="tabla-vend" id="tabla-vendedores"></table></div>
+      <!-- A quien se le cuenta cada respuesta (reunion del 31/08). Describe la
+           regla REAL de asesor_de_registro: si cambia una, cambia la otra. -->
       <div class="mt-3 pt-3 border-t border-slate-100 t-micro text-slate-500 lh-corto">
-        Cada respuesta se cuenta, en este orden: al <strong>campo Asesor</strong> del lead; si está vacío, a <strong>quien la mandó</strong> desde el CRM; si Kommo no dice quién, al <strong>responsable</strong> del lead; y sin ninguno, queda como <em>Sin asignar</em>. Las del bot van al bot.
+        Cada respuesta se cuenta, en este orden: al <strong>campo Asesor</strong> del lead; si está vacío, a <strong>quien la mandó</strong> desde el CRM; si Kommo no dice quién (respuestas desde el celular), al <strong>responsable</strong> del lead —eso es lo que marca "sin autor"—; y sin ninguno, queda como <em>Sin asignar</em>. Las del bot van al bot.
       </div>
     </div>
 
-    <!-- Tendencia -->
-    <div class="card">
-      <div class="flex items-start justify-between mb-1">
-        <div class="flex items-center gap-3">
-          <div class="icon-chip bg-slate-100">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--texto)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-          </div>
-          <div>
-            <h2 class="section-title">Tendencia diaria del tiempo de respuesta</h2>
-            <!-- Dos paneles en vez de dos escalas en un dibujo. Antes las
-                 barras y la linea usaban ejes distintos y donde se cruzaban
-                 parecia que significaba algo: no significaba nada, era un
-                 artefacto de como habia quedado escalado cada eje. -->
-            <div class="section-sub" id="leyenda-linea">Mediana del equipo, por día</div>
-          </div>
-        </div>
-        <span id="trend-rango" class="t-chico text-slate-500 mt-1"></span>
+    <div class="grid-dos iguales">
+      <div class="card">
+        <div class="cab-card"><div><h2 class="section-title">Velocidad y carga</h2>
+          <div class="section-sub">Cada punto es un asesor: ¿le falta tiempo o le falta método?</div></div></div>
+        <svg class="graf" id="carga" viewBox="0 0 520 330" role="img" aria-label="Mediana de respuesta contra cantidad de respuestas por asesor"></svg>
       </div>
-      <!-- Panel de arriba: el tiempo, que es lo que se viene a mirar.
-           La altura en rem y no en px: los rotulos de los ejes crecen con la
-           raiz, y si la caja no crece con ellos se comen el dibujo. -->
-      <div class="mt-5" style="height:10.3rem">
-        <canvas id="chart-trend"></canvas>
+      <!-- Solo las mas lentas. El titulo dice que son del PERIODO y que ya
+           estan respondidas: con el titulo anterior se hacia clic esperando
+           algo pendiente. -->
+      <div class="card">
+        <div class="cab-card"><div><h2 class="section-title" id="titulo-extremos">Conversaciones más lentas</h2>
+          <div class="section-sub" id="sub-extremos">Ya respondidas · clic para abrir el chat</div></div></div>
+        <div id="tabla-extremos"></div>
       </div>
-      <!-- Panel de abajo: el volumen, como apoyo. Comparte el eje de dias con
-           el de arriba, asi que se lee en vertical sin traducir nada. -->
-      <!-- Rotulo propio, pegado al grafico que describe. La nota del titulo
-           es solo del panel de arriba: decir "arriba... abajo..." en un
-           renglon no le sirvio a nadie en la reunion del 31/08. -->
-      <div class="kpi-label-sm mt-3 mb-1">Respuestas del día</div>
-      <div class="mt-1" style="height:5.6rem">
-        <canvas id="chart-trend-vol"></canvas>
-      </div>
-    </div>
-
-    <!-- Solo las mas lentas. El interruptor "mas rapidas" se saco en la
-         reunion del 31/08: no aportaba nada accionable y nadie lo miraba. -->
-    <div class="card">
-      <div class="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <!-- El titulo dice las dos cosas que la gente asumia mal: que la lista
-             es del PERIODO elegido, y que son conversaciones ya respondidas.
-             Con el titulo anterior se hacia clic esperando encontrar algo
-             pendiente. -->
-        <div class="flex items-center gap-2">
-          <span id="punto-extremos" class="w-2 h-2 rounded-full bg-red-400"></span>
-          <div>
-            <h2 class="section-title" id="titulo-extremos">Conversaciones más lentas del período</h2>
-            <div class="section-sub" id="sub-extremos">Ya respondidas · no son pendientes</div>
-          </div>
-        </div>
-      </div>
-      <div id="tabla-extremos"></div>
     </div>
 
   </div>
@@ -1620,11 +1603,14 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
     return seg >= (franjas[ultima - 1].max_seg || 0);
   };
   const filas = {};
-  const fila = n => (filas[n] = filas[n] || { asesor: n, criticos: 0, sin_responder: 0, hoy: 0 });
+  const fila = n => (filas[n] = filas[n] || { asesor: n, criticos: 0, sin_responder: 0, hoy: 0, peor: 0 });
   (noResp || []).forEach(l => {
     const f = fila(l.asesor || SIN_ASIGNAR_UI);
     f.sin_responder += 1;
     if (esCritico(l)) f.criticos += 1;
+    // El que mas espera (15/10): dos clientes esperando 3 minutos no son lo
+    // mismo que uno esperando 2 horas.
+    f.peor = Math.max(f.peor, l.espera_seg || 0);
   });
   (trabajados || []).forEach(l => { fila(l.asesor || SIN_ASIGNAR_UI).hoy += 1; });
   if ((soloBot || []).length) fila(SOLO_BOT).hoy += soloBot.length;
@@ -1652,12 +1638,13 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
   const num = (n, clase, estilo) => n
     ? `<div class="t-base font-extrabold lh-corto text-center ${clase || 'text-slate-800'}" ${estilo ? `style="${estilo}"` : ''}>${n}</div>`
     : `<div class="t-base font-extrabold lh-corto text-center text-slate-300">0</div>`;
-  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 7.5rem';
+  const cols = 'grid-template-columns:minmax(0,1fr) 6.5rem 7.5rem 9rem 7.5rem';
   el.innerHTML = `
     <div class="grid items-center gap-3 px-2 pb-2 border-b border-slate-100" style="${cols}">
       ${cab('Asesor', '', true)}
       ${cab('Críticos')}
       ${cab('Sin responder', ICO_ALERTA)}
+      ${cab('El que más espera')}
       ${cab('Atendidos hoy', ICO_CHECK)}
     </div>
     <div class="divide-y divide-slate-50">
@@ -1674,6 +1661,7 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
           </div>
           ${num(f.criticos, '', 'color:var(--franja-' + ultima + '-texto)')}
           ${num(f.sin_responder)}
+          <div class="text-center">${f.peor ? `<span class="tag ${_TAGS[Math.min(_franjaDe(f.peor), 3)]}">${fmtSeg(f.peor)}</span>` : '<span class="text-slate-300">—</span>'}</div>
           ${num(f.hoy)}
         </div>`;
       }).join('')}
@@ -2645,6 +2633,61 @@ function pintarDetalleAsesores() {
                       filtrarLeads(SNAP.atendidos_solo_bot, 'op'));
 }
 
+// --- Cabeceras de las tarjetas del ahora (propuesta aprobada, 15/10) -------
+// Franja de una espera, con los cortes de la cuenta.
+function _franjaDe(seg) {
+  const fr = FRANJAS || [];
+  for (let i = 0; i < fr.length; i++) if (fr[i].max_seg == null || seg <= fr[i].max_seg) return i;
+  return Math.max(0, fr.length - 1);
+}
+const _TAGS = ['tag-green', 'tag-amber', 'tag-orange', 'tag-red'];
+function _miniTira(partes) {
+  const hay = partes.filter(p => p.n > 0);
+  return `<span class="mini-tira">${hay.map(p => `<i style="flex:${p.n};background:${p.color}" title="${p.titulo}"></i>`).join('')
+    || '<i style="flex:1;background:var(--carril)"></i>'}</span>`;
+}
+function pintarDesgloses(noResp, trabajados, soloBot) {
+  const fr = FRANJAS || [];
+  const ult = fr.length - 1;
+  const porF = fr.map(() => 0);
+  noResp.forEach(l => porF[_franjaDe(l.espera_seg || 0)]++);
+  const crit = ult >= 0 ? porF[ult] : 0;
+  document.getElementById('desglose-no-resp').innerHTML = fr.length
+    ? `<span class="tag ${_TAGS[Math.min(ult, 3)]}">${crit} en ${fr[ult].tag}</span>` +
+      _miniTira(fr.map((f, i) => ({ n: porF[i], color: f.color, titulo: `${porF[i]} en ${f.tag}` })).reverse())
+    : '';
+  const vend = trabajados.length, bot = soloBot.length;
+  document.getElementById('desglose-atendidos').innerHTML =
+    `<span class="tag pill-vend">${vend} por vendedores</span>` +
+    _miniTira([{ n: vend, color: 'var(--marca)', titulo: `${vend} atendidos por vendedores` },
+               { n: bot, color: '#cbd5e1', titulo: `${bot} atendidos solo por el bot` }]);
+}
+
+// "Atendidos hoy" con filtro: todos, por vendedores o solo el bot (15/10). El
+// bot saluda a los leads nuevos y el lead sale de Sin responder sin que nadie
+// lo haya mirado: ese chip muestra justo esos casos.
+let FILTRO_ATENDIDOS = 'todos';
+let _ATENDIDOS = { trab: [], bot: [] };
+function renderAtendidos(trabajados, soloBot) {
+  _ATENDIDOS = { trab: trabajados, bot: soloBot };
+  const el = document.getElementById('panel-trabajados-hoy');
+  const chips = [['todos', 'Todos', trabajados.length + soloBot.length], ['vendedores', 'Por vendedores', trabajados.length], ['bot', 'Solo el bot', soloBot.length]]
+    .map(([k, t, n]) => `<button type="button" class="chip-at" aria-pressed="${FILTRO_ATENDIDOS === k}" onclick="filtrarAtendidos('${k}')">${t} <span class="font-normal">${n}</span></button>`).join('');
+  const marcados = soloBot.map(l => ({ ...l, asesor: 'Solo el bot' }));
+  const lista = FILTRO_ATENDIDOS === 'bot' ? marcados : FILTRO_ATENDIDOS === 'vendedores' ? trabajados
+    : trabajados.concat(marcados).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const aviso = FILTRO_ATENDIDOS === 'bot' ? '<p class="aviso-bot">El bot contestó, pero ningún vendedor. Revisa si el cliente quedó atendido.</p>' : '';
+  _conScrollGuardado(el, () => {
+    el.innerHTML = `<div class="chips-at">${chips}</div>${aviso}` + (lista.length
+      ? `<div data-lista class="bg-slate-50 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-white">
+          ${lista.map(l => _filaLead(l, `<span class="t-micro text-slate-500 flex-shrink-0">${l.fecha}</span>`)).join('')}</div>`
+      : '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>');
+  });
+  const nota = document.getElementById('nota-atendidos');
+  if (nota) nota.textContent = soloBot.length ? `${soloBot.length} los atendió solo el bot` : '';
+}
+function filtrarAtendidos(k) { FILTRO_ATENDIDOS = k; renderAtendidos(_ATENDIDOS.trab, _ATENDIDOS.bot); }
+
 function pintarSnapshot(d) {
   SNAP = d;
   const noResp = filtrarLeads(d.no_respondidos, 'tj');
@@ -2663,7 +2706,9 @@ function pintarSnapshot(d) {
   document.getElementById('antiguos-no-respondidos').textContent = nAnt
     ? `+ ${nAnt.toLocaleString('es')} sin respuesta hace más de ${DIAS_RECIENTE} días` : '';
   renderNoRespondidos(noResp);
-  renderExtraLeads('panel-trabajados-hoy', todosHoy);
+  const trabTj = filtrarLeads(d.trabajados_hoy, 'tj'), botTj = filtrarLeads(d.atendidos_solo_bot, 'tj');
+  pintarDesgloses(noResp, trabTj, botTj);
+  renderAtendidos(trabTj, botTj);
   pintarDetalleAsesores();
   pintarComparativo(d.comparado, noResp.length, todosHoy.length, !!d.dia);
   pintarDiaElegido(d.dia);
@@ -2723,6 +2768,278 @@ document.addEventListener('visibilitychange', () => {
 // nuevo. Antes cada filtro dejaba la pagina en blanco unos segundos, y eso se
 // siente como el doble de lento que ver los numeros viejos atenuados.
 let PRIMERA_CARGA = true;
+
+// ============================================================================
+// Parte del periodo, diseño aprobado por Luis (15/10). Graficos en SVG propio:
+// mismas marcas que el resto (lineas de 2px, barras finas, grilla en hairline)
+// y sin depender de como Chart.js decide los ejes.
+// ============================================================================
+const _NS = 'http://www.w3.org/2000/svg';
+function _s(tag, a, padre, texto) {
+  const e = document.createElementNS(_NS, tag);
+  for (const k in a) e.setAttribute(k, a[k]);
+  if (texto !== undefined) e.textContent = texto;
+  padre.appendChild(e);
+  return e;
+}
+function _colorF(i) { return ((FRANJAS || [])[i] || {}).color || '#94a3b8'; }
+function _tagF(i) { return ((FRANJAS || [])[i] || {}).tag || ''; }
+function _mesCorto(iso) {
+  const p = String(iso || '').split('-'); if (p.length !== 3) return String(iso || '');
+  return `${Number(p[2])} ${['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][Number(p[1]) - 1]}`;
+}
+function _medianaDe(a) { const o = [...a].sort((x, y) => x - y), k = o.length >> 1; return o.length ? (o.length % 2 ? o[k] : (o[k - 1] + o[k]) / 2) : 0; }
+
+// Mini tendencia de una cifra: la linea en gris, el ultimo valor en el acento.
+function _kspark(vals) {
+  if (!vals || vals.length < 2) return '';
+  const W = 96, H = 30, mn = Math.min(...vals), mx = Math.max(...vals), r = mx - mn || 1;
+  const x = i => 2 + i * (W - 8) / (vals.length - 1), y = v => 3 + (1 - (v - mn) / r) * (H - 6), u = vals.length - 1;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    <path d="M${vals.map((v, i) => `${x(i)},${y(v)}`).join(' L')}" fill="none" stroke="var(--apagado)" stroke-opacity=".55" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(u)}" cy="${y(vals[u])}" r="3.5" fill="var(--marca)" stroke="#fff" stroke-width="1.5"/></svg>`;
+}
+
+function renderKpisPeriodo(d) {
+  const m = d.metricas, hay = m.total > 0, dist = m.distribucion || [];
+  const ideal = dist[0] || { pct: 0, count: 0 }, crit = dist[dist.length - 1] || { pct: 0, count: 0 };
+  const objetivo = (FRANJAS[0] || {}).max_seg;
+  document.getElementById('lbl-ideal').textContent = objetivo ? `Respondidas dentro del objetivo (${fmtSeg(objetivo)})` : 'Respondidas dentro del objetivo';
+  document.getElementById('k-ideal').innerHTML = hay ? `${fmtPct(ideal.pct, ideal.count)}` : '—';
+  const barra = document.getElementById('k-ideal-barra');
+  barra.style.width = (hay ? ideal.pct : 0) + '%'; barra.style.background = _colorF(0);
+  document.getElementById('k-ideal-sub').textContent = hay ? `${ideal.count.toLocaleString('es')} de ${m.total.toLocaleString('es')} respuestas` : 'Sin respuestas en el periodo';
+  const ultimo = (FRANJAS[FRANJAS.length - 2] || {}).max_seg;
+  document.getElementById('lbl-crit').textContent = ultimo ? `Esperaron más de ${fmtSeg(ultimo)}` : 'En la última franja';
+  document.getElementById('k-crit').textContent = hay ? fmtPct(crit.pct, crit.count) : '—';
+  document.getElementById('k-crit-sub').textContent = hay ? `${crit.count.toLocaleString('es')} clientes en ${_tagF(dist.length - 1)}` : '';
+  const pill = seg => { const i = _franjaDe(seg); return `<span class="tag ${_TAGS[Math.min(i, 3)]}">${_tagF(i)}</span>`; };
+  const med = document.getElementById('k-med');
+  med.innerHTML = hay ? fmtSegCifra(m.mediana_seg) : '—';
+  med.title = hay ? fmtSegLargo(m.mediana_seg) : '';
+  document.getElementById('k-med-sub').innerHTML = hay ? pill(m.mediana_seg) : '';
+  document.getElementById('k-p90').innerHTML = hay ? fmtSegCifra(m.p90_seg) : '—';
+  document.getElementById('k-p90-sub').innerHTML = hay ? pill(m.p90_seg) : '';
+  const serie = (d.tendencia || []).map(t => t.mediana_seg);
+  document.getElementById('sp-med').innerHTML = _kspark(serie.slice(-14));
+}
+
+// Tendencia: cada dia es un punto y la linea es la mediana de los ultimos 7.
+// Un dia malo suelto mueve mucho una linea diaria y asusta sin motivo.
+let _TREND = null;
+function renderTendencia(tendencia) {
+  const svg = document.getElementById('trend'), sv = document.getElementById('volumen');
+  svg.innerHTML = ''; sv.innerHTML = '';
+  const datos = (tendencia || []).filter(t => t.total > 0);
+  _TREND = datos;
+  if (!datos.length) { _s('text', { x: 350, y: 105, 'text-anchor': 'middle' }, svg, 'Sin respuestas en el periodo'); document.getElementById('trend-tabla').innerHTML = ''; return; }
+  const T = datos.map(t => t.mediana_seg / 60), V = datos.map(t => t.total), L = datos.map(t => _mesCorto(t.fecha)), n = T.length;
+  const W = 700, m = { l: 48, r: 58 }, H = 210, tp = 18, bt = 26;
+  const obj = OBJETIVO ? OBJETIVO / 60 : null;
+  const LINEA = T.map((_, i) => _medianaDe(T.slice(Math.max(0, i - 6), i + 1)));
+  const tope = Math.max(10, Math.ceil(Math.max(...T, obj || 0) / 5) * 5);
+  const x = i => n === 1 ? (m.l + W - m.r) / 2 : m.l + i * (W - m.l - m.r) / (n - 1);
+  const y = v => tp + (1 - Math.min(v, tope) / tope) * (H - tp - bt);
+  const marcas = [0, tope / 2, tope];
+  if (obj && !marcas.includes(obj)) marcas.push(obj);
+  marcas.forEach(v => {
+    if (v !== obj) _s('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: 'grid' }, svg);
+    _s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === obj ? `fill:${_colorF(0)};font-weight:700` : '' }, svg, v ? fmtSeg(Math.round(v * 60)) : '0');
+  });
+  if (obj) _s('line', { x1: m.l, x2: W - m.r, y1: y(obj), y2: y(obj), stroke: _colorF(0), 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
+  const pts = LINEA.map((v, i) => `${x(i)},${y(v)}`);
+  if (n > 1) {
+    _s('path', { d: `M${x(0)},${y(0)} L${pts.join(' L')} L${x(n - 1)},${y(0)} Z`, fill: 'var(--marca)', 'fill-opacity': .07 }, svg);
+    _s('path', { d: `M${pts.join(' L')}`, fill: 'none', stroke: 'var(--marca)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+  }
+  T.forEach((v, i) => {
+    const fuera = obj && v > obj, f = _franjaDe(v * 60);
+    _s('circle', { cx: x(i), cy: y(v), r: fuera ? 4 : 3, fill: fuera ? _colorF(f) : 'var(--apagado)', 'fill-opacity': fuera ? 1 : .45, stroke: '#fff', 'stroke-width': 1.5 }, svg);
+  });
+  _s('circle', { cx: x(n - 1), cy: y(LINEA[n - 1]), r: 4.5, fill: 'var(--marca)', stroke: '#fff', 'stroke-width': 2 }, svg);
+  _s('text', { x: x(n - 1) + 8, y: y(LINEA[n - 1]) + 4, style: 'fill:var(--tinta);font-weight:700' }, svg, fmtSeg(Math.round(LINEA[n - 1] * 60)));
+  if (n > 3) {
+    const pico = T.indexOf(Math.max(...T));
+    if (obj && T[pico] > obj * 1.5) _s('text', { x: x(pico), y: y(T[pico]) - 10, 'text-anchor': 'middle', style: 'fill:var(--tinta);font-weight:600' }, svg, `${L[pico]}: ${fmtSeg(Math.round(T[pico] * 60))}`);
+  }
+  const paso = Math.max(1, Math.ceil(n / 6));
+  L.forEach((l, i) => { if (i % paso === 0 || i === n - 1) _s('text', { x: x(i), y: H - 6, 'text-anchor': 'middle' }, svg, l); });
+  // Volumen: abajo, con su propia escala (nunca dos escalas en un dibujo).
+  const HV = 70, vMax = Math.max(...V) * 1.15, bw = Math.min(22, (W - m.l - m.r) / Math.max(1, n) * .55), yv = v => 4 + (1 - v / vMax) * (HV - 18);
+  _s('line', { x1: m.l, x2: W - m.r, y1: yv(0), y2: yv(0), class: 'grid' }, sv);
+  const normal = _medianaDe(V);
+  V.forEach((v, i) => {
+    const r = _s('rect', { x: x(i) - bw / 2, y: yv(v), width: bw, height: Math.max(0, yv(0) - yv(v)), rx: 2, fill: v > normal * 1.6 ? 'var(--apagado)' : 'var(--linea)' }, sv);
+    r.addEventListener('mousemove', ev => mostrarTipSimple(ev, `${v} respuestas`, L[i]));
+    r.addEventListener('mouseleave', ocultarTipSimple);
+  });
+  const vp = V.indexOf(Math.max(...V));
+  if (V[vp] > normal * 1.6) _s('text', { x: x(vp) + bw, y: yv(V[vp]) + 10, style: 'fill:var(--tinta);font-weight:600' }, sv, `${V[vp]} respuestas: ${(V[vp] / normal).toFixed(1).replace('.', ',')} veces lo normal`);
+  // Cursor: snap al dia mas cercano.
+  const guia = _s('line', { y1: tp, y2: H - bt, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '2 3', visibility: 'hidden' }, svg);
+  const zona = _s('rect', { x: m.l, y: tp, width: W - m.l - m.r, height: H - tp - bt, fill: 'transparent' }, svg);
+  zona.addEventListener('mousemove', ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+    const i = n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round((px - m.l) / ((W - m.l - m.r) / (n - 1)))));
+    guia.setAttribute('x1', x(i)); guia.setAttribute('x2', x(i)); guia.setAttribute('visibility', 'visible');
+    mostrarTipSimple(ev, fmtSeg(Math.round(T[i] * 60)), `${L[i]} · últimos 7 días: ${fmtSeg(Math.round(LINEA[i] * 60))} · ${V[i]} respuestas`);
+  });
+  zona.addEventListener('mouseleave', () => { guia.setAttribute('visibility', 'hidden'); ocultarTipSimple(); });
+  // Los mismos numeros en tabla: ningun valor se lee solo con el mouse.
+  document.getElementById('trend-tabla').innerHTML = `<table><thead><tr><th class="izq">Día</th><th>Mediana del día</th><th>Últimos 7 días</th><th>Respuestas</th></tr></thead><tbody>` +
+    datos.map((t, i) => `<tr><td class="izq">${L[i]}</td><td>${fmtSeg(t.mediana_seg)}</td><td>${fmtSeg(Math.round(LINEA[i] * 60))}</td><td>${t.total}</td></tr>`).join('') + '</tbody></table>';
+}
+function toggleDatosTendencia(btn) {
+  const t = document.getElementById('trend-tabla');
+  t.hidden = !t.hidden; btn.textContent = t.hidden ? 'Ver datos' : 'Ocultar datos'; btn.setAttribute('aria-expanded', !t.hidden);
+}
+
+// Cuadrito al pasar el mouse, con el valor primero y el contexto despues.
+function mostrarTipSimple(ev, valor, contexto) {
+  const tip = document.getElementById('tip');
+  tip.replaceChildren();
+  const b = document.createElement('b'); b.textContent = valor; b.style.display = 'block'; tip.appendChild(b);
+  if (contexto) { const c = document.createElement('span'); c.textContent = contexto; c.style.opacity = .85; tip.appendChild(c); }
+  tip.classList.remove('hidden');
+  const r = tip.getBoundingClientRect(); let left = ev.clientX + 14, top = ev.clientY + 14;
+  if (left + r.width > innerWidth - 8) left = ev.clientX - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = ev.clientY - r.height - 14;
+  tip.style.left = left + 'px'; tip.style.top = top + 'px';
+}
+function ocultarTipSimple() { document.getElementById('tip').classList.add('hidden'); }
+
+// Dona: se queda (Luis). Anillo fino, aire entre segmentos, el % dentro del
+// objetivo al centro y la leyenda con cantidades: el color nunca va solo.
+let _DIST = [];
+function renderDonaPeriodo(dist, total) {
+  _DIST = dist || [];
+  const svg = document.getElementById('dona'), ley = document.getElementById('dona-leyenda');
+  svg.innerHTML = '';
+  const cx = 110, cy = 110, r = 84, grosor = 24, C = 2 * Math.PI * r, aire = 3;
+  _s('circle', { cx, cy, r, fill: 'none', stroke: 'var(--carril)', 'stroke-width': grosor }, svg);
+  let acum = 0;
+  const segs = _DIST.map((f, i) => {
+    const largo = total ? f.count / total * C : 0;
+    const seg = _s('circle', { cx, cy, r, fill: 'none', stroke: f.color || _colorF(i), 'stroke-width': grosor, 'stroke-dasharray': `${Math.max(0, largo - aire)} ${C}`,
+      'stroke-dashoffset': -acum, transform: `rotate(-90 ${cx} ${cy})`, 'data-f': i, style: 'cursor:pointer;transition:opacity .15s' }, svg);
+    acum += largo; return seg;
+  });
+  const l2 = _s('text', { x: cx, y: cy - 24, 'text-anchor': 'middle', style: 'font-size:12px;font-weight:700;letter-spacing:.04em' }, svg, '');
+  const ci = _s('text', { x: cx, y: cy + 10, 'text-anchor': 'middle', style: 'font-size:34px;font-weight:800;fill:var(--tinta)' }, svg, '');
+  const l1 = _s('text', { x: cx, y: cy + 32, 'text-anchor': 'middle', style: 'font-size:12px;fill:var(--apagado)' }, svg, '');
+  ley.innerHTML = _DIST.map((f, i) => `<button type="button" class="dl-fila" data-f="${i}">
+      <span class="tag ${_TAGS[Math.min(i, 3)]}" style="justify-self:start">${f.tag}</span><span class="dl-rango">${f.label}</span>
+      <span class="dl-pct">${fmtPct(f.pct, f.count)}</span><span class="dl-n">${f.count.toLocaleString('es')}</span><span class="dl-ver">Ver leads ›</span></button>`).join('') +
+    `<div class="dl-total"><span>Total</span><b>${(total || 0).toLocaleString('es')} respuestas</b></div>`;
+  const centro = f => {
+    const k = f === null ? 0 : f, x = _DIST[k] || { tag: '', pct: 0, count: 0 };
+    l2.textContent = (x.tag || '').toUpperCase(); l2.setAttribute('fill', `var(--franja-${Math.min(k, 3)}-texto)`);
+    ci.textContent = total ? fmtPct(x.pct, x.count) : '—';
+    l1.textContent = f === null ? `en ${(_DIST[0] || {}).label || ''}` : `${x.count.toLocaleString('es')} respuestas`;
+    segs.forEach((g, i) => g.style.opacity = f === null || f === i ? 1 : .3);
+    ley.querySelectorAll('.dl-fila').forEach(b => b.classList.toggle('activa', f !== null && Number(b.dataset.f) === f));
+  };
+  centro(null);
+  const sobre = e => { const t = e.target.closest('[data-f]'); centro(t ? Number(t.dataset.f) : null); };
+  svg.onmouseover = sobre; ley.onmouseover = sobre; svg.onmouseleave = () => centro(null); ley.onmouseleave = () => centro(null);
+  const abrir = e => { const t = e.target.closest('[data-f]'); if (t) verLeadsFranja(Number(t.dataset.f)); };
+  svg.onclick = abrir; ley.onclick = abrir;
+}
+function verLeadsFranja(i) {
+  const f = _DIST[i]; if (!f) return;
+  const leads = f.leads || [];
+  abrirModal(`${f.tag} · ${f.label}`, `${f.count.toLocaleString('es')} respuestas en el periodo${leads.length < f.count ? ` · se muestran las ${leads.length} más lentas` : ''}`,
+    leads.length ? `<div class="bg-slate-50 rounded-xl overflow-hidden divide-y divide-white">${leads.map(l => _filaLead(l, `<span class="t-micro text-slate-500 flex-shrink-0">${l.fecha}</span><span class="t-chico font-semibold text-slate-800 flex-shrink-0" style="min-width:4.5rem;text-align:right">${l.fmt}</span>`)).join('')}</div>`
+      : '<div class="t-chico text-slate-500 text-center py-6">Sin leads en esta franja</div>');
+}
+function abrirModal(titulo, sub, html) {
+  let m = document.getElementById('modal-pulse');
+  if (!m) { m = document.createElement('div'); m.id = 'modal-pulse'; m.className = 'modal-fondo'; document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-cerrar]')) m.hidden = true; }); }
+  m.innerHTML = `<div class="modal-caja" role="dialog" aria-modal="true"><div class="modal-cab"><div><div class="section-title">${titulo}</div><div class="section-sub">${sub}</div></div>
+    <button type="button" class="modal-cerrar" aria-label="Cerrar" data-cerrar>×</button></div><div style="padding:0 1.3rem 1.3rem">${html}</div></div>`;
+  m.hidden = false; m.querySelector('[data-cerrar]').focus();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { const m = document.getElementById('modal-pulse'); if (m) m.hidden = true; } });
+
+// Tabla por asesor: el mas lento arriba. Las respuestas van con su autoria:
+// por WhatsApp, las que salen del celular llegan sin nombre y se le asignan
+// al responsable del lead. Si son muchas, su tiempo no es del todo suyo.
+let _VEND = [];
+function renderVendedores(porAsesor, metricas) {
+  const tabla = document.getElementById('tabla-vendedores');
+  const personas = (porAsesor || []).filter(a => !a.sin_puesto).sort((a, b) => b.mediana_seg - a.mediana_seg);
+  const resto = (porAsesor || []).filter(a => a.sin_puesto);
+  _VEND = personas.concat(resto);
+  const tira = dist => `<div class="reparto-mini">${(dist || []).filter(x => x.count > 0).map(x => `<i style="flex:${x.count};background:${x.color}" title="${x.tag}: ${x.pct}% (${x.count})"></i>`).join('')}</div>`;
+  const pill = seg => `<span class="tag ${_TAGS[Math.min(_franjaDe(seg), 3)]}">${fmtSeg(seg)}</span>`;
+  const resp = a => {
+    if (a.sin_puesto === 'automático') return `${a.total.toLocaleString('es')}`;
+    const sin = a.total ? Math.round((a.por_canal || 0) / a.total * 100) : 0;
+    return `${a.total.toLocaleString('es')}` + (sin >= 20
+      ? `<small class="ident baja" title="${sin}% de sus respuestas salieron del celular sin nombre y se le asignaron por ser el responsable del lead">${sin}% sin autor</small>`
+      : `<small class="ident">${100 - sin}% con autor</small>`);
+  };
+  const crit = a => { const d = a.distribucion || []; const c = d[d.length - 1] || { pct: 0 }; return c.pct; };
+  const fila = (a, apagada) => `<tr class="${apagada ? 'apagada' : ''}"><td class="izq nombre">${a.asesor}${a.sin_puesto ? `<span class="muestra-baja">${a.sin_puesto}</span>` : ''}</td>
+      <td>${resp(a)}</td><td>${pill(a.mediana_seg)}</td><td>${fmtSeg(a.p90_seg)}</td>
+      <td style="${!apagada && crit(a) >= 15 ? 'color:var(--franja-3-texto);font-weight:700' : ''}">${crit(a)}%</td><td>${tira(a.distribucion)}</td></tr>`;
+  const ult = (FRANJAS[FRANJAS.length - 2] || {}).max_seg;
+  tabla.innerHTML = `<thead><tr><th class="izq">Asesor</th><th>Respuestas</th><th>La mitad, en menos de ▾</th><th>9 de cada 10, en menos de</th><th>Más de ${ult ? fmtSeg(ult) : '30m'}</th><th>Reparto por franja</th></tr></thead><tbody>` +
+    (personas.map(a => fila(a, false)).join('') + resto.map(a => fila(a, true)).join('') || '<tr><td colspan="6" class="izq text-slate-500">Sin respuestas en el periodo</td></tr>') +
+    (personas.length > 1 && metricas && metricas.total ? `<tr class="equipo"><td class="izq">Equipo</td><td>${metricas.total.toLocaleString('es')}</td><td>${pill(metricas.mediana_seg)}</td>
+      <td>${fmtSeg(metricas.p90_seg)}</td><td>${(metricas.distribucion[metricas.distribucion.length - 1] || {}).pct || 0}%</td><td>${tira(metricas.distribucion)}</td></tr>` : '') + '</tbody>';
+}
+// Excel: un CSV con separador ; y BOM, que Excel abre con acentos y columnas.
+function descargarVendedores() {
+  const filas = [['Asesor', 'Respuestas', 'Sin autor', 'Mediana (s)', '9 de cada 10 (s)', ...((FRANJAS || []).map(f => f.tag)), 'Observación']]
+    .concat(_VEND.map(a => [a.asesor, a.total, a.por_canal || 0, a.mediana_seg, a.p90_seg, ...(a.distribucion || []).map(x => x.count), a.sin_puesto || '']));
+  const csv = '\ufeff' + filas.map(f => f.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `pulse-${SUBDOMAIN}-asesores-${document.getElementById('desde').value}-a-${document.getElementById('hasta').value}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// Velocidad y carga: lento con mucha carga necesita apoyo; lento con poca,
+// revisar como trabaja. Cuadrantes por el objetivo y la carga media.
+function renderCarga(porAsesor) {
+  const svg = document.getElementById('carga'); svg.innerHTML = '';
+  const W = 520, H = 330, m = { l: 48, r: 12, t: 18, b: 40 };
+  const filas = (porAsesor || []).filter(a => !a.sin_puesto);
+  if (!filas.length) { _s('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle' }, svg, 'Sin asesores con respuestas suficientes'); return; }
+  const obj = OBJETIVO ? OBJETIVO / 60 : 5;
+  const xMax = Math.max(10, Math.ceil(Math.max(...filas.map(f => f.total)) * 1.15 / 10) * 10);
+  const yMax = Math.max(obj * 2, Math.ceil(Math.max(...filas.map(f => f.mediana_seg / 60)) / 5) * 5);
+  const x = v => m.l + v / xMax * (W - m.l - m.r), y = v => m.t + (1 - Math.min(v, yMax) / yMax) * (H - m.t - m.b);
+  const media = filas.reduce((t, a) => t + a.total, 0) / filas.length;
+  [[0, media, obj, yMax, 'Revisar cómo trabaja', 'var(--franja-2-fondo)'], [media, xMax, obj, yMax, 'Necesita apoyo', 'var(--franja-3-fondo)'],
+   [0, media, 0, obj, 'Bien', 'var(--fondo-suave)'], [media, xMax, 0, obj, 'Referente', 'var(--franja-0-fondo)']].forEach(([x0, x1, y0, y1, t, c]) => {
+    _s('rect', { x: x(x0), y: y(y1), width: Math.max(0, x(x1) - x(x0)), height: Math.max(0, y(y0) - y(y1)), fill: c, 'fill-opacity': .6 }, svg);
+    _s('text', { x: x0 ? x(x1) - 8 : x(x0) + 8, y: y1 === yMax ? y(y1) + 16 : y(y0) - 8, 'text-anchor': x0 ? 'end' : 'start', style: 'font-weight:700;font-size:11px;letter-spacing:.03em' }, svg, t.toUpperCase());
+  });
+  [0, obj, yMax].forEach(v => _s('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', style: v === obj ? `fill:${_colorF(0)};font-weight:700` : '' }, svg, v ? fmtSeg(Math.round(v * 60)) : '0'));
+  [0, xMax / 3, xMax * 2 / 3, xMax].forEach(v => _s('text', { x: x(v), y: H - m.b + 16, 'text-anchor': 'middle' }, svg, Math.round(v).toLocaleString('es')));
+  _s('text', { x: (m.l + W - m.r) / 2, y: H - 6, 'text-anchor': 'middle' }, svg, 'respuestas en el periodo (carga) →');
+  _s('line', { x1: m.l, x2: W - m.r, y1: y(obj), y2: y(obj), stroke: _colorF(0), 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg);
+  _s('line', { x1: x(media), x2: x(media), y1: m.t, y2: H - m.b, stroke: 'var(--apagado)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, svg);
+  _s('text', { x: x(media), y: m.t - 4, 'text-anchor': 'middle', style: 'font-size:10px' }, svg, 'carga media');
+  filas.forEach(a => {
+    const cx = x(a.total), cy = y(a.mediana_seg / 60);
+    _s('circle', { cx, cy, r: 7, fill: 'var(--tinta)', stroke: '#fff', 'stroke-width': 2 }, svg);
+    const hit = _s('circle', { cx, cy, r: 14, fill: 'transparent', style: 'cursor:help' }, svg);
+    hit.addEventListener('mousemove', ev => mostrarTipSimple(ev, fmtSeg(a.mediana_seg), `${a.asesor} · la mitad de sus clientes, en menos de eso · ${a.total} respuestas`));
+    hit.addEventListener('mouseleave', ocultarTipSimple);
+    const izq = cx > W * .62;
+    _s('text', { x: cx + (izq ? -12 : 12), y: cy + 4, 'text-anchor': izq ? 'end' : 'start', style: 'font-weight:600;font-size:12px;fill:var(--tinta)' }, svg, a.asesor);
+  });
+}
+
+function pintarCaptionPeriodo() {
+  const el = document.getElementById('per-caption'); if (!el) return;
+  const d = document.getElementById('desde').value, h = document.getElementById('hasta').value;
+  el.textContent = `${d === h ? _mesCorto(d) : `${_mesCorto(d)} – ${_mesCorto(h)}`} · ${MODO === 'fuera_horario' ? 'fuera de horario' : 'horario laboral'}`;
+}
 
 async function cargarDatos() {
   const content = document.getElementById('content');
@@ -2785,8 +3102,8 @@ async function cargarDatos() {
     // Textos que cambian segun el modo horario laboral / fuera de horario
     const esFueraHorario = d.config.modo === 'fuera_horario';
     document.getElementById('label-promedio').textContent = esFueraHorario
-      ? 'Tiempo real (mediana)'
-      : 'Tiempo de respuesta (mediana)';
+      ? 'La mitad, en tiempo real, en menos de'
+      : 'La mitad respondida en menos de';
     document.getElementById('titulo-distribucion').textContent = esFueraHorario
       ? 'Distribución — fuera de horario'
       : 'Distribución';
@@ -2805,8 +3122,8 @@ async function cargarDatos() {
     const sabemosQuienContesto =
       hayCampoAsesor || !!(d.config.medicion || {}).corte_mensajes;
     document.getElementById('titulo-por-asesor').textContent = sabemosQuienContesto
-      ? 'Tiempo de respuesta por asesor'
-      : 'Tiempo de respuesta por responsable';
+      ? 'Cómo va cada asesor'
+      : 'Cómo va cada responsable';
 
     // No dejar elegir fechas anteriores al primer evento capturado para este cliente.
     // Ademas de bloquear el calendario, el dia se marca subrayado (marcarPrimerDia).
@@ -2899,91 +3216,13 @@ async function cargarDatos() {
     // linea del grafico— pero ya no se explica con un renglon de texto.
     OBJETIVO = (fr.length && fr[0].max_seg) ? fr[0].max_seg : 0;
 
-    const cardPorAsesor = document.getElementById('card-por-asesor');
-    if (d.por_asesor && d.por_asesor.length) {
-      cardPorAsesor.classList.remove('hidden');
-      renderAsesores(d.por_asesor, d.config.min_muestra_asesor);
-    } else {
-      cardPorAsesor.classList.add('hidden');
-    }
-
-    // KPIs
-    // La cifra grande es la mediana: el promedio se lo lleva la cola larga y
-    // termina mostrando un tiempo que no espero ningun cliente real.
-    //
-    // Sin un solo registro hay que poner el guion A MANO. _calc_metricas
-    // devuelve ceros cuando no hay nada que medir, y los formateadores
-    // dibujan el cero como "menos de 1 segundo" y "< 1s": el vacio se leia
-    // como el mejor resultado posible del tablero. Paso de verdad en
-    // gruporegalado, con un rango de fechas caido dentro del apagon del 31/08.
-    //
-    // Es el mismo error que nos tuvo dos dias sin notar que la base no
-    // guardaba nada: el silencio pareciendose al exito.
-    const hayDatos = d.metricas.total > 0;
-    const sinDato = '—';
-    // La cifra con la unidad chica (01/10); el texto completo queda para
-    // lectores de pantalla y al pasar el mouse.
-    const elMediana = document.getElementById('kpi-promedio');
-    elMediana.innerHTML = hayDatos ? fmtSegCifra(d.metricas.mediana_seg) : sinDato;
-    elMediana.title = hayDatos ? fmtSegLargo(d.metricas.mediana_seg) : '';
-    elMediana.setAttribute('aria-label', hayDatos ? fmtSegLargo(d.metricas.mediana_seg) : String(sinDato));
-    document.getElementById('kpi-p90').textContent       = hayDatos ? fmtSeg(d.metricas.p90_seg)          : sinDato;
-    document.getElementById('kpi-prom-sec').textContent  = hayDatos ? fmtSeg(d.metricas.promedio_seg)     : sinDato;
-    document.getElementById('kpi-maximo').textContent    = hayDatos ? fmtSeg(d.metricas.maximo_seg)       : sinDato;
-
-    const badge = getBadgeTag(d.metricas.mediana_seg, d.config.franjas);
-    // La tarjeta entera se pinta con la franja en la que cae la mediana. El
-    // indice es el de la franja, no el nombre: si el cliente renombra "Bueno"
-    // a "Aceptable", el color sigue funcionando.
-    const cardMed = document.getElementById('card-mediana');
-    cardMed.classList.remove('kpi-f0', 'kpi-f1', 'kpi-f2', 'kpi-f3');
-    if (badge && d.metricas.total > 0) {
-      const el = document.getElementById('kpi-badge-prom');
-      el.textContent = badge.tag;
-      el.className = `tag-kpi ${tagClass(badge.tag)}`;
-      el.classList.remove('hidden');
-      // Sin datos NO se pinta: una tarjeta verde con un guion adentro diria
-      // que todo va bien cuando en realidad no se midio nada.
-      const i = (d.config.franjas || []).indexOf(badge);
-      if (i >= 0) cardMed.classList.add(`kpi-f${i}`);
-    }
-
-    const dist = d.metricas.distribucion;
-    const ideal   = dist[0];
-    const critico = dist[dist.length - 1];
-
-    // Mismo criterio que arriba: sin registros, "0%" tampoco es cierto. Uno
-    // de los dos porcentajes iba a parecer bueno y el otro malo, y los dos
-    // estarian describiendo un conjunto vacio.
-    document.getElementById('kpi-pct-ideal').textContent    = hayDatos ? fmtPct(ideal.pct, ideal.count) : sinDato;
-    document.getElementById('kpi-sub-ideal').textContent    = `${ideal.count} respuestas < 5 min`;
-
-    // El unico color que queda en las cifras, y solo cuando el dato lo pide:
-    // mas gente esperando +30 min que atendida en menos de 5. Es un estado
-    // que se explica solo y no necesita un umbral nuevo en la config.
-    const critEl = document.getElementById('kpi-pct-critico');
-    critEl.textContent = hayDatos ? fmtPct(critico.pct, critico.count) : sinDato;
-    critEl.classList.toggle('kpi-alerta', hayDatos && critico.pct > ideal.pct);
-    document.getElementById('kpi-sub-critico').textContent  = `${critico.count} esperaron +30 min`;
-
-    // Distribución
-    document.getElementById('donut-total').textContent = d.metricas.total.toLocaleString('es');
-    renderDonut(dist);
-    renderDist(dist);
-
-    // Tendencia
-    if (d.tendencia.length > 0) {
-      TREND_DATOS = {
-        t: d.tendencia,
-        a: d.tendencia_por_asesor,
-        // Con 2 o mas responsables elegidos el grafico dibuja una linea por
-        // persona; sin filtrar, una sola linea del equipo.
-        p: d.config.asesores_elegidos || [],
-      };
-      renderTrend(TREND_DATOS.t, TREND_DATOS.a, TREND_DATOS.p);
-      document.getElementById('trend-rango').textContent =
-        `${d.tendencia[0].fecha} → ${d.tendencia[d.tendencia.length-1].fecha}`;
-    }
+    // Parte del periodo, diseño aprobado (15/10).
+    renderKpisPeriodo(d);
+    renderTendencia(d.tendencia);
+    renderDonaPeriodo(d.metricas.distribucion, d.metricas.total);
+    renderVendedores(d.por_asesor, d.metricas);
+    renderCarga(d.por_asesor);
+    pintarCaptionPeriodo();
 
     // Lentas y rapidas: se guardan las dos listas y se muestra la elegida
     TOP_LENTOS  = d.top_lentos;
