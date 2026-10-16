@@ -4926,12 +4926,20 @@ def _filas_en_tandas(cursor):
             return
         yield from filas
 
-def _turnos_cacheados(cursor, subdomain, corte):
+def _turnos_cacheados(cursor, subdomain, corte, desde_carga=None):
+    """desde_carga (16/10): si viene, solo se arman los turnos de los leads
+    que escribieron desde ese momento, con TODA su historia. Da exactamente
+    los mismos turnos para cualquier periodo que empiece en desde_carga o
+    despues: un turno que empieza dentro del periodo necesita un mensaje del
+    cliente dentro del periodo, y la historia de ese lead se lee entera, asi
+    que el calculo de ese lead es el mismo que con todo cargado. Lo que se
+    deja de leer son los leads quietos en el periodo, que en una cuenta como
+    Ecoambiental (7.000 mensajes por dia) son la mayor parte."""
     cursor.execute('SELECT MAX(ts) AS m FROM mensajes_cliente WHERE subdomain = %s', (subdomain,))
     ult_cli = (cursor.fetchone() or {}).get('m')
     cursor.execute('SELECT MAX(ts) AS m FROM mensajes_asesor WHERE subdomain = %s', (subdomain,))
     ult_asr = (cursor.fetchone() or {}).get('m')
-    clave = (corte, ult_cli, ult_asr)
+    clave = (corte, ult_cli, ult_asr, desde_carga)
     v = _turnos_cache.get(subdomain)
     if v and v[0] == clave:
         return v[1]
@@ -4943,9 +4951,9 @@ def _turnos_cacheados(cursor, subdomain, corte):
         if v and v[0] == clave:
             return v[1]
         with _turnos_armando:
-            return _armar_turnos(cursor, subdomain, corte, clave)
+            return _armar_turnos(cursor, subdomain, corte, clave, desde_carga)
 
-def _armar_turnos(cursor, subdomain, corte, clave):
+def _armar_turnos(cursor, subdomain, corte, clave, desde_carga=None):
     # Se suelta el armado anterior antes de leer: si no, durante la lectura
     # conviven el viejo y el nuevo, y la cuenta pesa el doble.
     _turnos_cache.pop(subdomain, None)
@@ -4954,15 +4962,22 @@ def _armar_turnos(cursor, subdomain, corte, clave):
     # escribir el dia anterior y recibir respuesta despues del corte. Si se
     # leyeran solo desde el corte, ese turno se mediria desde un mensaje que no
     # es el primero sin contestar.
+    # Solo los leads que escribieron desde desde_carga (ver _turnos_cacheados).
+    if desde_carga is not None:
+        activos = (' AND lead_id IN (SELECT DISTINCT lead_id FROM mensajes_cliente '
+                   'WHERE subdomain = %s AND ts >= %s)')
+        p_activos = [subdomain, desde_carga]
+    else:
+        activos, p_activos = '', []
     cursor.execute(
-        'SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s AND ts >= %s',
-        (subdomain, corte - GAP_REACTIVACION_SEG))
+        'SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s AND ts >= %s' + activos,
+        [subdomain, corte - GAP_REACTIVACION_SEG] + p_activos)
     entrantes = [(r['lead_id'], r['ts']) for r in _filas_en_tandas(cursor)]
 
     cursor.execute(
         'SELECT lead_id, ts, autor_nombre, user_id, msg_id FROM mensajes_asesor '
-        'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
-        (subdomain, corte))
+        'WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL' + activos,
+        [subdomain, corte] + p_activos)
     salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'], r['msg_id'])
                  for r in _filas_en_tandas(cursor)]
 
@@ -4980,7 +4995,7 @@ def _armar_turnos(cursor, subdomain, corte, clave):
 
 def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
                            fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre,
-                           embudos_sel=(), etapas_sel=()):
+                           embudos_sel=(), etapas_sel=(), desde_carga=None):
     """Arma los registros del dashboard desde los MENSAJES, no desde los campos.
 
     Devuelve exactamente la misma forma que la consulta vieja, para que todo lo
@@ -5002,7 +5017,10 @@ def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, di
 
     # Los turnos ya armados, o rearmados si entro un mensaje nuevo. Ver
     # _turnos_cacheados: es la parte cara y no depende de ningun filtro.
-    turnos = _turnos_cacheados(cursor, subdomain, corte)
+    # Desde donde cargar: el inicio del periodo, o lo que diga quien llama
+    # cuando necesita dos periodos con la misma carga (el actual y el anterior).
+    turnos = _turnos_cacheados(cursor, subdomain, corte,
+                               desde_ts if desde_carga is None else desde_carga)
     if not turnos:
         return []
 
@@ -6397,10 +6415,20 @@ def pulse_data():
         # contacto se renombro en Kommo, vale el ultimo.
         # Lo que ocurrio DESDE el corte se mide con los mensajes propios.
         _marca('consulta_campos')
+        # El periodo anterior se decide ANTES de leer: los dos periodos
+        # comparten una sola carga, desde el inicio del anterior. Si cada uno
+        # cargara desde su propio inicio, la clave del cache cambiaria entre
+        # una llamada y otra y se armaria todo dos veces por pedido.
+        rango_antes = None
+        if corte and desde_ts is not None and hasta_ts is not None:
+            largo = hasta_ts - desde_ts + 1
+            if desde_ts - largo >= corte:
+                rango_antes = (desde_ts - largo, desde_ts - 1)
+        desde_carga = rango_antes[0] if rango_antes else desde_ts
         registros_msj = _registros_de_mensajes(
             c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
             fuera_horario, desde_ts, hasta_ts, asesor_ids, asesores_nombre,
-            embudos_sel, etapas_sel)
+            embudos_sel, etapas_sel, desde_carga=desde_carga)
         _marca('registros_mensajes')
 
         # El periodo anterior, de la misma duracion y con los mismos filtros
@@ -6409,15 +6437,12 @@ def pulse_data():
         # antes del corte de la cuenta no se compara contra nada: el tablero
         # dice "sin datos del periodo anterior". Es barato: los turnos ya
         # estan armados y solo se filtran por otras fechas.
-        registros_antes, rango_antes = None, None
-        if corte and desde_ts is not None and hasta_ts is not None:
-            largo = hasta_ts - desde_ts + 1
-            if desde_ts - largo >= corte:
-                rango_antes = (desde_ts - largo, desde_ts - 1)
-                registros_antes = _registros_de_mensajes(
-                    c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
-                    fuera_horario, rango_antes[0], rango_antes[1], asesor_ids,
-                    asesores_nombre, embudos_sel, etapas_sel)
+        registros_antes = None
+        if rango_antes:
+            registros_antes = _registros_de_mensajes(
+                c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
+                fuera_horario, rango_antes[0], rango_antes[1], asesor_ids,
+                asesores_nombre, embudos_sel, etapas_sel, desde_carga=desde_carga)
         _marca('periodo_anterior')
 
         # Lo que se ofrece en el selector: solo embudos con leads de verdad.
