@@ -713,7 +713,7 @@
           Incluir conversaciones cerradas
         </label>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="par-ahora">
         <div class="card card-clic abierta tarjeta-sin">
           <!-- BOTON, no un div con onclick. Un div con onclick no se alcanza
                con Tab ni se activa con Enter: quien no usa mouse no podia abrir
@@ -1598,18 +1598,48 @@ function toggleLeads(idx) {
   _avisarAbierto(panel, !hidden);
 }
 
+// Sin responder y Atendidos se abren y se cierran JUNTAS (16/10): van lado a
+// lado y tienen que quedar alineadas; una abierta al lado de otra cerrada
+// deja un hueco. La tarjeta abierta marca su estado con el borde.
 function toggleExtra(key) {
-  const panel = document.getElementById(`panel-${key}`);
-  const chevron = document.getElementById(`chev-${key}`);
-  const hidden = panel.classList.toggle('hidden');
-  chevron.style.transform = hidden ? '' : 'rotate(180deg)';
-  // La tarjeta que contiene el panel marca que esta abierta (borde en el azul
-  // de marca, chip de la flecha encendido). Es el estado que faltaba: la
-  // flecha girada sola no lo decia.
-  const tarjeta = panel.parentElement;
-  if (tarjeta && tarjeta.classList) tarjeta.classList.toggle('abierta', !hidden);
-  _avisarAbierto(panel, !hidden);
+  const abrir = document.getElementById(`panel-${key}`).classList.contains('hidden');
+  ['no-respondidos', 'trabajados-hoy'].forEach(k => {
+    const panel = document.getElementById(`panel-${k}`);
+    panel.classList.toggle('hidden', !abrir);
+    document.getElementById(`chev-${k}`).style.transform = abrir ? 'rotate(180deg)' : '';
+    if (panel.parentElement && panel.parentElement.classList) panel.parentElement.classList.toggle('abierta', abrir);
+    _avisarAbierto(panel, abrir);
+  });
+  _alinearAhora();
 }
+
+// Las listas de Sin responder y Atendidos empiezan y terminan a la misma
+// altura (Juan, 16/10). Sin esto, la de la izquierda —con la ayuda arriba y el
+// grupo de "mas de 7 dias" abajo— quedaba corrida respecto de la otra. Las
+// dos toman el alto de la mas larga, hasta 28rem, y con scroll adentro.
+function _alinearAhora() {
+  requestAnimationFrame(() => {
+    const listas = ['panel-no-respondidos', 'panel-trabajados-hoy'].map(id => {
+      const p = document.getElementById(id);
+      return p && !p.classList.contains('hidden') ? p.querySelector('[data-lista]') : null;
+    });
+    listas.forEach(l => { if (l) { l.style.height = ''; l.style.maxHeight = ''; l.style.marginTop = ''; } });
+    if (!listas[0] || !listas[1] || window.innerWidth < 640) return;
+    const tope = 28 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const alto = Math.min(tope, Math.max(...listas.map(l => l.scrollHeight)));
+    listas.forEach(l => { l.style.height = `${alto}px`; l.style.maxHeight = 'none'; });
+    const [a, b] = listas.map(l => l.getBoundingClientRect().top);
+    // Se baja la que quedo mas arriba. El margen se calcula sobre el hueco
+    // real con lo de arriba: los margenes verticales entre hermanos se
+    // superponen, y sumarle solo la diferencia no movia nada.
+    if (Math.abs(a - b) > .5) {
+      const l = a < b ? listas[0] : listas[1], prev = l.previousElementSibling;
+      const hueco = prev ? l.getBoundingClientRect().top - prev.getBoundingClientRect().bottom : 0;
+      l.style.marginTop = `${hueco + Math.abs(a - b)}px`;
+    }
+  });
+}
+window.addEventListener('resize', () => _alinearAhora());
 
 // Cuanto se habia bajado dentro de la lista, para volver a dejarlo igual
 // despues de redibujarla. El snapshot se refresca solo cada 90 segundos y
@@ -1953,6 +1983,7 @@ function renderNoRespondidos(leads) {
         </div>`}
       ${_bloqueAntiguos()}`;
   });
+  _alinearAhora();
 }
 
 // Cuanto lleva esperando y en que franja cae, a la derecha de cada lead.
@@ -2787,6 +2818,7 @@ function renderAtendidos(trabajados, soloBot) {
           ${lista.map(l => _filaLead(l, `<span class="t-micro text-slate-500 flex-shrink-0">${l.fecha}</span>`)).join('')}</div>`
       : '<div class="t-chico text-slate-500 text-center py-4">Sin leads</div>');
   });
+  _alinearAhora();
   const nota = document.getElementById('nota-atendidos');
   if (nota) nota.textContent = soloBot.length ? `${soloBot.length} los atendió solo el bot` : '';
 }
