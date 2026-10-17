@@ -5635,14 +5635,9 @@ def _leads_estado_en(subdomain, ts, subconjunto_sql, subconjunto_params):
 DIAS_SIN_RESPONDER_RECIENTE = 7
 
 def _separar_antiguos(leads):
-    """(del dia, de dias anteriores) segun la marca 'del_dia' de cada lead.
-
-    Hasta el 16/10 separaba por 7 dias: la tarjeta acumulaba una semana y un
-    cliente de hace 3 dias seguia sumando en Critico hoy. Ahora la tarjeta, sus
-    franjas, la tabla por asesor y el comparativo son del dia que se mira, y
-    lo anterior que sigue sin respuesta va aparte, sin sumar (Juan, 16/10)."""
-    return ([l for l in leads if l.get('del_dia')],
-            [l for l in leads if not l.get('del_dia')])
+    """(recientes, antiguos) segun la marca 'antiguo' de cada lead."""
+    return ([l for l in leads if not l.get('antiguo')],
+            [l for l in leads if l.get('antiguo')])
 
 def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                           solo_abiertas=False, desde_ts=None,
@@ -5783,11 +5778,6 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     # pasado. Con time.time() siempre, un mismo dia pasado sumaba espera cada
     # vez que se lo consultaba (revision del 26/09).
     reloj = int(hasta_ts) if hasta_ts else int(time.time())
-    # El dia que se esta mirando (hoy, o el elegido en "Ver"), en hora local.
-    # Un segundo antes del reloj: para un dia pasado el reloj es el fin del
-    # dia, las 00:00 del siguiente, y se tomaba ese como el dia mirado.
-    dia_local = _ts_to_local(reloj - 1, tz_offset).date()
-    inicio_dia = _local_date_to_ts(dia_local.strftime('%Y-%m-%d'), tz_offset)
     salida = []
     for r in rows:
         ultimo = r['f_ult_msj_cliente']
@@ -5802,11 +5792,6 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
         # en un dia pasado se mide contra ese dia, no contra hoy.
         fila['dias_desde_ultimo'] = max(0, (reloj - int(ultimo)) // 86400)
         fila['antiguo'] = fila['dias_desde_ultimo'] >= DIAS_SIN_RESPONDER_RECIENTE
-        # Si el mensaje que se espera llego ESE dia (16/10, Juan): "Sin
-        # responder" es del dia elegido y no acumula los anteriores. Los de
-        # dias anteriores van aparte, con cuantos dias de calendario tienen.
-        fila['del_dia'] = int(ultimo) >= inicio_dia
-        fila['dias_atras'] = (dia_local - _ts_to_local(int(ultimo), tz_offset).date()).days
         fila['primer_fecha'] = _fmt_fecha_corta(_ts_to_local(primero, tz_offset))
         fila['primer_espera_seg'] = _calc_tiempo_efectivo(
             primero, reloj, tz_offset, h_ini, h_fin, dias_lab)
@@ -5983,8 +5968,8 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                                                      sql_embudo, params_embudo, corte, conn=conn)
         _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
 
-    # Lo de dias anteriores va aparte: el numero de la tarjeta, los criticos
-    # y la tabla por asesor cuentan solo el dia que se mira.
+    # Lo de mas de DIAS_SIN_RESPONDER_RECIENTE dias va aparte: el numero de la
+    # tarjeta, los criticos y la tabla por asesor cuentan solo lo reciente.
     no_respondidos, antiguos = _separar_antiguos(no_respondidos)
 
     contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
@@ -6031,8 +6016,8 @@ def comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, fecha, corte, conn,
                                   est['atendidos_solo_bot']], nombres)
     return {
         'fecha':          fecha,
-        # Solo lo de ese dia, igual que la tarjeta: comparar contra un numero
-        # que incluye dias anteriores inflaria la diferencia.
+        # Solo lo reciente, igual que la tarjeta: comparar contra un numero que
+        # incluye lo viejo inflaria la diferencia.
         'no_respondidos': len(_separar_antiguos(est['no_respondidos'])[0]),
         'trabajados_hoy': len(est['trabajados_hoy']) + len(est['atendidos_solo_bot']),
         # Para la columna "vs el otro dia" de Detalle por asesor (16/10): cuantos
