@@ -5130,7 +5130,22 @@ def _corte_salientes(cursor, subdomain):
 #
 # Los turnos se devuelven como estan y quien los usa no los modifica: los
 # registros se construyen aparte, en _registros_de_mensajes.
-_turnos_cache = {}     # subdomain -> (clave, turnos)
+#
+# Incremental (19/10). En Camara China entra un mensaje por minuto, asi que la
+# clave cambiaba siempre y cada tablero rearmaba el mes entero: 17 de los 29 s
+# de la carga. Los turnos de un lead dependen SOLO de los mensajes de ese lead
+# (ver _turnos_de_mensajes), asi que con mensajes nuevos basta recalcular los
+# leads que los recibieron: el resultado es identico al rearmado completo.
+#   - Se recalculan los leads con algun mensaje desde el ultimo armado menos
+#     TURNOS_MARGEN_SEG: el webhook a veces entrega con atraso y un mensaje
+#     puede llegar con hora anterior a otro ya guardado.
+#   - Cada TURNOS_REARMADO_SEG se rearma todo igual, por si entro algo mas
+#     viejo que el margen (una recuperacion de huecos, por ejemplo).
+#   - Un periodo que empieza despues de lo cargado reusa lo cargado: los leads
+#     de mas no tienen turnos que empiecen en ese periodo (ver desde_carga).
+_turnos_cache = {}     # subdomain -> (clave, turnos, {'por_lead', 'armado'})
+TURNOS_MARGEN_SEG = 2 * 3600
+TURNOS_REARMADO_SEG = 30 * 60
 
 # Memoria (15/10, Render reinicio el servicio por pasarse del limite). Armar
 # los turnos carga todos los mensajes de la cuenta desde el corte, y en una
@@ -5168,17 +5183,74 @@ def _turnos_cacheados(cursor, subdomain, corte, desde_carga=None):
     ult_asr = (cursor.fetchone() or {}).get('m')
     clave = (corte, ult_cli, ult_asr, desde_carga)
     v = _turnos_cache.get(subdomain)
-    if v and v[0] == clave:
+    if _turnos_al_dia(v, corte, ult_cli, ult_asr, desde_carga):
         return v[1]
     with _turnos_locks_guardia:
         lock = _turnos_locks[subdomain]
     with lock:
         # Quien esperaba el lock puede encontrarlo ya armado por el otro.
         v = _turnos_cache.get(subdomain)
-        if v and v[0] == clave:
+        if _turnos_al_dia(v, corte, ult_cli, ult_asr, desde_carga):
             return v[1]
         with _turnos_armando:
+            if (_turnos_sirven(v, corte, desde_carga) and v[0][1] is not None and v[0][2] is not None
+                    and time.monotonic() - v[2]['armado'] < TURNOS_REARMADO_SEG):
+                return _actualizar_turnos(cursor, subdomain, corte, v, ult_cli, ult_asr)
             return _armar_turnos(cursor, subdomain, corte, clave, desde_carga)
+
+def _cubre(cargado_desde, pedido_desde):
+    """Si lo cargado desde 'cargado_desde' sirve para un pedido desde
+    'pedido_desde'. None es "todo"."""
+    return cargado_desde is None or (pedido_desde is not None and cargado_desde <= pedido_desde)
+
+def _turnos_sirven(v, corte, desde_carga):
+    return bool(v) and len(v) > 2 and v[0][0] == corte and _cubre(v[0][3], desde_carga)
+
+def _turnos_al_dia(v, corte, ult_cli, ult_asr, desde_carga):
+    return _turnos_sirven(v, corte, desde_carga) and v[0][1] == ult_cli and v[0][2] == ult_asr
+
+def _turnos_finales(entrantes, salientes, subdomain, corte):
+    """Turnos de estos mensajes, con el mismo corte de frontera que el
+    armado completo (ver _armar_turnos)."""
+    if not salientes:
+        return []
+    turnos = _turnos_de_mensajes(entrantes, salientes, remitentes_auto_de(subdomain))
+    return [t for t in turnos if t['fin'] >= corte and t['seg'] <= GAP_REACTIVACION_SEG]
+
+def _actualizar_turnos(cursor, subdomain, corte, v, ult_cli, ult_asr):
+    """Recalcula solo los leads con mensajes nuevos (ver _turnos_cache)."""
+    clave_vieja, _, extra = v
+    desde_carga = clave_vieja[3]
+    desde = min(clave_vieja[1], clave_vieja[2]) - TURNOS_MARGEN_SEG
+    cursor.execute(
+        'SELECT lead_id FROM mensajes_cliente WHERE subdomain = %s AND ts >= %s '
+        'UNION SELECT lead_id FROM mensajes_asesor WHERE subdomain = %s AND ts >= %s AND lead_id IS NOT NULL',
+        (subdomain, desde, subdomain, desde))
+    cambiados = [r['lead_id'] for r in cursor.fetchall()]
+    entrantes, salientes = [], []
+    if cambiados:
+        cursor.execute('SELECT lead_id, ts FROM mensajes_cliente WHERE subdomain = %s AND lead_id = ANY(%s) AND ts >= %s',
+                       (subdomain, cambiados, corte - GAP_REACTIVACION_SEG))
+        entrantes = [(r['lead_id'], r['ts']) for r in cursor.fetchall()]
+        cursor.execute('SELECT lead_id, ts, autor_nombre, user_id, msg_id FROM mensajes_asesor '
+                       'WHERE subdomain = %s AND lead_id = ANY(%s) AND ts >= %s',
+                       (subdomain, cambiados, corte))
+        salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'], r['msg_id']) for r in cursor.fetchall()]
+        # Mismo criterio de "activo" que el armado completo: solo los leads
+        # con algun mensaje del cliente desde desde_carga.
+        if desde_carga is not None:
+            activos = {l for l, ts in entrantes if ts >= desde_carga}
+            entrantes = [e for e in entrantes if e[0] in activos]
+            salientes = [m for m in salientes if m[0] in activos]
+    por_lead = dict(extra['por_lead'])
+    for l in cambiados:
+        por_lead.pop(l, None)
+    for t in _turnos_finales(entrantes, salientes, subdomain, corte):
+        por_lead.setdefault(t['lead_id'], []).append(t)
+    turnos = [t for ts in por_lead.values() for t in ts]
+    _turnos_cache[subdomain] = ((corte, ult_cli, ult_asr, desde_carga), turnos,
+                                {'por_lead': por_lead, 'armado': extra['armado']})
+    return turnos
 
 def _armar_turnos(cursor, subdomain, corte, clave, desde_carga=None):
     # Se suelta el armado anterior antes de leer: si no, durante la lectura
@@ -5208,16 +5280,15 @@ def _armar_turnos(cursor, subdomain, corte, clave, desde_carga=None):
     salientes = [(r['lead_id'], r['ts'], r['autor_nombre'], r['user_id'], r['msg_id'])
                  for r in _filas_en_tandas(cursor)]
 
-    turnos = []
-    if salientes:
-        turnos = _turnos_de_mensajes(entrantes, salientes, remitentes_auto_de(subdomain))
-        # La frontera se decide por CUANDO SE RESPONDIO, no por cuando escribio
-        # el cliente. Asi cada respuesta cae en un metodo y en uno solo: la
-        # consulta vieja se corta con f_ult_msj_asesor < corte. Si se partiera
-        # por el inicio, una respuesta del borde quedaria contada dos veces.
-        turnos = [t for t in turnos
-                  if t['fin'] >= corte and t['seg'] <= GAP_REACTIVACION_SEG]
-    _turnos_cache[subdomain] = (clave, turnos)
+    # La frontera se decide por CUANDO SE RESPONDIO, no por cuando escribio
+    # el cliente. Asi cada respuesta cae en un metodo y en uno solo: la
+    # consulta vieja se corta con f_ult_msj_asesor < corte. Si se partiera
+    # por el inicio, una respuesta del borde quedaria contada dos veces.
+    turnos = _turnos_finales(entrantes, salientes, subdomain, corte)
+    por_lead = defaultdict(list)
+    for t in turnos:
+        por_lead[t['lead_id']].append(t)
+    _turnos_cache[subdomain] = (clave, turnos, {'por_lead': dict(por_lead), 'armado': time.monotonic()})
     return turnos
 
 def _registros_de_mensajes(cursor, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
