@@ -5989,6 +5989,8 @@ def _solo_estos_asesores(listas, nombres):
 # reusa mientras no cambie el corte "a esta hora", en tramos de 2 minutos.
 AHORA_CACHE_SEG = 30
 _ahora_cache = {}
+PERIODO_CACHE_SEG = 180
+_periodo_cache = {}
 _cmp_cache = {}
 
 def _con_cache(cache, clave, vigencia, calcular):
@@ -6784,12 +6786,19 @@ def pulse_data():
         # dice "sin datos del periodo anterior". Es barato: los turnos ya
         # estan armados y solo se filtran por otras fechas.
         # Convertidos del periodo y clientes por hora (16/10).
-        convertidos = _convertidos(c, subdomain, desde_ts, hasta_ts, asesor_ids,
-                                   asesores_nombre, embudos_sel, etapas_sel, msj_por_venta=True)
-        mensajes = _mensajes_por_asesor(c, subdomain, desde_ts, hasta_ts, asesor_ids,
-                                        asesores_nombre, embudos_sel, etapas_sel)
-        mapa_clientes = _clientes_por_hora(c, subdomain, tz_offset, desde_ts, hasta_ts,
-                                           asesor_ids, sql_embudo, params_embudo)
+        # Se reusan 3 minutos por combinacion de filtros (19/10): recorren
+        # todos los mensajes del periodo —5 s en Camara China— y son numeros
+        # del periodo, que no necesitan estar al segundo.
+        clave_per = (subdomain, desde_ts, hasta_ts, tuple(sorted(asesor_ids or ())),
+                     tuple(sorted(asesores_nombre or ())), tuple(sorted(map(str, embudos_sel or ()))),
+                     tuple(sorted(etapas_sel or ())), tz_offset)
+        convertidos, mensajes, mapa_clientes = _con_cache(_periodo_cache, clave_per, PERIODO_CACHE_SEG, lambda: (
+            _convertidos(c, subdomain, desde_ts, hasta_ts, asesor_ids,
+                         asesores_nombre, embudos_sel, etapas_sel, msj_por_venta=True),
+            _mensajes_por_asesor(c, subdomain, desde_ts, hasta_ts, asesor_ids,
+                                 asesores_nombre, embudos_sel, etapas_sel),
+            _clientes_por_hora(c, subdomain, tz_offset, desde_ts, hasta_ts,
+                               asesor_ids, sql_embudo, params_embudo)))
         _marca('convertidos')
 
         registros_antes = None
