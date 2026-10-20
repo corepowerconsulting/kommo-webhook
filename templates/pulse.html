@@ -291,6 +291,9 @@
     .reparto-mini { display:flex; gap:2px; height:.55rem; width:9rem; margin-left:auto; }
     /* Reparto por franja: una linea pintada; el % y la franja al pasar el
        mouse (16/10). Los recuadros con numeros cargaban mucho la tabla. */
+    /* Mientras llega el nuevo dia o comparativo: lo de abajo se atenua y no
+       se puede tocar; los filtros de arriba siguen activos. */
+    .parte-ahora.actualizando #par-ahora, .parte-ahora.actualizando .card:has(#tabla-asesores-ahora) { opacity:.45; pointer-events:none; transition:opacity .15s; }
     .ver-mas { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:10px; }
     .ver-mas:empty { display:none; }
     .ver-mas button { font:inherit; font-size:var(--t-chico); font-weight:600; color:var(--marca); background:none; border:1px solid var(--linea); border-radius:8px; padding:6px 14px; cursor:pointer; }
@@ -2679,7 +2682,17 @@ function diaComparar() { const s = document.getElementById('dia-comparar'); retu
 function cambiarDia() {
   // Al mirar un dia pasado, el comparativo por defecto es el dia anterior a
   // ESE, no ayer: comparar el 02/09 contra ayer no dice nada.
-  refrescarSnapshot();
+  // Aviso inmediato (19/10): el pedido tarda unos segundos y la pantalla se
+  // quedaba quieta, como si el cambio no se hubiera tomado.
+  _actualizandoAhora(true);
+  refrescarSnapshot().finally(() => _actualizandoAhora(false));
+}
+function _actualizandoAhora(si) {
+  const bloque = document.querySelector('.parte-ahora');
+  if (bloque) bloque.classList.toggle('actualizando', si);
+  const f = document.getElementById('frescura');
+  if (f && si) f.textContent = 'actualizando…';
+  else marcarFrescura();
 }
 
 // Las opciones salen del piso de captura de la cuenta hasta ayer, salteando

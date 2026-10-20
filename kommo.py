@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, send_from_directory
 import bisect
+import copy
 import html
 import json
 import re
@@ -5910,6 +5911,26 @@ def _solo_estos_asesores(listas, nombres):
     sel = set(nombres)
     return [[l for l in lst if (l.get('asesor') or SIN_ASIGNAR) in sel] for lst in listas]
 
+# Caches cortos del bloque de operacion (19/10). Cambiar solo "Comparar con"
+# recalculaba tambien el ahora entero: en Camara China, 1,5 s de los 2,5 de
+# cada cambio, y mas cuando el servidor esta ocupado. El ahora se reusa 30 s
+# —el refresco automatico es cada 90, asi que sigue al dia—; un comparativo se
+# reusa mientras no cambie el corte "a esta hora", en tramos de 2 minutos.
+AHORA_CACHE_SEG = 30
+_ahora_cache = {}
+_cmp_cache = {}
+
+def _con_cache(cache, clave, vigencia, calcular):
+    ahora = time.monotonic()
+    v = cache.get(clave)
+    if v and ahora - v[0] < vigencia:
+        return copy.deepcopy(v[1])
+    r = calcular()
+    if len(cache) > 300:
+        cache.clear()
+    cache[clave] = (ahora, copy.deepcopy(r))
+    return r
+
 def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
                   asesor_ids=None, solo_abiertas=False, sql_embudo='', params_embudo=(),
                   incluir_conv_cerradas=False):
@@ -5960,13 +5981,18 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
         # cae al ahora y se dice cual se uso, para que la pantalla no muestre
         # una fecha elegida y numeros de otra.
         dia = None
-        no_respondidos = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
-                                               piso, sql_embudo, params_embudo, corte, conn=conn,
-                                               incluir_conv_cerradas=incluir_conv_cerradas)
-        trabajados, solo_bot = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
-                                                     asesor_ids, solo_abiertas,
-                                                     sql_embudo, params_embudo, corte, conn=conn)
-        _completar_nombres(subdomain, no_respondidos, trabajados, solo_bot, conn=conn)
+        def _ahora():
+            nr = _leads_no_respondidos(subdomain, tz_offset, asesor_ids, solo_abiertas,
+                                       piso, sql_embudo, params_embudo, corte, conn=conn,
+                                       incluir_conv_cerradas=incluir_conv_cerradas)
+            tr, sb = _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin,
+                                           asesor_ids, solo_abiertas,
+                                           sql_embudo, params_embudo, corte, conn=conn)
+            _completar_nombres(subdomain, nr, tr, sb, conn=conn)
+            return nr, tr, sb
+        clave_ahora = (subdomain, tuple(sorted(asesor_ids or ())), solo_abiertas, sql_embudo,
+                       tuple(params_embudo), piso, corte, incluir_conv_cerradas)
+        no_respondidos, trabajados, solo_bot = _con_cache(_ahora_cache, clave_ahora, AHORA_CACHE_SEG, _ahora)
 
     # Lo de mas de DIAS_SIN_RESPONDER_RECIENTE dias va aparte: el numero de la
     # tarjeta, los criticos y la tabla por asesor cuentan solo lo reciente.
@@ -5974,11 +6000,15 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
 
     contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
     tj_sql_embudo, tj_params_embudo = _filtro_embudo(tj_embudos, tj_etapas)
-    comparado = comparar_snapshot(subdomain, tz_offset, h_ini, h_fin, contra,
-                                  corte, conn, tj_asesores or None, solo_abiertas,
-                                  tj_sql_embudo, tj_params_embudo, base_es_hoy=base_es_hoy,
-                                  nombres=tj_nombres,
-                                  incluir_conv_cerradas=incluir_conv_cerradas)
+    clave_cmp = (subdomain, contra, tuple(sorted(tj_asesores or ())), solo_abiertas, tj_sql_embudo,
+                 tuple(tj_params_embudo), base_es_hoy, tuple(sorted(tj_nombres or ())),
+                 incluir_conv_cerradas, corte, int(time.time() // 120) if base_es_hoy else 0)
+    comparado = _con_cache(_cmp_cache, clave_cmp, 600, lambda: comparar_snapshot(
+        subdomain, tz_offset, h_ini, h_fin, contra,
+        corte, conn, tj_asesores or None, solo_abiertas,
+        tj_sql_embudo, tj_params_embudo, base_es_hoy=base_es_hoy,
+        nombres=tj_nombres,
+        incluir_conv_cerradas=incluir_conv_cerradas))
     return {
         'no_respondidos':     no_respondidos,
         'no_respondidos_antiguos': antiguos,
