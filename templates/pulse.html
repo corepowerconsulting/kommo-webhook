@@ -294,6 +294,9 @@
     /* Mientras llega el nuevo dia o comparativo: lo de abajo se atenua y no
        se puede tocar; los filtros de arriba siguen activos. */
     .parte-ahora.actualizando #par-ahora, .parte-ahora.actualizando .card:has(#tabla-asesores-ahora) { opacity:.45; pointer-events:none; transition:opacity .15s; }
+    /* La espera mas larga del detalle se abre con clic: que se note. */
+    .tag-link { cursor:pointer; text-decoration:none; transition:box-shadow .15s; }
+    .tag-link:hover { box-shadow:0 0 0 2px currentColor; }
     .ver-mas { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:10px; }
     .ver-mas:empty { display:none; }
     .ver-mas button { font:inherit; font-size:var(--t-chico); font-weight:600; color:var(--marca); background:none; border:1px solid var(--linea); border-radius:8px; padding:6px 14px; cursor:pointer; }
@@ -1740,7 +1743,8 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
     if (esCritico(l)) f.criticos += 1;
     // El que mas espera (15/10): dos clientes esperando 3 minutos no son lo
     // mismo que uno esperando 2 horas.
-    f.peor = Math.max(f.peor, l.espera_seg || 0);
+    // Se guarda tambien CUAL es (20/10): el clic en la espera abre ese lead.
+    if ((l.espera_seg || 0) >= f.peor) { f.peor = l.espera_seg || 0; f.peorLead = l; }
   });
   (trabajados || []).forEach(l => { fila(l.asesor || SIN_ASIGNAR_UI).hoy += 1; });
   if ((soloBot || []).length) fila(SOLO_BOT).hoy += soloBot.length;
@@ -1795,7 +1799,12 @@ function renderAsesoresAhora(noResp, trabajados, soloBot) {
           </div>
           ${num(f.criticos, '', 'color:var(--franja-' + ultima + '-texto)')}
           ${num(f.sin_responder)}
-          <div class="text-center">${f.peor ? `<span class="tag ${_TAGS[Math.min(_franjaDe(f.peor), 3)]}">${fmtSeg(f.peor)}</span>` : '<span class="text-slate-300">—</span>'}</div>
+          <div class="text-center">${f.peor ? (() => {
+            // Clic: abre en Kommo el chat del cliente que mas espera, en su
+            // mensaje, igual que las filas de "Sin responder" (20/10).
+            const l = f.peorLead || {}, quien = String(l.nombre || 'el cliente').replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c]));
+            return `<a href="${leadHref(l.lead_id, l.msg_ts, l.msg_id)}" target="_blank" rel="noopener" class="tag tag-link ${_TAGS[Math.min(_franjaDe(f.peor), 3)]}" title="Abrir el chat de ${quien} en Kommo">${fmtSeg(f.peor)}</a>`;
+          })() : '<span class="text-slate-300">—</span>'}</div>
           ${num(f.hoy)}
           <div class="text-center">${(() => { const a = antesDe(f.asesor); if (a == null) return '<span class="text-slate-300">—</span>';
             const dd = f.hoy - a; return dd ? `<span class="delta-p ${dd > 0 ? 'mejor' : 'peor'}">${dd > 0 ? '▲' : '▼'} ${Math.abs(dd)}</span> <span class="t-micro text-slate-500">(${a})</span>`
