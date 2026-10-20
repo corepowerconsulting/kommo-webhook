@@ -6204,11 +6204,18 @@ def _cobertura(subdomain, desde_str, hasta_str, dias_lab, conn=None):
         conn = get_conn()
     try:
         c = conn.cursor()
+        # Un dia cuenta si tiene AL MENOS un evento: se pregunta dia por dia
+        # con EXISTS sobre el indice (subdomain, capturado_at), en vez de
+        # recorrer todos los eventos del periodo. En Camara China eran 27 s de
+        # los 65 que tardaba el tablero (19/10).
         c.execute(
-            '''SELECT DISTINCT LEFT(capturado_at, 10)
-               FROM eventos
-               WHERE subdomain = %s AND capturado_at >= %s AND capturado_at < %s''',
-            (subdomain, desde_str, (hasta + timedelta(days=1)).strftime('%Y-%m-%d'))
+            '''SELECT to_char(d, 'YYYY-MM-DD')
+                 FROM generate_series(%s::date, %s::date, interval '1 day') AS d
+                WHERE EXISTS (SELECT 1 FROM eventos e
+                               WHERE e.subdomain = %s
+                                 AND e.capturado_at >= to_char(d, 'YYYY-MM-DD')
+                                 AND e.capturado_at <  to_char(d + interval '1 day', 'YYYY-MM-DD'))''',
+            (desde_str, hasta_str, subdomain)
         )
         con_datos = {r[0] for r in c.fetchall()}
     finally:
@@ -6645,11 +6652,23 @@ def pulse_data():
         # comparten una sola carga, desde el inicio del anterior. Si cada uno
         # cargara desde su propio inicio, la clave del cache cambiaria entre
         # una llamada y otra y se armaria todo dos veces por pedido.
+        #
+        # Si una parte del periodo anterior cae antes de que tuvieramos datos
+        # confiables (el corte de la captura o la fecha minima de la cuenta),
+        # se compara contra la parte que si hay, siempre que cubra al menos
+        # la mitad (19/10, Camara China: con 30 dias el anterior empezaba el
+        # 19/08 y la captura el 24/08, y el tablero entero quedaba sin
+        # comparacion). Todo lo que se compara son porcentajes y medianas, que
+        # no dependen de cuantos dias tenga el periodo; la pantalla muestra las
+        # fechas reales ("vs 1 sep – 18 sep").
         rango_antes = None
         if corte and desde_ts is not None and hasta_ts is not None:
             largo = hasta_ts - desde_ts + 1
-            if desde_ts - largo >= corte:
-                rango_antes = (desde_ts - largo, desde_ts - 1)
+            fmin = _fecha_minima(subdomain, conn)
+            piso_antes = max(corte, _local_date_to_ts(fmin, tz_offset) if fmin else corte)
+            inicio_antes = max(desde_ts - largo, piso_antes)
+            if desde_ts - inicio_antes >= largo / 2:
+                rango_antes = (inicio_antes, desde_ts - 1)
         desde_carga = rango_antes[0] if rango_antes else desde_ts
         registros_msj = _registros_de_mensajes(
             c, subdomain, corte, tz_offset, h_ini, h_fin, dias_lab,
