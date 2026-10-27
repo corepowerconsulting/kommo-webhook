@@ -3518,6 +3518,21 @@ function renderMapaHoras(celdas, horario, diasLab, clientes) {
     : 'Todas las horas con respuestas quedan dentro del objetivo.';
 }
 
+// Si el servidor devuelve una pagina de error en vez de datos —pasa cuando una
+// carga pesada se queda sin tiempo mientras el servidor esta ocupado (27/10,
+// Ecoambiental)— se reintenta una vez a los 3 s antes de mostrar el error.
+async function _pedirDatos(url) {
+  for (let intento = 1; ; intento++) {
+    const res = await fetch(url);
+    const txt = await res.text();
+    try { return JSON.parse(txt); }
+    catch (e) {
+      if (intento >= 2) throw new Error(`el servidor no respondió con datos (código ${res.status}). Prueba de nuevo en un minuto.`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+}
+
 async function cargarDatos() {
   const content = document.getElementById('content');
   if (PRIMERA_CARGA) {
@@ -3545,8 +3560,7 @@ async function cargarDatos() {
 
   const nSnap = ++SNAP_PEDIDO;
   try {
-    const res = await fetch('/pulse/data?' + params.toString());
-    const d   = await res.json();
+    const d = await _pedirDatos('/pulse/data?' + params.toString());
 
     if (d.error) {
       document.getElementById('error-msg').textContent = d.error;

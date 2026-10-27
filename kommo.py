@@ -5993,6 +5993,17 @@ PERIODO_CACHE_SEG = 180
 _periodo_cache = {}
 _cmp_cache = {}
 
+def _congelar(x):
+    """Una version inmutable de x para usar en una clave de cache (27/10).
+    Los parametros del filtro de embudo traen listas —[[8969355]]—, y una
+    tupla con una lista adentro no sirve de clave: con un embudo elegido, el
+    tablero se caia con 'unhashable type: list'."""
+    if isinstance(x, (list, tuple, set, frozenset)):
+        return tuple(_congelar(v) for v in x)
+    if isinstance(x, dict):
+        return tuple(sorted((k, _congelar(v)) for k, v in x.items()))
+    return x
+
 def _con_cache(cache, clave, vigencia, calcular):
     ahora = time.monotonic()
     v = cache.get(clave)
@@ -6064,7 +6075,7 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
             _completar_nombres(subdomain, nr, tr, sb, conn=conn)
             return nr, tr, sb
         clave_ahora = (subdomain, tuple(sorted(asesor_ids or ())), solo_abiertas, sql_embudo,
-                       tuple(params_embudo), piso, corte, incluir_conv_cerradas)
+                       _congelar(params_embudo), piso, corte, incluir_conv_cerradas)
         no_respondidos, trabajados, solo_bot = _con_cache(_ahora_cache, clave_ahora, AHORA_CACHE_SEG, _ahora)
 
     # Lo de mas de DIAS_SIN_RESPONDER_RECIENTE dias va aparte: el numero de la
@@ -6074,7 +6085,7 @@ def _bloque_ahora(subdomain, tz_offset, h_ini, h_fin, corte, piso, conn,
     contra = (request.args.get('comparar') or '').strip() or _ayer_de(tz_offset, dia)
     tj_sql_embudo, tj_params_embudo = _filtro_embudo(tj_embudos, tj_etapas)
     clave_cmp = (subdomain, contra, tuple(sorted(tj_asesores or ())), solo_abiertas, tj_sql_embudo,
-                 tuple(tj_params_embudo), base_es_hoy, tuple(sorted(tj_nombres or ())),
+                 _congelar(tj_params_embudo), base_es_hoy, tuple(sorted(tj_nombres or ())),
                  incluir_conv_cerradas, corte, int(time.time() // 120) if base_es_hoy else 0)
     comparado = _con_cache(_cmp_cache, clave_cmp, 600, lambda: comparar_snapshot(
         subdomain, tz_offset, h_ini, h_fin, contra,
