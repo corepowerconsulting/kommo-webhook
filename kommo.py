@@ -510,6 +510,30 @@ def init_db():
     c.execute('''CREATE INDEX IF NOT EXISTS idx_conv_estado_lead
                  ON conversaciones_estado (subdomain, lead_id, talk_id)''')
 
+    # Leads que ya no existen en Kommo (27/10). Pulse no recibe aviso cuando un
+    # lead se elimina o se fusiona, y quedaban para siempre en "Sin respuesta
+    # hace mas de 7 dias" con un link que da error. 'fusionado_en' es el lead
+    # que quedo cuando fue una fusion; vacio, cuando se elimino sin mas.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS leads_eliminados (
+            subdomain TEXT,
+            lead_id TEXT,
+            eliminado_ts BIGINT,
+            fusionado_en TEXT,
+            aplicado_ts BIGINT,
+            PRIMARY KEY (subdomain, lead_id)
+        )
+    ''')
+    # Hasta donde se revisaron los eventos de Kommo de cada cuenta.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS kommo_sync (
+            subdomain TEXT,
+            clave TEXT,
+            valor BIGINT,
+            PRIMARY KEY (subdomain, clave)
+        )
+    ''')
+
     # Supabase expone una API REST publica ademas de la conexion Postgres. Esta
     # app no la usa —se conecta por DATABASE_URL— pero la API sigue abierta, y
     # sin RLS cualquiera con la URL del proyecto puede leer estas tablas. En
@@ -521,7 +545,7 @@ def init_db():
     # salta RLS. Va en init_db para que un deploy futuro no lo deje sin activar.
     for tabla in ('eventos', 'tiempos_respuesta', 'mensajes_cliente', 'leads_estado',
                   'mensajes_asesor', 'conversaciones', 'leads_cambios',
-                  'conversaciones_estado'):
+                  'conversaciones_estado', 'leads_eliminados', 'kommo_sync'):
         try:
             _activar_rls(c, tabla)
         except Exception as e:
@@ -2857,8 +2881,168 @@ def _vuelta_vigia(ahora=None):
                         reg['avisado'], reg['ultimo_aviso'] = reg['estado'], ahora
                     elif aviso == 'volvio':
                         reg['avisado'], reg['ultimo_aviso'] = None, ahora
+            # Leads eliminados y fusionados: un error aca no frena el vigia.
+            try:
+                reg['eliminados'] = _sincronizar_eliminados(subdomain, token)
+            except Exception as e:
+                reg['eliminados'] = {'error': f'{type(e).__name__}: {e}'[:200]}
+                print(f'⚠️ eliminados {subdomain}: {e}')
             _vigia['cuentas'][subdomain] = reg
         _vigia['ultima_vuelta'] = ahora
+
+# --- Leads eliminados y fusionados en Kommo (27/10) --------------------------
+# Kommo registra cada lead eliminado (evento lead_deleted) y cada fusion
+# (entity_merged en el lead que queda). Una fusion es un eliminado y una fusion
+# del mismo usuario con 5 segundos o menos de diferencia: medido en Camara
+# China, 34 de 34 se emparejan sin dudas. Las 46 "fusiones" sin eliminado al
+# lado son de contactos y no tocan ningun lead. Si una fusion no se puede
+# emparejar con certeza, el lead se trata como eliminado, que es lo seguro.
+ELIMINADOS_DESDE_DIAS = 120     # cuanto hacia atras se revisa la primera vez
+ELIMINADOS_VENTANA_SEG = 7 * 86400
+ELIMINADOS_SEG_POR_VUELTA = 45  # tope de tiempo por cuenta y por vuelta
+FUSION_MAX_SEG = 5
+
+def _kommo_get(subdomain, token, ruta):
+    """GET de solo lectura a la API de Kommo. None si no hay contenido (204)."""
+    req = urllib.request.Request(f'https://{subdomain}.kommo.com{ruta}',
+                                 headers={'Authorization': f'Bearer {token}'})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        cuerpo = r.read()
+        return json.loads(cuerpo) if cuerpo else None
+
+def _eventos_kommo(subdomain, token, tipo, desde, hasta):
+    """Todos los eventos de un tipo entre dos fechas (paginando)."""
+    fuera, pagina = [], 1
+    while pagina <= 100:
+        d = _kommo_get(subdomain, token, f'/api/v4/events?filter[type]={tipo}'
+                       f'&filter[created_at][from]={int(desde)}&filter[created_at][to]={int(hasta)}'
+                       f'&limit=100&page={pagina}')
+        evs = ((d or {}).get('_embedded') or {}).get('events') or []
+        if not evs:
+            break
+        fuera += [e for e in evs if e.get('entity_type') == 'lead']
+        pagina += 1
+    return fuera
+
+def _emparejar_fusiones(eliminados, fusiones):
+    """{lead eliminado: lead que quedo} para los eliminados que fueron una
+    fusion. Solo cuando hay exactamente una fusion candidata."""
+    pares = {}
+    for e in eliminados:
+        cand = {str(f['entity_id']) for f in fusiones
+                if f.get('created_by') == e.get('created_by')
+                and abs(int(f['created_at']) - int(e['created_at'])) <= FUSION_MAX_SEG
+                and str(f['entity_id']) != str(e['entity_id'])}
+        if len(cand) == 1:
+            pares[str(e['entity_id'])] = cand.pop()
+    return pares
+
+def _destino_final(conn, subdomain, lead_id):
+    """El lead donde terminaron los mensajes, siguiendo cadenas (A en B, B en C)."""
+    c = conn.cursor()
+    vistos = set()
+    while lead_id and lead_id not in vistos:
+        vistos.add(lead_id)
+        c.execute('SELECT fusionado_en FROM leads_eliminados WHERE subdomain = %s AND lead_id = %s',
+                  (subdomain, lead_id))
+        fila = c.fetchone()
+        if not fila or not fila[0]:
+            return lead_id
+        lead_id = fila[0]
+    return lead_id
+
+def _aplicar_fusion(conn, subdomain, viejo, nuevo):
+    """Pasa los mensajes del lead absorbido al que quedo, como hace Kommo, y
+    borra su fila de estado (el que quedo tiene la suya). Los tiempos ya medidos
+    no cambian: son los mismos mensajes con otro numero de lead."""
+    c = conn.cursor()
+    # mensajes_cliente: la clave incluye el ts; si el que quedo ya tiene un
+    # mensaje en el mismo segundo, el del viejo sobra.
+    c.execute('''UPDATE mensajes_cliente m SET lead_id = %s
+                  WHERE m.subdomain = %s AND m.lead_id = %s
+                    AND NOT EXISTS (SELECT 1 FROM mensajes_cliente o
+                                     WHERE o.subdomain = m.subdomain AND o.lead_id = %s AND o.ts = m.ts)''',
+              (nuevo, subdomain, viejo, nuevo))
+    movidos_cli = c.rowcount
+    c.execute('DELETE FROM mensajes_cliente WHERE subdomain = %s AND lead_id = %s', (subdomain, viejo))
+    c.execute('UPDATE mensajes_asesor SET lead_id = %s WHERE subdomain = %s AND lead_id = %s',
+              (nuevo, subdomain, viejo))
+    movidos_asr = c.rowcount
+    c.execute('DELETE FROM leads_estado WHERE subdomain = %s AND lead_id = %s', (subdomain, viejo))
+    return movidos_cli, movidos_asr
+
+def _sincronizar_eliminados(subdomain, token, ahora=None):
+    """Revisa los eventos de Kommo desde la ultima vez y aplica lo nuevo.
+    Avanza por ventanas de una semana; la primera vez arranca
+    ELIMINADOS_DESDE_DIAS atras y se pone al dia en pocas vueltas."""
+    ahora = int(ahora if ahora is not None else time.time())
+    limite = ahora - 60          # lo ultimo se deja para la proxima: la fusion puede no estar completa
+    inicio_vuelta = time.monotonic()
+    resumen = {'eliminados': 0, 'fusionados': 0, 'restaurados': 0, 'mensajes_movidos': 0}
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT valor FROM kommo_sync WHERE subdomain = %s AND clave = 'eliminados_hasta'", (subdomain,))
+        fila = c.fetchone()
+        desde = fila[0] if fila else ahora - ELIMINADOS_DESDE_DIAS * 86400
+        while desde < limite and time.monotonic() - inicio_vuelta < ELIMINADOS_SEG_POR_VUELTA:
+            hasta = min(desde + ELIMINADOS_VENTANA_SEG, limite)
+            eliminados = _eventos_kommo(subdomain, token, 'lead_deleted', desde, hasta)
+            # Las fusiones con margen: el par puede caer a los dos lados del borde.
+            fusiones = _eventos_kommo(subdomain, token, 'entity_merged', desde - FUSION_MAX_SEG, hasta + FUSION_MAX_SEG) if eliminados else []
+            restaurados = _eventos_kommo(subdomain, token, 'lead_restored', desde, hasta)
+            pares = _emparejar_fusiones(eliminados, fusiones)
+            # Una eliminacion seguida de una restauracion en la misma ventana se
+            # salta: asi revisar dos veces la misma ventana no hace nada nuevo.
+            restaurado_ts = {}
+            for e in restaurados:
+                restaurado_ts[str(e['entity_id'])] = max(restaurado_ts.get(str(e['entity_id']), 0), int(e['created_at']))
+            cambio = False
+            for e in sorted(eliminados, key=lambda e: int(e['created_at'])):
+                lid = str(e['entity_id'])
+                if restaurado_ts.get(lid, 0) > int(e['created_at']):
+                    continue
+                c.execute('''INSERT INTO leads_eliminados (subdomain, lead_id, eliminado_ts, fusionado_en)
+                             VALUES (%s, %s, %s, %s) ON CONFLICT (subdomain, lead_id) DO NOTHING''',
+                          (subdomain, lid, int(e['created_at']), pares.get(lid)))
+                if c.rowcount:
+                    resumen['eliminados'] += 1
+                    cambio = True
+                # La fusion se aplica una sola vez.
+                c.execute('SELECT aplicado_ts FROM leads_eliminados WHERE subdomain = %s AND lead_id = %s', (subdomain, lid))
+                ya = (c.fetchone() or [None])[0]
+                if lid in pares and not ya:
+                    destino = _destino_final(conn, subdomain, pares[lid])
+                    m_cli, m_asr = _aplicar_fusion(conn, subdomain, lid, destino)
+                    c.execute('UPDATE leads_eliminados SET aplicado_ts = %s WHERE subdomain = %s AND lead_id = %s',
+                              (ahora, subdomain, lid))
+                    resumen['fusionados'] += 1
+                    resumen['mensajes_movidos'] += m_cli + m_asr
+                    cambio = True
+            for e in restaurados:
+                # Un lead restaurado vuelve a las listas. Si habia sido una
+                # fusion, sus mensajes ya estan en el otro lead y ahi se quedan.
+                c.execute('DELETE FROM leads_eliminados WHERE subdomain = %s AND lead_id = %s AND fusionado_en IS NULL',
+                          (subdomain, str(e['entity_id'])))
+                if c.rowcount:
+                    resumen['restaurados'] += 1
+                    cambio = True
+            c.execute('''INSERT INTO kommo_sync (subdomain, clave, valor) VALUES (%s, 'eliminados_hasta', %s)
+                         ON CONFLICT (subdomain, clave) DO UPDATE SET valor = EXCLUDED.valor''', (subdomain, hasta))
+            conn.commit()
+            if cambio:
+                # Los turnos y las listas guardados ya no reflejan los mensajes.
+                _turnos_cache.pop(subdomain, None)
+                for cache in (_ahora_cache, _cmp_cache, _periodo_cache):
+                    cache.clear()
+            desde = hasta
+        resumen['revisado_hasta'] = desde
+        return resumen
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def _bucle_vigia():
     # Espera antes de la primera vuelta: en un deploy el proceso viejo y el
@@ -2906,6 +3090,7 @@ def health_vigia():
             'avisado':             reg.get('avisado'),
             'detalle':             reg.get('detalle'),
             'token':               _huella_token(sub),
+            'eliminados':          reg.get('eliminados'),
         }
         for sub, reg in _vigia['cuentas'].items()
     }
@@ -5605,6 +5790,9 @@ def _fmt_lead_estado(row, tz_offset, campo_fecha):
 # eventos de status capturados aun) se trata como abierto por defecto.
 STATUS_CERRADOS = (142, 143)
 FILTRO_SOLO_ABIERTAS = 'AND (status_id IS NULL OR status_id NOT IN (142, 143))'
+# Fuera de las listas los leads que ya no existen en Kommo (ver leads_eliminados).
+FILTRO_NO_ELIMINADO = (' AND NOT EXISTS (SELECT 1 FROM leads_eliminados el '
+                       'WHERE el.subdomain = le.subdomain AND el.lead_id = le.lead_id)')
 
 # Fuera de "Sin responder" el lead cuya ULTIMA conversacion esta cerrada en
 # Kommo (ver la tabla conversaciones_estado). Cerrar no es responder: el lead
@@ -5883,6 +6071,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
                 params.append(desde_ts)
         # La casilla "Incluir conversaciones cerradas" (15/09): sin marcar,
         # solo los leads con la conversacion abierta en Kommo.
+        query += FILTRO_NO_ELIMINADO
         if not incluir_conv_cerradas:
             query += FILTRO_CONVERSACION_ABIERTA
             params.extend([hasta_ts] * 4)
@@ -6283,6 +6472,8 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
             '''
             params = [subdomain, inicio, fin]
 
+        if corte:
+            query += FILTRO_NO_ELIMINADO
         if responsible_user_ids:
             query += ' AND responsible_user_id = ANY(%s)'
             params.append(list(responsible_user_ids))
