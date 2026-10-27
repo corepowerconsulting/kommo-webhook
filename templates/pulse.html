@@ -297,6 +297,8 @@
     /* La espera mas larga del detalle se abre con clic: que se note. */
     .tag-link { cursor:pointer; text-decoration:none; transition:box-shadow .15s; }
     .tag-link:hover { box-shadow:0 0 0 2px currentColor; }
+    .bloque-error { margin-top:.75rem; padding:.6rem .8rem; border-radius:8px; background:#fffbeb; border:1px solid #fde68a;
+                    color:#92400e; font-size:var(--t-chico); line-height:var(--lh-texto); }
     .ver-mas { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:10px; }
     .ver-mas:empty { display:none; }
     .ver-mas button { font:inherit; font-size:var(--t-chico); font-weight:600; color:var(--marca); background:none; border:1px solid var(--linea); border-radius:8px; padding:6px 14px; cursor:pointer; }
@@ -2876,8 +2878,20 @@ function pintarSnapshot(d) {
 
 let ULTIMO_SNAPSHOT = 0;
 
+// Cuando el ultimo refresco fallo, el indicador lo dice en vez de "actualizado".
+let SNAP_ERROR = null;
+function _avisoSnapshot(msg) {
+  SNAP_ERROR = msg || 'error';
+  const el = document.getElementById('frescura');
+  if (!el) return;
+  el.textContent = 'no se pudo actualizar · se reintenta solo';
+  el.title = SNAP_ERROR;
+  el.style.color = 'var(--franja-3-texto)';
+}
 function marcarFrescura() {
   const el = document.getElementById('frescura');
+  if (el && SNAP_ERROR) return;
+  if (el) { el.style.color = ''; el.title = ''; }
   if (!el || !ULTIMO_SNAPSHOT) return;
   const seg = Math.round((Date.now() - ULTIMO_SNAPSHOT) / 1000);
   el.textContent = seg < 60
@@ -2900,10 +2914,15 @@ async function refrescarSnapshot() {
   if (document.hidden || PRIMERA_CARGA) return;
   const n = ++SNAP_PEDIDO;
   try {
-    const res = await fetch('/pulse/snapshot?' + filtrosComunes().toString());
-    const d = await res.json();
-    if (!d.error && n === SNAP_PEDIDO) pintarSnapshot(d);
+    const d = await _pedirDatos('/pulse/snapshot?' + filtrosComunes().toString());
+    if (n !== SNAP_PEDIDO) return;
+    // Antes un error aca se tragaba en silencio y las tarjetas seguian con
+    // los numeros viejos como si estuvieran al dia (27/10).
+    if (d.error) { _avisoSnapshot(d.error); return; }
+    SNAP_ERROR = null;
+    _bloque('par-ahora', 'operación en tiempo real', () => pintarSnapshot(d));
   } catch (e) {
+    _avisoSnapshot(e.message);
     // Un refresco que falla no puede romper la pantalla: los numeros que ya
     // estan siguen siendo validos, solo quedan viejos.
     console.warn('refresco del snapshot:', e);
@@ -3518,6 +3537,26 @@ function renderMapaHoras(celdas, horario, diasLab, clientes) {
     : 'Todas las horas con respuestas quedan dentro del objetivo.';
 }
 
+// Un bloque que falla al dibujarse no tumba el resto del tablero (27/10). Antes
+// un error en, por ejemplo, la tabla de asesores llegaba al catch de
+// cargarDatos y toda la pantalla decia "Error de conexion"; en la primera carga
+// quedaba en blanco. Ahora ese bloque dice que no se pudo dibujar y los demas
+// se ven igual.
+function _bloque(sel, nombre, dibujar) {
+  const el = document.getElementById(sel) || document.querySelector(sel);
+  const caja = el ? (el.closest('.card') || el) : null;
+  if (caja) caja.querySelectorAll(':scope > .bloque-error').forEach(x => x.remove());
+  try { dibujar(); }
+  catch (e) {
+    console.error(`[pulse] el bloque "${nombre}" no se pudo dibujar:`, e);
+    if (!caja) return;
+    const aviso = document.createElement('div');
+    aviso.className = 'bloque-error';
+    aviso.textContent = `Este bloque no se pudo dibujar (${nombre}). El resto del tablero está al día; recarga la página en un minuto.`;
+    caja.appendChild(aviso);
+  }
+}
+
 // Si el servidor devuelve una pagina de error en vez de datos —pasa cuando una
 // carga pesada se queda sin tiempo mientras el servidor esta ocupado (27/10,
 // Ecoambiental)— se reintenta una vez a los 3 s antes de mostrar el error.
@@ -3697,7 +3736,7 @@ async function cargarDatos() {
     FRANJAS = fr;
 
     // Si mientras tanto salio un refresco del snapshot, el suyo es mas nuevo.
-    if (nSnap === SNAP_PEDIDO) pintarSnapshot(d);
+    if (nSnap === SNAP_PEDIDO) { SNAP_ERROR = null; _bloque('par-ahora', 'operación en tiempo real', () => pintarSnapshot(d)); }
 
     // Por asesor. Se muestra SIEMPRE, tambien con un responsable elegido:
     // antes se escondia y desaparecian la mediana y el p90 de esa persona,
@@ -3711,24 +3750,23 @@ async function cargarDatos() {
     MIN_MUESTRA_UI = d.config.min_muestra_asesor || 10;
     _ANT = d.anterior || null;
     _SERIE_EQUIPO = (d.serie_dias || []).map(dia => { const t = (d.tendencia || []).find(x => x.fecha === dia); return t ? t.mediana_seg : null; });
-    renderKpisPeriodo(d);
-    pintarComparacionPeriodo(d);
-    renderResumenPeriodo(d);
-    renderMapaHoras(d.mapa_horas, d.config.horario, d.config.dias_laborables, d.mapa_clientes);
-    renderTendencia(d.tendencia);
-    renderDonaPeriodo(d.metricas.distribucion, d.metricas.total);
+    _bloque('.kpis-per', 'cifras del periodo', () => { renderKpisPeriodo(d); pintarComparacionPeriodo(d); });
+    _bloque('resumen-periodo', 'resumen del periodo', () => renderResumenPeriodo(d));
+    _bloque('mapa', 'día y hora', () => renderMapaHoras(d.mapa_horas, d.config.horario, d.config.dias_laborables, d.mapa_clientes));
+    _bloque('trend', 'tendencia', () => renderTendencia(d.tendencia));
+    _bloque('dona', 'distribución', () => renderDonaPeriodo(d.metricas.distribucion, d.metricas.total));
     _CONV = d.convertidos || null;
     _MSJ = d.mensajes || null;
-    renderVendedores(d.por_asesor, d.metricas);
-    renderCarga(d.por_asesor);
-    pintarCaptionPeriodo();
+    _bloque('tabla-vendedores', 'cómo va cada asesor', () => renderVendedores(d.por_asesor, d.metricas));
+    _bloque('carga', 'velocidad y carga de trabajo', () => renderCarga(d.por_asesor));
+    _bloque('per-caption', 'fechas del periodo', () => pintarCaptionPeriodo());
 
     // Lentas y rapidas: se guardan las dos listas y se muestra la elegida
     TOP_LENTOS  = d.top_lentos;
     // El minimo se usa solo para explicar una lista vacia. En el subtitulo
     // sobraba: sumaba ruido a una tarjeta que ya venia costando entender.
     MIN_EXTREMOS = d.config.min_respuestas_extremos || 1;
-    renderExtremos();
+    _bloque('tabla-extremos', 'conversaciones más lentas', () => renderExtremos());
 
     document.getElementById('loading').classList.add('hidden');
     content.classList.remove('hidden', 'opacity-50', 'pointer-events-none');

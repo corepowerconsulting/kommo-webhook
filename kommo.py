@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, send_from_directory
 import bisect
 import copy
+import gc
+import traceback
 import html
 import json
 import re
@@ -2546,6 +2548,26 @@ def _memoria_mb():
     except OSError:
         pass
     return fuera
+
+# Cualquier error no previsto en los pedidos del tablero sale como JSON, nunca
+# como la pagina de error de Flask (27/10). El tablero lee JSON: con una pagina
+# HTML mostraba "Unexpected token '<'" o, en el refresco de las tarjetas, no
+# mostraba nada y los numeros quedaban viejos sin aviso. La pagina misma
+# (/pulse) y el resto de las rutas siguen con su manejo normal.
+from werkzeug.exceptions import HTTPException
+
+@app.errorhandler(Exception)
+def _error_no_previsto(e):
+    if isinstance(e, HTTPException):
+        if request.path.startswith(('/pulse/data', '/pulse/snapshot')):
+            return jsonify({'error': e.description or e.name}), e.code
+        return e
+    print(f'❌ error no previsto en {request.path}: {type(e).__name__}: {e}')
+    traceback.print_exc()
+    if request.path.startswith(('/pulse/data', '/pulse/snapshot', '/health/')):
+        return jsonify({'error': 'No se pudieron calcular los datos. Prueba de nuevo en un minuto; '
+                                 f'si sigue, avisa a soporte ({type(e).__name__}).'}), 500
+    return 'Error interno', 500
 
 @app.route('/health/carga')
 def health_carga():
@@ -5144,6 +5166,30 @@ def _corte_salientes(cursor, subdomain):
 #   - Un periodo que empieza despues de lo cargado reusa lo cargado: los leads
 #     de mas no tienen turnos que empiecen en ese periodo (ver desde_carga).
 _turnos_cache = {}     # subdomain -> (clave, turnos, {'por_lead', 'armado'})
+# Freno de memoria (27/10). Render reinicia el servicio al pasar de 512 MB (ya
+# paso el 15/10) y el 27/10 estaba en 378 MB con tres cuentas grandes armadas.
+# Cuando se pasa de MEMORIA_FRENO_MB, se sueltan los turnos de las cuentas que
+# nadie miro hace mas de TURNOS_OCIOSO_SEG (o, si no alcanza, de todas menos la
+# que se esta pidiendo) y los caches cortos. Rearmarlas despues cuesta una
+# carga lenta; un reinicio, en cambio, deja a todos sin tablero.
+MEMORIA_FRENO_MB = 420
+TURNOS_OCIOSO_SEG = 15 * 60
+_turnos_uso = {}       # subdomain -> ultima vez que se pidio (monotonic)
+
+def _aliviar_memoria(subdomain_actual):
+    mb = _memoria_mb().get('memoria_mb')
+    if mb is None or mb < MEMORIA_FRENO_MB:
+        return
+    ahora = time.monotonic()
+    otras = [s for s in list(_turnos_cache) if s != subdomain_actual]
+    ociosas = [s for s in otras if ahora - _turnos_uso.get(s, 0) > TURNOS_OCIOSO_SEG]
+    for s in (ociosas or otras):
+        _turnos_cache.pop(s, None)
+    for c in (_ahora_cache, _cmp_cache, _periodo_cache):
+        c.clear()
+    gc.collect()
+    print(f'⚠️ freno de memoria: {mb} MB; se soltaron {ociosas or otras}, quedan {list(_turnos_cache)} '
+          f'→ {_memoria_mb().get("memoria_mb")} MB')
 TURNOS_MARGEN_SEG = 2 * 3600
 TURNOS_REARMADO_SEG = 30 * 60
 
@@ -5182,9 +5228,11 @@ def _turnos_cacheados(cursor, subdomain, corte, desde_carga=None):
     cursor.execute('SELECT MAX(ts) AS m FROM mensajes_asesor WHERE subdomain = %s', (subdomain,))
     ult_asr = (cursor.fetchone() or {}).get('m')
     clave = (corte, ult_cli, ult_asr, desde_carga)
+    _turnos_uso[subdomain] = time.monotonic()
     v = _turnos_cache.get(subdomain)
     if _turnos_al_dia(v, corte, ult_cli, ult_asr, desde_carga):
         return v[1]
+    _aliviar_memoria(subdomain)
     with _turnos_locks_guardia:
         lock = _turnos_locks[subdomain]
     with lock:
@@ -6004,14 +6052,22 @@ def _congelar(x):
         return tuple(sorted((k, _congelar(v)) for k, v in x.items()))
     return x
 
+# Entradas como mucho por cache (27/10). Antes se vaciaba recien a las 300, y
+# cada entrada del ahora son las listas enteras de una cuenta: con muchas
+# combinaciones de filtros, cientos de MB en memoria sin que nadie las use.
+CACHE_MAX_ENTRADAS = 40
+
 def _con_cache(cache, clave, vigencia, calcular):
     ahora = time.monotonic()
     v = cache.get(clave)
     if v and ahora - v[0] < vigencia:
         return copy.deepcopy(v[1])
     r = calcular()
-    if len(cache) > 300:
-        cache.clear()
+    # Fuera lo vencido; y si aun sobran, las mas viejas.
+    for k in [k for k, (t, _) in list(cache.items()) if ahora - t >= vigencia]:
+        cache.pop(k, None)
+    while len(cache) >= CACHE_MAX_ENTRADAS:
+        cache.pop(min(cache, key=lambda k: cache[k][0]), None)
     cache[clave] = (ahora, copy.deepcopy(r))
     return r
 
@@ -6614,8 +6670,19 @@ def pulse_data():
     dias_lab  = set(cfg['dias_laborables'])
     franjas   = cfg['franjas']
 
-    desde_str = request.args.get('desde')
-    hasta_str = request.args.get('hasta')
+    desde_str = (request.args.get('desde') or '').strip() or None
+    hasta_str = (request.args.get('hasta') or '').strip() or None
+    # Fechas mal escritas (un link armado a mano, un filtro viejo): un aviso
+    # claro y no un error 500 en medio del calculo (27/10). Si vienen al
+    # reves, se dan vuelta: es lo que la persona quiso decir.
+    for valor in (desde_str, hasta_str):
+        if valor:
+            try:
+                datetime.strptime(valor, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'error': f'La fecha "{valor[:20]}" no es válida. Elige las fechas de nuevo en el calendario.'}), 400
+    if desde_str and hasta_str and desde_str > hasta_str:
+        desde_str, hasta_str = hasta_str, desde_str
     # Varios responsables a la vez (pedido de Ana). Se acepta repetido
     # (?asesor=1&asesor=2) y separado por comas, porque la URL la arma el
     # dashboard pero tambien la pega gente a mano.
