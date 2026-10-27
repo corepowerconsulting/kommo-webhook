@@ -50,13 +50,25 @@ HUECOS = [(s, '2026-08-30T22:00', '2026-09-02T22:00') for s in TODAS] + [
 
 
 def tokens():
+    """{subdominio: token} de .env.kommo ("sub=token") y de .env.render
+    ("KOMMO_TOKEN_SUB=token", el mismo formato que Render). Las cuentas nuevas
+    (Corromaduro, 27/10) solo estan en el segundo."""
     out = {}
-    with open(os.path.join(RAIZ, '.env.kommo'), encoding='utf-8') as f:
-        for linea in f:
-            linea = linea.strip()
-            if linea and not linea.startswith('#') and '=' in linea:
-                sub, tok = linea.split('=', 1)
-                out[sub.strip()] = tok.strip()
+    for nombre in ('.env.render', '.env.kommo'):
+        ruta = os.path.join(RAIZ, nombre)
+        if not os.path.exists(ruta):
+            continue
+        with open(ruta, encoding='utf-8') as f:
+            for linea in f:
+                linea = linea.strip()
+                if not linea or linea.startswith('#') or '=' not in linea:
+                    continue
+                clave, tok = linea.split('=', 1)
+                clave = clave.strip()
+                if clave.startswith('KOMMO_TOKEN_'):
+                    out[clave[len('KOMMO_TOKEN_'):].lower()] = tok.strip()
+                elif clave.islower():
+                    out[clave] = tok.strip()
     return out
 
 
