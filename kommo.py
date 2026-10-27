@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, send_from_directory
 import bisect
+import hashlib
 import copy
 import gc
 import traceback
@@ -2676,6 +2677,24 @@ _vigia_vuelta_lock = threading.Lock()
 def _token_kommo(subdomain):
     return (os.environ.get(f'KOMMO_TOKEN_{subdomain.upper()}') or '').strip() or None
 
+def _huella_token(subdomain):
+    """Para comprobar que token quedo cargado en cada variable SIN mostrarlo
+    (27/10): los primeros 8 caracteres de su SHA-256, su largo y la cuenta de
+    Kommo a la que pertenece (viene adentro del token). Si una variable tiene
+    el token de otra cuenta, se ve aca enseguida."""
+    tok = _token_kommo(subdomain)
+    if not tok:
+        return None
+    cuenta = None
+    try:
+        import base64
+        carga = tok.split('.')[1]
+        carga += '=' * (-len(carga) % 4)
+        cuenta = json.loads(base64.urlsafe_b64decode(carga)).get('account_id')
+    except Exception:
+        pass
+    return {'huella': hashlib.sha256(tok.encode()).hexdigest()[:8], 'largo': len(tok), 'cuenta_kommo': cuenta}
+
 def _consultar_webhook_kommo(subdomain, token):
     """Estado de NUESTRO webhook en la cuenta: (estado, detalle, cambiado_ts).
 
@@ -2886,6 +2905,7 @@ def health_vigia():
             'ultima_revision':     _fecha_iso(reg.get('ultima_revision')),
             'avisado':             reg.get('avisado'),
             'detalle':             reg.get('detalle'),
+            'token':               _huella_token(sub),
         }
         for sub, reg in _vigia['cuentas'].items()
     }
