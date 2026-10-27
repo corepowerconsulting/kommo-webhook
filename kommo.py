@@ -2896,6 +2896,7 @@ ELIMINADOS_DESDE_DIAS = 120     # cuanto hacia atras se revisa la primera vez
 ELIMINADOS_VENTANA_SEG = 7 * 86400
 ELIMINADOS_SEG_POR_VUELTA = 45  # tope de tiempo por cuenta y por vuelta
 FUSION_MAX_SEG = 5
+TURNO_ELIMINADOS_SEG = 600     # vencimiento del turno de una cuenta
 
 def _kommo_get(subdomain, token, ruta):
     """GET de solo lectura a la API de Kommo. None si no hay contenido (204)."""
@@ -2975,17 +2976,24 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
     inicio_vuelta = time.monotonic()
     resumen = {'eliminados': 0, 'fusionados': 0, 'restaurados': 0, 'mensajes_movidos': 0}
     conn = get_conn()
+    mi_turno = None
     try:
         c = conn.cursor()
-        # Candado por cuenta: en un deploy conviven dos copias del servidor y
-        # las dos intentaban lo mismo; una esperaba a la otra hasta el timeout
-        # de la base (Ventas Directas, 27/10). La que no lo consigue se salta
-        # la cuenta. Es de sesion: se suelta solo al cerrar la conexion.
-        c.execute('SELECT pg_try_advisory_lock(%s)', (zlib.crc32(f'eliminados:{subdomain}'.encode()) & 0x7fffffff,))
-        if not c.fetchone()[0]:
-            conn.rollback()
-            return {'omitido': 'otra copia del servidor esta revisando esta cuenta'}
+        # Turno por cuenta: en un deploy conviven dos copias del servidor y las
+        # dos limpiaban lo mismo; una esperaba a la otra hasta el timeout de la
+        # base (Ventas Directas, 27/10). El turno es una fila con vencimiento y
+        # no un candado de Postgres: con el pooler de Supabase un candado de
+        # sesion queda en otra conexion y no se suelta (Ventas Directas quedo
+        # trabada asi). Si el servidor muere a mitad, el turno vence solo.
+        mi_turno = int(time.time()) + TURNO_ELIMINADOS_SEG
+        c.execute('''INSERT INTO kommo_sync (subdomain, clave, valor) VALUES (%s, 'eliminados_turno', %s)
+                     ON CONFLICT (subdomain, clave) DO UPDATE SET valor = EXCLUDED.valor
+                     WHERE kommo_sync.valor < %s RETURNING valor''', (subdomain, mi_turno, int(time.time())))
+        tengo = c.fetchone() is not None
         conn.commit()
+        if not tengo:
+            mi_turno = None
+            return {'omitido': 'otra copia del servidor esta revisando esta cuenta'}
         c.execute("SELECT valor FROM kommo_sync WHERE subdomain = %s AND clave = 'eliminados_hasta'", (subdomain,))
         fila = c.fetchone()
         desde = fila[0] if fila else ahora - ELIMINADOS_DESDE_DIAS * 86400
@@ -3047,6 +3055,12 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
             # (restaurados son pocos: uno por uno esta bien)
             c.execute('''INSERT INTO kommo_sync (subdomain, clave, valor) VALUES (%s, 'eliminados_hasta', %s)
                          ON CONFLICT (subdomain, clave) DO UPDATE SET valor = EXCLUDED.valor''', (subdomain, hasta))
+            # El turno se renueva con cada ventana terminada.
+            nuevo_turno = int(time.time()) + TURNO_ELIMINADOS_SEG
+            c.execute('''UPDATE kommo_sync SET valor = %s
+                          WHERE subdomain = %s AND clave = 'eliminados_turno' AND valor = %s''',
+                      (nuevo_turno, subdomain, mi_turno))
+            mi_turno = nuevo_turno
             conn.commit()
             if cambio:
                 # Los turnos y las listas guardados ya no reflejan los mensajes.
@@ -3060,6 +3074,16 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
         conn.rollback()
         raise
     finally:
+        # Se suelta el turno, si todavia es mio.
+        try:
+            conn.rollback()
+            if mi_turno:
+                conn.cursor().execute('''UPDATE kommo_sync SET valor = 0
+                                          WHERE subdomain = %s AND clave = 'eliminados_turno' AND valor = %s''',
+                                      (subdomain, mi_turno))
+                conn.commit()
+        except Exception:
+            pass
         conn.close()
 
 # La limpieza corre en su propio hilo (27/10): la primera vez revisa 120 dias

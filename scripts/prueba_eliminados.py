@@ -160,14 +160,14 @@ cur.execute("SELECT valor FROM kommo_sync WHERE subdomain = %s AND clave = 'elim
 check('el punto de avance llega hasta hace un minuto', cur.fetchone()[0] == ahora - 60)
 
 # Dos copias del servidor a la vez (deploy): la segunda se salta la cuenta.
-import zlib
-otra = _c(URI); otra.autocommit = True
-otra.cursor().execute('SELECT pg_advisory_lock(%s)', (zlib.crc32(f'eliminados:{S}'.encode()) & 0x7fffffff,))
+cur.execute("INSERT INTO kommo_sync (subdomain, clave, valor) VALUES (%s, 'eliminados_turno', %s) ON CONFLICT (subdomain, clave) DO UPDATE SET valor = EXCLUDED.valor", (S, int(time.time()) + 300)); conn.commit()
 r4 = kommo._sincronizar_eliminados(S, 'tok', ahora)
 check('con otra copia revisando la misma cuenta, esta se la salta sin esperar', r4.get('omitido') is not None, r4)
-otra.close()
+cur.execute("UPDATE kommo_sync SET valor = %s WHERE subdomain = %s AND clave = 'eliminados_turno'", (int(time.time()) - 1, S)); conn.commit()
 r5 = kommo._sincronizar_eliminados(S, 'tok', ahora)
-check('cuando la otra termina, vuelve a revisar normal', 'omitido' not in r5, r5)
+check('si el turno de la otra vencio (servidor muerto), revisa normal', 'omitido' not in r5, r5)
+cur.execute("SELECT valor FROM kommo_sync WHERE subdomain = %s AND clave = 'eliminados_turno'", (S,))
+check('al terminar suelta el turno', cur.fetchone()[0] == 0)
 
 # Un Kommo que falla no rompe nada y no avanza el punto.
 cur.execute("UPDATE kommo_sync SET valor = %s WHERE subdomain = %s", (ahora - D, S)); conn.commit()
