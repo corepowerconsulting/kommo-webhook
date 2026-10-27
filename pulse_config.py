@@ -98,6 +98,20 @@ ASESORES = {
     15838771: 'Leticia Garay',
     15871775: 'Federico',
     15871787: 'Juan Pablo',
+
+    # Corromaduro (alta del 27/10/2026, bajados de /api/v4/users). Los CAP son
+    # usuarios compartidos de sucursal: se muestran tal cual los nombra Kommo.
+    8488643:  'Kathia Jou',
+    8488664:  'Marietha Rodriguez',
+    9573508:  'Merijem Moreno',
+    12991456: 'Supervisor CAP',
+    13805116: 'Joisy Muñoz',
+    13900668: 'Villa Lucre',
+    15369727: 'CAP 2',
+    15369811: 'CAP 4',
+    15369823: 'CAP 5',
+    15369999: 'CAP 8',
+    15870095: 'Gretel Ureña',   # inactiva en Kommo; se conserva por si aparece en datos viejos
 }
 
 # Remitentes AUTOMATICOS: mensajes salientes que no los escribio una persona.
@@ -329,6 +343,24 @@ PULSE_CONFIG = {
         # primeros payloads. Un nombre mal escrito no da error, mide cero.
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
         'tz_offset': -3,
+        'horario': (8, 18),
+        'dias_laborables': [0, 1, 2, 3, 4],
+        'franjas': [
+            {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
+            {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},
+            {'label': '15 – 30 min', 'max_seg': 1800, 'color': FRANJAS[2], 'tag': 'Regular'},
+            {'label': '+30 min',     'max_seg': None,  'color': FRANJAS[3], 'tag': 'Crítico'},
+        ]
+    },
+    # Alta del 27/10/2026. Panama: -5 fijo, sin horario de verano (la cuenta
+    # dice America/Panama). Horario, dias y franjas por defecto: CONFIRMAR con
+    # Juan el horario real de atencion de Corromaduro.
+    'corromadurosocialmedia': {
+        'nombre': 'Corromaduro',
+        'crm_domain': 'corromadurosocialmedia.kommo.com',
+        # Metodo viejo, solo por compatibilidad: Pulse mide con los mensajes.
+        'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
+        'tz_offset': -5,
         'horario': (8, 18),
         'dias_laborables': [0, 1, 2, 3, 4],
         'franjas': [
