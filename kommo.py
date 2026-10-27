@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, send_from_directory
 import bisect
+import zlib
 import hashlib
 import copy
 import gc
@@ -2881,12 +2882,6 @@ def _vuelta_vigia(ahora=None):
                         reg['avisado'], reg['ultimo_aviso'] = reg['estado'], ahora
                     elif aviso == 'volvio':
                         reg['avisado'], reg['ultimo_aviso'] = None, ahora
-            # Leads eliminados y fusionados: un error aca no frena el vigia.
-            try:
-                reg['eliminados'] = _sincronizar_eliminados(subdomain, token)
-            except Exception as e:
-                reg['eliminados'] = {'error': f'{type(e).__name__}: {e}'[:200]}
-                print(f'⚠️ eliminados {subdomain}: {e}')
             _vigia['cuentas'][subdomain] = reg
         _vigia['ultima_vuelta'] = ahora
 
@@ -2982,6 +2977,15 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
     conn = get_conn()
     try:
         c = conn.cursor()
+        # Candado por cuenta: en un deploy conviven dos copias del servidor y
+        # las dos intentaban lo mismo; una esperaba a la otra hasta el timeout
+        # de la base (Ventas Directas, 27/10). La que no lo consigue se salta
+        # la cuenta. Es de sesion: se suelta solo al cerrar la conexion.
+        c.execute('SELECT pg_try_advisory_lock(%s)', (zlib.crc32(f'eliminados:{subdomain}'.encode()) & 0x7fffffff,))
+        if not c.fetchone()[0]:
+            conn.rollback()
+            return {'omitido': 'otra copia del servidor esta revisando esta cuenta'}
+        conn.commit()
         c.execute("SELECT valor FROM kommo_sync WHERE subdomain = %s AND clave = 'eliminados_hasta'", (subdomain,))
         fila = c.fetchone()
         desde = fila[0] if fila else ahora - ELIMINADOS_DESDE_DIAS * 86400
@@ -2998,20 +3002,33 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
             for e in restaurados:
                 restaurado_ts[str(e['entity_id'])] = max(restaurado_ts.get(str(e['entity_id']), 0), int(e['created_at']))
             cambio = False
+            # Todos los eliminados de la ventana en UNA sentencia; antes era una
+            # ida y vuelta a la base por lead, y en Ecoambiental son miles.
+            filas, vistos_ids = [], set()
             for e in sorted(eliminados, key=lambda e: int(e['created_at'])):
                 lid = str(e['entity_id'])
-                if restaurado_ts.get(lid, 0) > int(e['created_at']):
+                if restaurado_ts.get(lid, 0) > int(e['created_at']) or lid in vistos_ids:
                     continue
-                c.execute('''INSERT INTO leads_eliminados (subdomain, lead_id, eliminado_ts, fusionado_en)
-                             VALUES (%s, %s, %s, %s) ON CONFLICT (subdomain, lead_id) DO NOTHING''',
-                          (subdomain, lid, int(e['created_at']), pares.get(lid)))
-                if c.rowcount:
-                    resumen['eliminados'] += 1
+                vistos_ids.add(lid)
+                filas.append((subdomain, lid, int(e['created_at']), pares.get(lid)))
+            if filas:
+                nuevos = execute_values(c, '''INSERT INTO leads_eliminados (subdomain, lead_id, eliminado_ts, fusionado_en)
+                                              VALUES %s ON CONFLICT (subdomain, lead_id) DO NOTHING RETURNING lead_id''',
+                                        filas, fetch=True)
+                if nuevos:
+                    resumen['eliminados'] += len(nuevos)
                     cambio = True
-                # La fusion se aplica una sola vez.
-                c.execute('SELECT aplicado_ts FROM leads_eliminados WHERE subdomain = %s AND lead_id = %s', (subdomain, lid))
-                ya = (c.fetchone() or [None])[0]
-                if lid in pares and not ya:
+            # Las fusiones, una sola vez cada una y en orden: las cadenas
+            # (A en B, B en C) dependen de que A se aplique antes que B.
+            pendientes = set()
+            if pares:
+                c.execute('SELECT lead_id FROM leads_eliminados WHERE subdomain = %s AND lead_id = ANY(%s) AND aplicado_ts IS NULL',
+                          (subdomain, list(pares)))
+                pendientes = {r[0] for r in c.fetchall()}
+            for e in sorted(eliminados, key=lambda e: int(e['created_at'])):
+                lid = str(e['entity_id'])
+                if lid in pendientes:
+                    pendientes.discard(lid)
                     destino = _destino_final(conn, subdomain, pares[lid])
                     m_cli, m_asr = _aplicar_fusion(conn, subdomain, lid, destino)
                     c.execute('UPDATE leads_eliminados SET aplicado_ts = %s WHERE subdomain = %s AND lead_id = %s',
@@ -3027,6 +3044,7 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
                 if c.rowcount:
                     resumen['restaurados'] += 1
                     cambio = True
+            # (restaurados son pocos: uno por uno esta bien)
             c.execute('''INSERT INTO kommo_sync (subdomain, clave, valor) VALUES (%s, 'eliminados_hasta', %s)
                          ON CONFLICT (subdomain, clave) DO UPDATE SET valor = EXCLUDED.valor''', (subdomain, hasta))
             conn.commit()
@@ -3043,6 +3061,28 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
         raise
     finally:
         conn.close()
+
+# La limpieza corre en su propio hilo (27/10): la primera vez revisa 120 dias
+# y en las cuentas grandes tarda; dentro de la vuelta del vigia atrasaba la
+# alerta de webhook apagado, que es lo urgente.
+_eliminados_estado = {}
+_eliminados_hilo = {'hilo': None, 'pid': None}
+
+def _bucle_eliminados():
+    time.sleep(120)
+    while True:
+        for subdomain in PULSE_CONFIG:
+            token = _token_kommo(subdomain)
+            if not token:
+                continue
+            try:
+                r = _sincronizar_eliminados(subdomain, token)
+                r['cuando'] = int(time.time())
+                _eliminados_estado[subdomain] = r
+            except Exception as e:
+                _eliminados_estado[subdomain] = {'error': f'{type(e).__name__}: {e}'[:200], 'cuando': int(time.time())}
+                print(f'⚠️ eliminados {subdomain}: {e}')
+        time.sleep(VIGIA_CADA_SEG)
 
 def _bucle_vigia():
     # Espera antes de la primera vuelta: en un deploy el proceso viejo y el
@@ -3069,6 +3109,11 @@ def _asegurar_vigia():
         hilo = threading.Thread(target=_bucle_vigia, daemon=True, name='vigia-kommo')
         hilo.start()
         _vigia['hilo'], _vigia['pid'] = hilo, os.getpid()
+        if not (_eliminados_hilo['pid'] == os.getpid() and _eliminados_hilo['hilo'] is not None
+                and _eliminados_hilo['hilo'].is_alive()):
+            h2 = threading.Thread(target=_bucle_eliminados, daemon=True, name='eliminados-kommo')
+            h2.start()
+            _eliminados_hilo['hilo'], _eliminados_hilo['pid'] = h2, os.getpid()
 
 def _fecha_iso(ts):
     try:
@@ -3090,7 +3135,7 @@ def health_vigia():
             'avisado':             reg.get('avisado'),
             'detalle':             reg.get('detalle'),
             'token':               _huella_token(sub),
-            'eliminados':          reg.get('eliminados'),
+            'eliminados':          _eliminados_estado.get(sub),
         }
         for sub, reg in _vigia['cuentas'].items()
     }

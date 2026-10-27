@@ -159,6 +159,16 @@ check('correrlo de nuevo no cambia nada ni rehace trabajo', dict(cur.fetchall())
 cur.execute("SELECT valor FROM kommo_sync WHERE subdomain = %s AND clave = 'eliminados_hasta'", (S,))
 check('el punto de avance llega hasta hace un minuto', cur.fetchone()[0] == ahora - 60)
 
+# Dos copias del servidor a la vez (deploy): la segunda se salta la cuenta.
+import zlib
+otra = _c(URI); otra.autocommit = True
+otra.cursor().execute('SELECT pg_advisory_lock(%s)', (zlib.crc32(f'eliminados:{S}'.encode()) & 0x7fffffff,))
+r4 = kommo._sincronizar_eliminados(S, 'tok', ahora)
+check('con otra copia revisando la misma cuenta, esta se la salta sin esperar', r4.get('omitido') is not None, r4)
+otra.close()
+r5 = kommo._sincronizar_eliminados(S, 'tok', ahora)
+check('cuando la otra termina, vuelve a revisar normal', 'omitido' not in r5, r5)
+
 # Un Kommo que falla no rompe nada y no avanza el punto.
 cur.execute("UPDATE kommo_sync SET valor = %s WHERE subdomain = %s", (ahora - D, S)); conn.commit()
 kommo._kommo_get = lambda *a: (_ for _ in ()).throw(OSError('Kommo no responde'))
