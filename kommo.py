@@ -22,7 +22,7 @@ from collections import defaultdict, Counter, deque
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
-from pulse_config import PULSE_CONFIG, ASESORES, REMITENTES_AUTOMATICOS, CONVERSIONES
+from pulse_config import PULSE_CONFIG, ASESORES, REMITENTES_AUTOMATICOS, CONVERSIONES, CARTERA
 # Todos los colores salen de paleta.py, con el porque de cada eleccion escrito
 # ahi. Se importan con alias porque en este archivo OTROS ya es una etiqueta de
 # texto y ASESORES ya es la lista de personas.
@@ -1504,6 +1504,7 @@ def _encolar_webhook(data):
     try:
         _asegurar_trabajadores()
         _asegurar_vigia()
+        _asegurar_cartera()
     except RuntimeError as e:
         # Sin capacidad para crear un hilo. El evento igual queda en la cola:
         # lo toma el trabajador que siga vivo o el que se reponga despues.
@@ -2585,12 +2586,12 @@ from werkzeug.exceptions import HTTPException
 @app.errorhandler(Exception)
 def _error_no_previsto(e):
     if isinstance(e, HTTPException):
-        if request.path.startswith(('/pulse/data', '/pulse/snapshot')):
+        if request.path.startswith(('/pulse/data', '/pulse/snapshot', '/cartera/data')):
             return jsonify({'error': e.description or e.name}), e.code
         return e
     print(f'❌ error no previsto en {request.path}: {type(e).__name__}: {e}')
     traceback.print_exc()
-    if request.path.startswith(('/pulse/data', '/pulse/snapshot', '/health/')):
+    if request.path.startswith(('/pulse/data', '/pulse/snapshot', '/cartera/data', '/health/')):
         return jsonify({'error': 'No se pudieron calcular los datos. Prueba de nuevo en un minuto; '
                                  f'si sigue, avisa a soporte ({type(e).__name__}).'}), 500
     return 'Error interno', 500
@@ -6861,7 +6862,240 @@ def pulse_propuesta():
 def pulse_logout():
     subdomain = request.args.get('subdomain', '').strip()
     session.pop(f'pulse_ok_{subdomain}', None)
+    # Una cuenta que solo tiene el reporte de cartera vuelve a su login.
+    if subdomain in CARTERA and subdomain not in PULSE_CONFIG:
+        return redirect(url_for('cartera', subdomain=subdomain))
     return redirect(url_for('pulse', subdomain=subdomain))
+
+# --- Reporte de cartera (/cartera, 02/11) -------------------------------------
+# Lo pidio Luis para Celltech: por asesor, cuantas companias y cuantos leads
+# (cotizaciones) tiene, con filtros de embudo, etapa y asesor, y al elegir un
+# asesor el detalle de sus leads. A diferencia de Pulse no sale de los
+# mensajes: es la foto actual de la cuenta y se lee de la API de Kommo.
+#
+# Celltech tiene ~24.000 leads, ~100 paginas de la API: unos 3 minutos. No
+# cabe en un pedido (gunicorn corta a los 120 s), asi que un hilo la lee al
+# arrancar el servidor y la refresca cada 15 minutos, y el pedido solo filtra
+# lo que ya esta en memoria (~10 MB). Son ~120 pedidos a Kommo cada 15
+# minutos, lejos de su limite de 7 por segundo.
+#
+# La cartera de un asesor son las companias de los leads que trabaja, no las
+# que tiene asignadas como responsable de la compania: en Celltech 3.961
+# companias estan a nombre de un solo usuario que reparte.
+CARTERA_CADA_SEG = 900
+CARTERA_REINTENTO_SEG = 120
+_cartera = {}                  # sub -> foto de la cuenta (ver _cargar_cartera)
+_cartera_hilo = {'hilo': None, 'pid': None}
+_cartera_candado = threading.Lock()
+_cartera_despertar = threading.Event()
+
+def _kommo_paginas(subdomain, token, ruta, clave):
+    """Los elementos de un listado de la API v4, pagina por pagina.
+
+    Generador a proposito: un lead de Kommo con sus campos pesa varios KB y
+    juntar las 100 paginas antes de reducirlas eran decenas de MB de golpe."""
+    sep = '&' if '?' in ruta else '?'
+    for pagina in range(1, 401):
+        for intento in range(3):
+            try:
+                d = _kommo_get(subdomain, token, f'{ruta}{sep}limit=250&page={pagina}')
+                break
+            except urllib.error.HTTPError as e:
+                # 429: Kommo admite 7 pedidos por segundo por cuenta.
+                if e.code != 429 or intento == 2:
+                    raise
+                time.sleep(2)
+        if not d:
+            return
+        yield from d.get('_embedded', {}).get(clave, [])
+        if 'next' not in d.get('_links', {}):
+            return
+
+def _cargar_cartera(subdomain):
+    """La foto de la cuenta: leads abiertos, companias, usuarios y embudos."""
+    token = _token_kommo(subdomain)
+    if not token:
+        raise RuntimeError(f'falta KOMMO_TOKEN_{subdomain.upper()}')
+    campo = CARTERA[subdomain].get('campo_tipo')
+
+    usuarios = {u['id']: u['name'] for u in _kommo_paginas(subdomain, token, '/api/v4/users', 'users')}
+    crudos = (_kommo_get(subdomain, token, '/api/v4/leads/pipelines') or {}).get('_embedded', {}).get('pipelines', [])
+    embudos = [{'id': p['id'], 'nombre': p['name'],
+                'etapas': [{'id': s['id'], 'nombre': s['name']}
+                           for s in p['_embedded']['statuses'] if s['id'] not in (142, 143)]}
+               for p in sorted(crudos, key=lambda p: p.get('sort', 0))]
+    # 'Company name not specified' es lo que Kommo pone cuando la compania se
+    # creo sin nombre.
+    companias = {c['id']: ('Compañía sin nombre' if (c.get('name') or '').strip() in ('', 'Company name not specified')
+                           else c['name'].strip())
+                 for c in _kommo_paginas(subdomain, token, '/api/v4/companies', 'companies')}
+
+    # Solo los abiertos: ganados y perdidos ya no son negocios que se trabajan.
+    leads = []
+    for l in _kommo_paginas(subdomain, token, '/api/v4/leads?with=companies', 'leads'):
+        if l['status_id'] in (142, 143):
+            continue
+        cs = (l.get('_embedded') or {}).get('companies') or []
+        tipo = None
+        if campo:
+            for v in l.get('custom_fields_values') or []:
+                if v.get('field_id') == campo and v.get('values'):
+                    tipo = str(v['values'][0].get('value') or '').strip() or None
+        leads.append((l['id'], l.get('name') or '', l.get('responsible_user_id'),
+                      l['pipeline_id'], l['status_id'], cs[0]['id'] if cs else None, tipo))
+    return {'leads': leads, 'companias': companias, 'usuarios': usuarios,
+            'embudos': embudos, 'cuando': int(time.time()), 'error': None}
+
+def _refrescar_cartera(subdomain):
+    previo = _cartera.get(subdomain) or {}
+    previo['cargando'] = True
+    _cartera[subdomain] = previo
+    try:
+        _cartera[subdomain] = _cargar_cartera(subdomain)
+    except Exception as e:
+        # Se conserva la foto anterior: datos de hace media hora sirven mas
+        # que una pantalla de error.
+        previo['error'] = f'{type(e).__name__}: {e}'[:200]
+        previo['reintento'] = time.time() + CARTERA_REINTENTO_SEG
+        print(f'⚠️ cartera {subdomain}: {e}')
+    finally:
+        _cartera[subdomain]['cargando'] = False
+
+def _bucle_cartera():
+    while True:
+        ahora = time.time()
+        for sub in CARTERA:
+            foto = _cartera.get(sub) or {}
+            if foto.get('reintento', 0) > ahora:
+                continue
+            if foto.get('cuando') and ahora - foto['cuando'] < CARTERA_CADA_SEG:
+                continue
+            _refrescar_cartera(sub)
+        _cartera_despertar.wait(30)
+        _cartera_despertar.clear()
+
+def _asegurar_cartera():
+    with _cartera_candado:
+        h = _cartera_hilo
+        if h['pid'] == os.getpid() and h['hilo'] is not None and h['hilo'].is_alive():
+            return
+        hilo = threading.Thread(target=_bucle_cartera, daemon=True, name='cartera-kommo')
+        hilo.start()
+        h['hilo'], h['pid'] = hilo, os.getpid()
+
+@app.route('/cartera', methods=['GET', 'POST'])
+def cartera():
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in CARTERA:
+        return f'La cuenta "{subdomain}" no tiene reporte de cartera', 400
+    accion = url_for('cartera', subdomain=subdomain)
+    if request.method == 'POST':
+        pw_real = pulse_password(subdomain)
+        if pw_real and request.form.get('password', '') == pw_real:
+            session[f'pulse_ok_{subdomain}'] = True
+            return redirect(accion)
+        return render_template('pulse_login.html', subdomain=subdomain, accion=accion,
+                               error='Contraseña incorrecta'), 401
+    if not pulse_autorizado(subdomain):
+        if not pulse_password(subdomain):
+            return f'Falta la contraseña de "{subdomain}" (PULSE_PW_{subdomain.upper()})', 500
+        return render_template('pulse_login.html', subdomain=subdomain, accion=accion, error=None)
+    _asegurar_cartera()
+    return render_template('cartera.html', subdomain=subdomain,
+                           nombre=CARTERA[subdomain]['nombre'],
+                           con_tipo=bool(CARTERA[subdomain].get('campo_tipo')),
+                           paleta_css=paleta.para_css())
+
+def _entero(valor):
+    valor = (valor or '').strip()
+    return int(valor) if valor.lstrip('-').isdigit() else None
+
+@app.route('/cartera/data')
+def cartera_data():
+    subdomain = request.args.get('subdomain', '').strip()
+    if subdomain not in CARTERA:
+        return jsonify({'error': 'cuenta sin reporte de cartera'}), 400
+    if not pulse_autorizado(subdomain) and not _token_admin_ok():
+        return jsonify({'error': 'No autorizado'}), 401
+    _asegurar_cartera()
+
+    foto = _cartera.get(subdomain) or {}
+    if not foto.get('cuando'):
+        _cartera_despertar.set()
+        return jsonify({'cargando': True, 'error': foto.get('error')})
+
+    # Sin ?embudo arranca en el configurado; ?embudo=todos los junta.
+    crudo = request.args.get('embudo')
+    embudo = CARTERA[subdomain].get('embudo_inicial') if crudo is None else _entero(crudo)
+    etapa = _entero(request.args.get('etapa')) if embudo else None
+    asesor = _entero(request.args.get('asesor'))
+    tipo = (request.args.get('tipo') or '').strip()
+
+    usuarios, companias = foto['usuarios'], foto['companias']
+    nombres_emb = {e['id']: e['nombre'] for e in foto['embudos']}
+    nombres_eta, orden = {}, {}
+    for i, e in enumerate(foto['embudos']):
+        for j, s in enumerate(e['etapas']):
+            nombres_eta[(e['id'], s['id'])] = s['nombre']
+            orden[(e['id'], s['id'])] = (i, j)
+
+    def pasa(l, con_asesor=True):
+        return ((not embudo or l[3] == embudo) and (not etapa or l[4] == etapa)
+                and (not tipo or (l[6] or 'Sin tipo') == tipo)
+                and (not con_asesor or not asesor or l[2] == asesor))
+
+    # La tabla por asesor no aplica el filtro de asesor: el elegido se resalta
+    # y los demas siguen a la vista para comparar. Los totales si lo aplican.
+    por = {}
+    for l in foto['leads']:
+        if not pasa(l, con_asesor=False):
+            continue
+        r = por.setdefault(l[2], {'leads': 0, 'companias': set(), 'sin_compania': 0})
+        r['leads'] += 1
+        if l[5]:
+            r['companias'].add(l[5])
+        else:
+            r['sin_compania'] += 1
+    if asesor:
+        por_total = {asesor: por[asesor]} if asesor in por else {}
+    else:
+        por_total = por
+    todas = set().union(*(r['companias'] for r in por_total.values())) if por_total else set()
+    filas = sorted(({'asesor_id': uid, 'asesor': usuarios.get(uid) or f'Usuario {uid}',
+                     'leads': r['leads'], 'companias': len(r['companias']),
+                     'sin_compania': r['sin_compania']} for uid, r in por.items()),
+                   key=lambda f: (-f['leads'], f['asesor']))
+
+    detalle = None
+    if asesor:
+        sel = [l for l in foto['leads'] if pasa(l)]
+        sel.sort(key=lambda l: (orden.get((l[3], l[4]), (99, 99)),
+                                (companias.get(l[5]) or '~').lower(), l[1].lower()))
+        detalle = [{'id': l[0], 'nombre': l[1] or f'Lead #{l[0]}',
+                    'compania': companias.get(l[5]) if l[5] else None,
+                    'embudo': nombres_emb.get(l[3], f'Embudo {l[3]}'),
+                    'etapa': nombres_eta.get((l[3], l[4]), f'Etapa {l[4]}'),
+                    'tipo': l[6]} for l in sel]
+
+    # Las opciones de los filtros salen de toda la cuenta, no de lo filtrado:
+    # si no, al elegir un asesor desaparecerian los demas de la lista.
+    con_leads = {l[2] for l in foto['leads']}
+    tipos = sorted({l[6] or 'Sin tipo' for l in foto['leads']}) if CARTERA[subdomain].get('campo_tipo') else []
+    return jsonify({
+        'cargando': bool(foto.get('cargando')),
+        'actualizado_hace_seg': int(time.time() - foto['cuando']),
+        'error': foto.get('error'),
+        'filtros': {'embudo': embudo, 'etapa': etapa, 'asesor': asesor, 'tipo': tipo or None},
+        'embudos': foto['embudos'],
+        'asesores': sorted(({'id': u, 'nombre': usuarios.get(u) or f'Usuario {u}'} for u in con_leads),
+                           key=lambda a: a['nombre'].lower()),
+        'tipos': tipos,
+        'total': {'asesores': len(por_total), 'leads': sum(r['leads'] for r in por_total.values()),
+                  'companias': len(todas)},
+        'filas': filas,
+        'detalle': detalle,
+        'crm': f'https://{subdomain}.kommo.com',
+    })
 
 @app.route('/pulse/snapshot')
 def pulse_snapshot():
@@ -7536,6 +7770,10 @@ if not os.environ.get('PULSE_SIN_HILOS'):
         _asegurar_vigia()
     except RuntimeError as e:
         print(f"⚠️  No se pudo arrancar el vigia: {e}")
+    try:
+        _asegurar_cartera()
+    except RuntimeError as e:
+        print(f"⚠️  No se pudo arrancar el reporte de cartera: {e}")
 
 if __name__ == '__main__':
     print("🚀 Servidor corriendo en puerto 5000")

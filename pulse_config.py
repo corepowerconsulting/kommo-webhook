@@ -383,6 +383,21 @@ PULSE_CONFIG = {
 # los embudos). Las listas incluyen las etapas POSTERIORES a la conversion,
 # porque un lead puede saltarse pasos. Propuesta de Claude pendiente de que la
 # confirmen Juan y Luis; cambiarla es solo editar esta lista.
+# Reporte de cartera (/cartera, 02/11): por asesor, cuantas companias y
+# cuantos leads abiertos tiene. NO depende del webhook: lee el estado actual
+# de la cuenta por la API de Kommo cada 15 minutos.
+#   embudo_inicial  el que arranca seleccionado (las cotizaciones reales).
+#   campo_tipo      id del campo de lead con el "tipo de negocio". None
+#                   mientras el cliente no lo defina: la columna y el filtro
+#                   no se muestran.
+CARTERA = {
+    'celltechventascorp': {
+        'nombre': 'Celltech',
+        'embudo_inicial': 14369243,   # OPORTUNIDADES
+        'campo_tipo': None,
+    },
+}
+
 CONVERSIONES = {
     # VENTAS
     'lizondrohomes': [

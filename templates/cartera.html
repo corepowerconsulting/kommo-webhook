@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>PULSE — Cartera por asesor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    /* Mismo sistema que pulse.html: colores de paleta.py, texto en Manrope,
+       numeros en Inter, raiz de 18px y contenido de 1280px. */
+    :root {
+{{ paleta_css }}
+      --t-micro: 0.78rem;
+      --t-chico: 0.85rem;
+      --t-titulo: 1.25rem;
+      --t-cifra: 2.00rem;
+      --ancho-max: 1280px;
+    }
+    html { font-size: 18px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--fondo-suave); color: var(--texto);
+           font-family: 'Manrope', sans-serif; line-height: 1.25; }
+    .num { font-family: 'Inter', sans-serif; font-variant-numeric: tabular-nums; }
+    .envoltura { max-width: var(--ancho-max); margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+    .marca { display: flex; align-items: center; gap: .6rem; }
+    .logo { width: 1.8rem; height: 1.8rem; border-radius: .45rem; background: var(--marca);
+            display: flex; align-items: center; justify-content: center; }
+    .titulo { font-size: var(--t-titulo); font-weight: 800; color: var(--tinta); }
+    .cuenta { font-size: var(--t-chico); color: var(--apagado); }
+    .estado { font-size: var(--t-micro); color: var(--apagado); text-align: right; }
+    .estado a { color: var(--apagado); }
+
+    .tarjeta { background: #fff; border: 1px solid var(--linea); border-radius: 1rem; padding: 1.1rem 1.25rem; }
+    .filtros { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+    .filtro { display: flex; flex-direction: column; gap: .3rem; min-width: 12rem; }
+    .filtro label { font-size: var(--t-micro); font-weight: 600; color: var(--apagado); }
+    select { font: inherit; font-size: var(--t-chico); color: var(--tinta); background: #fff;
+             border: 1px solid var(--linea); border-radius: .5rem; padding: .45rem .6rem; }
+    select:focus { outline: 2px solid var(--foco); outline-offset: 0; }
+    select:disabled { color: var(--tenue); background: var(--carril); }
+    .limpiar { font: inherit; font-size: var(--t-chico); color: var(--marca); background: none; border: 0;
+               cursor: pointer; padding: .45rem 0; }
+
+    .totales { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem; }
+    .total .etiqueta { font-size: var(--t-micro); font-weight: 600; color: var(--apagado); }
+    .total .cifra { font-size: var(--t-cifra); font-weight: 800; color: var(--tinta); line-height: 1; margin-top: .35rem; }
+
+    h2 { font-size: var(--t-titulo); font-weight: 800; color: var(--tinta); margin: 0 0 .2rem; }
+    .ayuda { font-size: var(--t-micro); color: var(--apagado); margin-bottom: .8rem; }
+    table { width: 100%; border-collapse: collapse; font-size: var(--t-chico); }
+    th { text-align: left; font-size: var(--t-micro); font-weight: 600; color: var(--apagado);
+         padding: .5rem .6rem; border-bottom: 1px solid var(--linea); }
+    td { padding: .55rem .6rem; border-bottom: 1px solid var(--carril); color: var(--texto); }
+    th.n, td.n { text-align: right; }
+    td.n { font-family: 'Inter', sans-serif; font-variant-numeric: tabular-nums; color: var(--tinta); }
+    tbody tr.clic { cursor: pointer; }
+    tbody tr.clic:hover td { background: var(--fondo-suave); }
+    tr.elegido td { background: #eff6ff; }
+    tr.elegido td:first-child { box-shadow: inset 3px 0 0 var(--marca); }
+    .asesor { font-weight: 600; color: var(--tinta); }
+    .tenue { color: var(--apagado); }
+    .barra { height: .35rem; background: var(--carril); border-radius: 1rem; margin-top: .3rem; max-width: 14rem; }
+    .barra span { display: block; height: 100%; background: var(--marca); border-radius: 1rem; }
+    a.lead { color: var(--marca); font-weight: 600; text-decoration: none; }
+    a.lead:hover { text-decoration: underline; }
+    .etapa { display: inline-block; font-size: var(--t-micro); background: var(--carril); color: var(--texto);
+             border-radius: 1rem; padding: .15rem .55rem; white-space: nowrap; }
+    .vermas { margin-top: .8rem; font: inherit; font-size: var(--t-chico); color: var(--marca); background: none;
+              border: 1px solid var(--linea); border-radius: .5rem; padding: .4rem .8rem; cursor: pointer; }
+    .aviso { font-size: var(--t-chico); color: var(--texto); background: #fff; border: 1px solid var(--linea);
+             border-radius: 1rem; padding: 2rem; text-align: center; }
+    .error { color: var(--franja-3-texto); background: var(--franja-3-fondo); border-radius: .5rem;
+             padding: .5rem .75rem; font-size: var(--t-chico); margin-bottom: 1rem; }
+    #detalle { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+<div class="envoltura">
+  <header>
+    <div class="marca">
+      <div class="logo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <div>
+        <div class="titulo">Cartera por asesor</div>
+        <div class="cuenta">{{ nombre }}</div>
+      </div>
+    </div>
+    <div class="estado"><span id="actualizado"></span><br><a href="/pulse/logout?subdomain={{ subdomain }}">Salir</a></div>
+  </header>
+
+  <div id="error"></div>
+  <div id="cargando" class="aviso">Leyendo la cuenta de Kommo… tarda unos minutos después de cada actualización del servidor.</div>
+
+  <div id="contenido" hidden>
+    <div class="filtros">
+      <div class="filtro"><label for="f-embudo">Embudo</label><select id="f-embudo"></select></div>
+      <div class="filtro"><label for="f-etapa">Etapa</label><select id="f-etapa"></select></div>
+      <div class="filtro"><label for="f-asesor">Asesor</label><select id="f-asesor"></select></div>
+      {% if con_tipo %}
+      <div class="filtro"><label for="f-tipo">Tipo de negocio</label><select id="f-tipo"></select></div>
+      {% endif %}
+      <button class="limpiar" id="limpiar" type="button">Quitar filtros</button>
+    </div>
+
+    <div class="totales">
+      <div class="tarjeta total"><div class="etiqueta">Asesores</div><div class="cifra num" id="t-asesores"></div></div>
+      <div class="tarjeta total"><div class="etiqueta">Compañías</div><div class="cifra num" id="t-companias"></div></div>
+      <div class="tarjeta total"><div class="etiqueta">Leads abiertos</div><div class="cifra num" id="t-leads"></div></div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Por asesor</h2>
+      <div class="ayuda">Asesor = usuario responsable del lead. Compañías = las de los leads que trabaja. Toca un asesor para ver sus leads.</div>
+      <table>
+        <thead><tr><th>Asesor</th><th class="n">Compañías</th><th class="n">Leads</th><th class="n">Leads sin compañía</th></tr></thead>
+        <tbody id="filas"></tbody>
+      </table>
+    </div>
+
+    <div class="tarjeta" id="detalle" hidden>
+      <h2 id="detalle-titulo"></h2>
+      <div class="ayuda">Ordenados por etapa y compañía. El nombre del lead abre la ficha en Kommo.</div>
+      <table>
+        <thead><tr><th>Lead</th><th>Compañía</th><th id="col-embudo">Embudo</th><th>Etapa</th>{% if con_tipo %}<th>Tipo de negocio</th>{% endif %}</tr></thead>
+        <tbody id="detalle-filas"></tbody>
+      </table>
+      <button class="vermas" id="vermas" type="button" hidden></button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUB = {{ subdomain|tojson }};
+const CON_TIPO = {{ con_tipo|tojson }};
+const POR_TANDA = 100;
+let filtros = null;        // null = lo que el servidor elija (embudo inicial)
+let datos = null, mostrados = POR_TANDA, irAlDetalle = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const miles = n => Number(n).toLocaleString('es');
+
+function url() {
+  const p = new URLSearchParams({subdomain: SUB});
+  if (filtros) {
+    p.set('embudo', filtros.embudo || 'todos');
+    if (filtros.etapa) p.set('etapa', filtros.etapa);
+    if (filtros.asesor) p.set('asesor', filtros.asesor);
+    if (filtros.tipo) p.set('tipo', filtros.tipo);
+  }
+  return '/cartera/data?' + p;
+}
+
+async function cargar() {
+  let d;
+  try {
+    const r = await fetch(url(), {credentials: 'same-origin'});
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+  } catch (e) {
+    $('error').innerHTML = `<div class="error">No se pudieron leer los datos (${esc(e.message)}). Prueba de nuevo en un minuto.</div>`;
+    return;
+  }
+  $('error').innerHTML = d.error ? `<div class="error">La última lectura de Kommo falló; se muestran los datos anteriores. (${esc(d.error)})</div>` : '';
+  if (!d.filas) {
+    setTimeout(cargar, 5000);
+    return;
+  }
+  datos = d;
+  filtros = {...d.filtros};
+  $('cargando').hidden = true;
+  $('contenido').hidden = false;
+  pintar();
+  if (irAlDetalle && d.detalle) $('detalle').scrollIntoView({behavior: 'smooth', block: 'start'});
+  irAlDetalle = false;
+}
+
+function opciones(sel, lista, valor, todos) {
+  sel.innerHTML = `<option value="">${todos}</option>` +
+    lista.map(o => `<option value="${esc(o.v)}"${String(o.v) === String(valor ?? '') ? ' selected' : ''}>${esc(o.t)}</option>`).join('');
+}
+
+function pintar() {
+  const d = datos, f = d.filtros;
+  const min = Math.round(d.actualizado_hace_seg / 60);
+  $('actualizado').textContent = (min < 1 ? 'Actualizado hace menos de un minuto' : `Actualizado hace ${min} min`) + (d.cargando ? ' · actualizando…' : '');
+
+  opciones($('f-embudo'), d.embudos.map(e => ({v: e.id, t: e.nombre})), f.embudo, 'Todos los embudos');
+  const emb = d.embudos.find(e => e.id === f.embudo);
+  opciones($('f-etapa'), emb ? emb.etapas.map(s => ({v: s.id, t: s.nombre})) : [], f.etapa, 'Todas las etapas');
+  $('f-etapa').disabled = !emb;
+  opciones($('f-asesor'), d.asesores.map(a => ({v: a.id, t: a.nombre})), f.asesor, 'Todos los asesores');
+  if (CON_TIPO) opciones($('f-tipo'), d.tipos.map(t => ({v: t, t})), f.tipo, 'Todos');
+
+  $('t-asesores').textContent = miles(d.total.asesores);
+  $('t-companias').textContent = miles(d.total.companias);
+  $('t-leads').textContent = miles(d.total.leads);
+
+  const tope = Math.max(1, ...d.filas.map(r => r.leads));
+  $('filas').innerHTML = d.filas.length ? d.filas.map(r => `
+    <tr class="clic${r.asesor_id === f.asesor ? ' elegido' : ''}" data-asesor="${r.asesor_id}">
+      <td><div class="asesor">${esc(r.asesor)}</div><div class="barra"><span style="width:${(r.leads / tope * 100).toFixed(1)}%"></span></div></td>
+      <td class="n">${miles(r.companias)}</td>
+      <td class="n">${miles(r.leads)}</td>
+      <td class="n${r.sin_compania ? '' : ' tenue'}">${miles(r.sin_compania)}</td>
+    </tr>`).join('') : `<tr><td colspan="4" class="tenue">No hay leads abiertos con estos filtros.</td></tr>`;
+
+  pintarDetalle();
+}
+
+function pintarDetalle() {
+  const d = datos;
+  if (!d.detalle) { $('detalle').hidden = true; return; }
+  const a = d.asesores.find(x => x.id === d.filtros.asesor);
+  $('detalle').hidden = false;
+  // Con un embudo elegido la columna repetiria lo mismo en cada fila.
+  $('col-embudo').hidden = !!d.filtros.embudo;
+  $('detalle-titulo').textContent = `Leads de ${a ? a.nombre : 'este asesor'} (${miles(d.detalle.length)})`;
+  const filas = d.detalle.slice(0, mostrados);
+  $('detalle-filas').innerHTML = filas.length ? filas.map(l => `
+    <tr>
+      <td><a class="lead" href="${d.crm}/leads/detail/${l.id}" target="_blank" rel="noopener">${esc(l.nombre)}</a></td>
+      <td>${l.compania ? esc(l.compania) : '<span class="tenue">Sin compañía</span>'}</td>
+      ${d.filtros.embudo ? '' : `<td>${esc(l.embudo)}</td>`}
+      <td><span class="etapa">${esc(l.etapa)}</span></td>
+      ${CON_TIPO ? `<td>${l.tipo ? esc(l.tipo) : '<span class="tenue">Sin tipo</span>'}</td>` : ''}
+    </tr>`).join('') : `<tr><td colspan="5" class="tenue">Sin leads con estos filtros.</td></tr>`;
+  const resto = d.detalle.length - filas.length;
+  $('vermas').hidden = resto <= 0;
+  $('vermas').textContent = `Ver ${miles(Math.min(resto, POR_TANDA))} más (quedan ${miles(resto)})`;
+}
+
+function cambiar(cambios) {
+  filtros = {...filtros, ...cambios};
+  mostrados = POR_TANDA;
+  cargar();
+}
+
+$('f-embudo').addEventListener('change', e => cambiar({embudo: Number(e.target.value) || null, etapa: null}));
+$('f-etapa').addEventListener('change', e => cambiar({etapa: Number(e.target.value) || null}));
+$('f-asesor').addEventListener('change', e => cambiar({asesor: Number(e.target.value) || null}));
+if (CON_TIPO) $('f-tipo').addEventListener('change', e => cambiar({tipo: e.target.value || null}));
+$('limpiar').addEventListener('click', () => cambiar({embudo: null, etapa: null, asesor: null, tipo: null}));
+$('filas').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-asesor]');
+  if (!tr) return;
+  const id = Number(tr.dataset.asesor);
+  irAlDetalle = datos.filtros.asesor !== id;
+  cambiar({asesor: irAlDetalle ? id : null});
+});
+$('vermas').addEventListener('click', () => { mostrados += POR_TANDA; pintarDetalle(); });
+
+cargar();
+// La foto se renueva cada 15 minutos en el servidor; la pantalla la vuelve a pedir cada 5.
+setInterval(() => { if (datos) cargar(); }, 300000);
+</script>
+</body>
+</html>
