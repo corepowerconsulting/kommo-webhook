@@ -394,7 +394,7 @@ CARTERA = {
     'celltechventascorp': {
         'nombre': 'Celltech',
         'embudo_inicial': 14369243,   # OPORTUNIDADES
-        'campo_tipo': None,
+        'campo_tipo': 482540,         # "Registro nuevo lead": lineas nuevas, portabilidades, renovaciones, fibra optica
     },
 }
 
