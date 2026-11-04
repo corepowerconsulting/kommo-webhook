@@ -3465,7 +3465,15 @@ function _cambioAsesor(a) {
 // Cuando nos demoramos: dia x hora. Dos vistas sobre la misma grilla (16/10):
 // la mediana con el semaforo, o cuantos clientes escriben (sin color: no es
 // bueno ni malo, es volumen).
-let _MAPA = null, VISTA_MAPA = 'mediana';
+let _MAPA = null, VISTA_MAPA = 'mediana', _HORARIO_DIA = null;
+// Con las 24 horas a la vista (Ecoambiental, 04/11) la celda vacia de una hora
+// en que no se atiende va rayada: no es que falten datos, es que estaba cerrado.
+function _fueraHorario(d, h) {
+  if (!_HORARIO_DIA) return false;
+  const x = _HORARIO_DIA[d];
+  return !x || h < x[0] || h >= x[1];
+}
+function _hayFuera(horas, dias) { return dias.some(d => horas.some(h => _fueraHorario(d, h))); }
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('#seg-mapa button'); if (!b) return;
   VISTA_MAPA = b.dataset.v;
@@ -3489,7 +3497,9 @@ function renderMapaClientes(celdas, horario, diasLab) {
   el.innerHTML = `<span></span>${horas.map(h => `<span class="mh">${h}</span>`).join('')}` +
     dias.map(d => `<span class="md">${DIAS[d]}</span>` + horas.map(h => {
       const c = idx[`${d}-${h}`];
-      if (!c || !c.prom) return `<span class="mc vacia" title="${DIAS[d]} ${h}:00 · ningún cliente">0</span>`;
+      if (!c || !c.prom) return _fueraHorario(d, h)
+        ? `<span class="mc fuera" title="${DIAS[d]} ${h}:00 · fuera de horario · ningún cliente"></span>`
+        : `<span class="mc vacia" title="${DIAS[d]} ${h}:00 · ningún cliente">0</span>`;
       return `<span class="mc neutro" tabindex="0" data-mapa="${fmtP(c.prom)} clientes|${DIAS[d]} de ${h}:00 a ${h + 1}:00 · promedio por día">${fmtP(c.prom)}</span>`;
     }).join('')).join('');
   el.querySelectorAll('[data-mapa]').forEach(c => {
@@ -3497,7 +3507,8 @@ function renderMapaClientes(celdas, horario, diasLab) {
     c.addEventListener('mousemove', ev => mostrarTipSimple(ev, v, ctx));
     c.addEventListener('mouseleave', ocultarTipSimple);
   });
-  document.getElementById('leyenda-mapa').innerHTML = '<span>El número es el promedio de clientes que escribieron en esa hora, por día. Un cliente que manda varios mensajes cuenta una vez.</span>';
+  document.getElementById('leyenda-mapa').innerHTML = '<span>El número es el promedio de clientes que escribieron en esa hora, por día. Un cliente que manda varios mensajes cuenta una vez.' +
+    (_hayFuera(horas, dias) ? ' Rayado: fuera de horario.' : '') + '</span>';
   const conDato = (celdas || []).filter(c => dias.includes(c.d) && horas.includes(c.h) && c.prom);
   if (!conDato.length) { hall.textContent = 'Todavía no hay mensajes de clientes en este periodo.'; return; }
   const pico = conDato.reduce((p, c) => c.prom > p.prom ? c : p);
@@ -3515,7 +3526,9 @@ function renderMapaHoras(celdas, horario, diasLab, clientes) {
   el.innerHTML = `<span></span>${horas.map(h => `<span class="mh">${h}</span>`).join('')}` +
     dias.map(d => `<span class="md">${DIAS[d]}</span>` + horas.map(h => {
       const c = idx[`${d}-${h}`];
-      if (!c) return `<span class="mc vacia" title="${DIAS[d]} ${h}:00 · menos de 3 respuestas">·</span>`;
+      if (!c) return _fueraHorario(d, h)
+        ? `<span class="mc fuera" title="${DIAS[d]} ${h}:00 · fuera de horario · menos de 3 respuestas"></span>`
+        : `<span class="mc vacia" title="${DIAS[d]} ${h}:00 · menos de 3 respuestas">·</span>`;
       const f = Math.min(_franjaDe(c.mediana_seg), 3), min = Math.max(1, Math.round(c.mediana_seg / 60));
       return `<span class="mc c${f}" tabindex="0" data-mapa="${c.mediana_seg}|${DIAS[d]} de ${h}:00 a ${h + 1}:00 · ${_tagF(f)} · ${c.n} respuestas">${min}</span>`;
     }).join('')).join('');
@@ -3525,7 +3538,8 @@ function renderMapaHoras(celdas, horario, diasLab, clientes) {
     c.addEventListener('mouseleave', ocultarTipSimple);
   });
   document.getElementById('leyenda-mapa').innerHTML = (FRANJAS || []).map((f, i) => `<span class="tag ${_TAGS[Math.min(i, 3)]}">${f.tag}</span>`).join('') +
-    '<span>· el número es la mediana en minutos · punto: menos de 3 respuestas</span>';
+    '<span>· el número es la mediana en minutos · punto: menos de 3 respuestas' +
+    (_hayFuera(horas, dias) ? ' · rayado: fuera de horario' : '') + '</span>';
   // La frase de arriba: la peor hora con muestra suficiente.
   const conDato = (celdas || []).filter(c => dias.includes(c.d) && horas.includes(c.h));
   if (!conDato.length) { hall.textContent = 'Todavía no hay respuestas suficientes para ver patrones por hora.'; return; }
@@ -3752,7 +3766,8 @@ async function cargarDatos() {
     _SERIE_EQUIPO = (d.serie_dias || []).map(dia => { const t = (d.tendencia || []).find(x => x.fecha === dia); return t ? t.mediana_seg : null; });
     _bloque('.kpis-per', 'cifras del periodo', () => { renderKpisPeriodo(d); pintarComparacionPeriodo(d); });
     _bloque('resumen-periodo', 'resumen del periodo', () => renderResumenPeriodo(d));
-    _bloque('mapa', 'día y hora', () => renderMapaHoras(d.mapa_horas, d.config.horario, d.config.dias_laborables, d.mapa_clientes));
+    _HORARIO_DIA = d.config.horario_por_dia || null;
+    _bloque('mapa', 'día y hora', () => renderMapaHoras(d.mapa_horas, d.config.horas_mapa || d.config.horario, d.config.dias_laborables, d.mapa_clientes));
     _bloque('trend', 'tendencia', () => renderTendencia(d.tendencia));
     _bloque('dona', 'distribución', () => renderDonaPeriodo(d.metricas.distribucion, d.metricas.total));
     _CONV = d.convertidos || null;

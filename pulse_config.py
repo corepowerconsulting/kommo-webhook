@@ -314,7 +314,7 @@ PULSE_CONFIG = {
         ]
     },
     # Alta del 28/09/2026. Lima, Peru: -5 fijo, sin horario de verano.
-    # Horario y franjas por defecto, a pedido de Juan.
+    # Franjas por defecto, a pedido de Juan.
     'ecoambientalgroup': {
         'nombre': 'Ecoambiental Group',
         'crm_domain': 'ecoambientalgroup.kommo.com',
@@ -323,8 +323,12 @@ PULSE_CONFIG = {
         # el nombre estandar: verificarlo con la primera respuesta.
         'campos': {'cliente': 'F ult msj cliente', 'asesor': 'F ult msj asesor'},
         'tz_offset': -5,
-        'horario': (8, 18),
-        'dias_laborables': [0, 1, 2, 3, 4],
+        # Pedido de Luis (04/11): Lun a Vie de 9 a 19, Sab y Dom de 9 a 12.
+        'horario': (9, 19),
+        'dias_laborables': [0, 1, 2, 3, 4, 5, 6],
+        'horario_por_dia': {5: (9, 12), 6: (9, 12)},
+        # El mapa de dia y hora con las 24 horas, no solo las del horario.
+        'mapa_24h': True,
         'franjas': [
             {'label': '0 – 5 min',   'max_seg': 300,  'color': FRANJAS[0], 'tag': 'Ideal'},
             {'label': '5 – 15 min',  'max_seg': 900,  'color': FRANJAS[1], 'tag': 'Bueno'},

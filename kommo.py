@@ -4745,7 +4745,7 @@ def health_sesgo():
     cfg = PULSE_CONFIG[subdomain]
     tz_offset    = cfg['tz_offset']
     h_ini, h_fin = cfg['horario']
-    dias_lab     = cfg['dias_laborables']
+    dias_lab     = _dias_lab(cfg)
 
     conn = get_conn()
     try:
@@ -4900,19 +4900,39 @@ def _fmt_seg(seg):
     h, m = seg // 3600, (seg % 3600) // 60
     return f'{h}h {m}m' if m else f'{h}h'
 
+# Horario distinto segun el dia (04/11, Ecoambiental: sabado y domingo de 9 a
+# 12). Si la cuenta tiene 'horario_por_dia', dias_lab deja de ser una lista y
+# pasa a ser {dia: (apertura, cierre)}; las funciones de abajo aceptan las dos
+# formas, asi las cuentas con un solo horario no cambian en nada.
+def _dias_lab(cfg):
+    dias = cfg.get('dias_laborables', [0, 1, 2, 3, 4, 5, 6])
+    por_dia = cfg.get('horario_por_dia')
+    if not por_dia:
+        return dias
+    h = tuple(cfg.get('horario', (0, 24)))
+    return {d: tuple(por_dia.get(d, h)) for d in dias}
+
+def _horas_del_dia(dia, hora_ini, hora_fin, dias_lab):
+    """(apertura, cierre) de ese dia de la semana, o None si no se atiende."""
+    if isinstance(dias_lab, dict):
+        return dias_lab.get(dia)
+    return (hora_ini, hora_fin) if dia in dias_lab else None
+
 def _next_work_moment(dt, hora_ini, hora_fin, dias_lab):
     # Dentro del horario se devuelve el MISMO instante, con sus segundos. Antes
     # se truncaba al minuto siempre: un mensaje de las 10:00:50 contestado a
     # las 10:01:00 medía 60 s en vez de 10 (revision del 26/09). Solo se
     # redondea al construir una apertura, que empieza en punto.
-    if dt.weekday() in dias_lab and hora_ini <= dt.hour < hora_fin:
+    h = _horas_del_dia(dt.weekday(), hora_ini, hora_fin, dias_lab)
+    if h and h[0] <= dt.hour < h[1]:
         return dt
-    if dt.weekday() in dias_lab and dt.hour < hora_ini:
-        return dt.replace(hour=hora_ini, minute=0, second=0, microsecond=0)
-    next_d = (dt + timedelta(days=1)).replace(hour=hora_ini, minute=0, second=0, microsecond=0)
-    while next_d.weekday() not in dias_lab:
+    if h and dt.hour < h[0]:
+        return dt.replace(hour=h[0], minute=0, second=0, microsecond=0)
+    next_d = dt + timedelta(days=1)
+    while not _horas_del_dia(next_d.weekday(), hora_ini, hora_fin, dias_lab):
         next_d += timedelta(days=1)
-    return next_d
+    h = _horas_del_dia(next_d.weekday(), hora_ini, hora_fin, dias_lab)
+    return next_d.replace(hour=h[0], minute=0, second=0, microsecond=0)
 
 def _work_seconds_between(dt_start, dt_end, hora_ini, hora_fin, dias_lab):
     if dt_start >= dt_end:
@@ -4920,9 +4940,10 @@ def _work_seconds_between(dt_start, dt_end, hora_ini, hora_fin, dias_lab):
     total = 0.0
     current = dt_start
     while current < dt_end:
-        if current.weekday() in dias_lab:
-            ws = current.replace(hour=hora_ini, minute=0, second=0, microsecond=0)
-            we = current.replace(hour=hora_fin, minute=0, second=0, microsecond=0)
+        h = _horas_del_dia(current.weekday(), hora_ini, hora_fin, dias_lab)
+        if h:
+            ws = current.replace(hour=h[0], minute=0, second=0, microsecond=0)
+            we = current.replace(hour=h[1], minute=0, second=0, microsecond=0)
             ps = max(current, ws)
             pe = min(dt_end, we)
             if ps < pe:
@@ -4939,7 +4960,25 @@ def _calc_tiempo_efectivo(ts_cliente, ts_asesor, tz_offset, hora_ini, hora_fin, 
     return _work_seconds_between(dt_inicio, dt_asesor, hora_ini, hora_fin, dias_lab)
 
 def _en_horario_laboral(dt, hora_ini, hora_fin, dias_lab):
-    return dt.weekday() in dias_lab and hora_ini <= dt.hour < hora_fin
+    h = _horas_del_dia(dt.weekday(), hora_ini, hora_fin, dias_lab)
+    return bool(h) and h[0] <= dt.hour < h[1]
+
+def _fmt_horario_cuenta(cfg):
+    """(horario, dias) para el encabezado. Con un solo horario es lo de
+    siempre, "8:00 AM – 6:00 PM" y "Lun a Vie"; con horario por dia, cada
+    grupo de dias con sus horas: "Lun a Vie 9:00 AM – 7:00 PM" y "Sáb y Dom
+    9:00 AM – 12:00 PM"."""
+    h_ini, h_fin = cfg['horario']
+    dias_lab = _dias_lab(cfg)
+    if not isinstance(dias_lab, dict):
+        return _fmt_horario(h_ini, h_fin), _fmt_dias(dias_lab)
+    grupos = {}
+    for d in sorted(dias_lab):
+        grupos.setdefault(dias_lab[d], []).append(d)
+    if len(grupos) == 1:
+        return _fmt_horario(*next(iter(grupos))), _fmt_dias(dias_lab)
+    textos = [f'{_fmt_dias(ds)} {_fmt_horario(*h)}' for h, ds in grupos.items()]
+    return textos[0], ' · '.join(textos[1:])
 
 def _pct_enteros(cuentas, total):
     """Porcentajes ENTEROS que suman exactamente 100.
@@ -6172,7 +6211,7 @@ def _leads_no_respondidos(subdomain, tz_offset, responsible_user_ids=None,
     # cerrado. Es el mismo criterio del numero grande.
     cfg = PULSE_CONFIG.get(subdomain, {})
     h_ini, h_fin = cfg.get('horario', (0, 24))
-    dias_lab = cfg.get('dias_laborables', [0, 1, 2, 3, 4, 5, 6])
+    dias_lab = _dias_lab(cfg)
     # El reloj es el momento que se esta mirando: ahora, o el corte del dia
     # pasado. Con time.time() siempre, un mismo dia pasado sumaba espera cada
     # vez que se lo consultaba (revision del 26/09).
@@ -6563,6 +6602,9 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
             conn.close()
 
     por_persona, solo_bot = [], []
+    # Con horario por dia, cada dia con sus horas; los dias que no se atiende
+    # siguen usando el horario general, como siempre.
+    por_dia = _dias_lab(PULSE_CONFIG.get(subdomain, {}))
     for r in rows:
         # El horario se mide sobre la respuesta que cuenta para esa lista: si
         # la persona contesto 09:00 y el bot 22:00, el lead se atendio en
@@ -6573,7 +6615,9 @@ def _leads_trabajados_hoy(subdomain, tz_offset, h_ini, h_fin, responsible_user_i
         up = r.get('ultimo_de_persona', r['f_ult_msj_asesor'])
         de_persona = up is not None
         ts = up if de_persona else r['f_ult_msj_asesor']
-        if not (h_ini <= _ts_to_local(ts, tz_offset).hour < h_fin):
+        local = _ts_to_local(ts, tz_offset)
+        h = _horas_del_dia(local.weekday(), h_ini, h_fin, por_dia) or (h_ini, h_fin)
+        if not (h[0] <= local.hour < h[1]):
             continue
         fila = dict(r)
         fila['f_ult_msj_asesor'] = ts
@@ -6703,6 +6747,8 @@ def _fmt_dias(dias_lab):
         return '—'
     if len(dias) == 1:
         return DIAS_LABEL[dias[0]]
+    if len(dias) == 2:
+        return f'{DIAS_LABEL[dias[0]]} y {DIAS_LABEL[dias[1]]}'
     consecutivos = dias == list(range(dias[0], dias[-1] + 1))
     if consecutivos:
         return f'{DIAS_LABEL[dias[0]]} a {DIAS_LABEL[dias[-1]]}'
@@ -7181,7 +7227,7 @@ def pulse_data():
     cfg       = PULSE_CONFIG[subdomain]
     tz_offset = cfg['tz_offset']
     h_ini, h_fin = cfg['horario']
-    dias_lab  = set(cfg['dias_laborables'])
+    dias_lab  = _dias_lab(cfg)
     franjas   = cfg['franjas']
 
     desde_str = (request.args.get('desde') or '').strip() or None
@@ -7663,8 +7709,8 @@ def pulse_data():
             **({'tiempos': tiempos} if perfil else {}),
             'config': {
                 'nombre':      cfg['nombre'],
-                'horario_fmt': _fmt_horario(h_ini, h_fin),
-                'dias_fmt':    _fmt_dias(dias_lab),
+                'horario_fmt': _fmt_horario_cuenta(cfg)[0],
+                'dias_fmt':    _fmt_horario_cuenta(cfg)[1],
                 'franjas':     franjas,
                 'crm_url':     cfg.get('crm_domain') and f'https://{cfg["crm_domain"]}',
                 'asesores':    _lista_asesores(subdomain, conn=conn),
@@ -7689,6 +7735,13 @@ def pulse_data():
                 # Para el mapa de dia y hora: que celdas son fuera de horario.
                 'horario':     [h_ini, h_fin],
                 'dias_laborables': sorted(dias_lab),
+                # Horas de cada dia (None si no se atiende), para rayar las
+                # celdas fuera de horario cuando el mapa muestra las 24 horas.
+                'horario_por_dia': [list(h) if h else None for h in
+                                    (_horas_del_dia(d, h_ini, h_fin, dias_lab) for d in range(7))],
+                # Columnas del mapa: el horario, o las 24 horas si la cuenta
+                # lo pidio ('mapa_24h', Ecoambiental 04/11).
+                'horas_mapa':  [0, 24] if cfg.get('mapa_24h') else [h_ini, h_fin],
                 'min_muestra_asesor': MIN_MUESTRA_ASESOR,
                 # Solo para explicar una lista vacia en pantalla.
                 'min_respuestas_extremos': MIN_RESPUESTAS_EXTREMOS,
