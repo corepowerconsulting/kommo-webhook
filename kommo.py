@@ -2997,6 +2997,11 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
             return {'omitido': 'otra copia del servidor esta revisando esta cuenta'}
         c.execute("SELECT valor FROM kommo_sync WHERE subdomain = %s AND clave = 'eliminados_hasta'", (subdomain,))
         fila = c.fetchone()
+        # Se cierra la transaccion ANTES de ir a Kommo (05/11): quedaba abierta
+        # minutos mientras se esperaba la API ("idle in transaction" en
+        # Supabase) y eso no deja a Postgres limpiar filas viejas en ninguna
+        # tabla, que despues se leen de mas del disco.
+        conn.commit()
         desde = fila[0] if fila else ahora - ELIMINADOS_DESDE_DIAS * 86400
         while desde < limite and time.monotonic() - inicio_vuelta < ELIMINADOS_SEG_POR_VUELTA:
             hasta = min(desde + ELIMINADOS_VENTANA_SEG, limite)
