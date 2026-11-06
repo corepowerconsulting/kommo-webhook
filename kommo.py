@@ -2616,6 +2616,8 @@ def health_carga():
         # limite). memoria_pico_mb es el maximo desde el arranque; si se acerca
         # al limite del plan, el proximo reinicio es cuestion de tiempo.
         **_memoria_mb(),
+        'memoria_limite_plan_mb':     MEMORIA_LIMITE_MB,
+        'memoria_freno_mb':           MEMORIA_FRENO_MB,
         'turnos_en_memoria':          {s: len(v[1]) for s, v in _turnos_cache.items()},
         'hilos_ahora':                threading.active_count(),
         'hilos_maximo':               _CARGA['hilos_maximo'],
@@ -5563,7 +5565,23 @@ _turnos_cache = {}     # subdomain -> (clave, turnos, {'por_lead', 'armado'})
 # nadie miro hace mas de TURNOS_OCIOSO_SEG (o, si no alcanza, de todas menos la
 # que se esta pidiendo) y los caches cortos. Rearmarlas despues cuesta una
 # carga lenta; un reinicio, en cambio, deja a todos sin tablero.
-MEMORIA_FRENO_MB = 420
+#
+# El tope sale del limite real del contenedor (05/11, Juan paso Render de
+# 512 MB a 2 GB): el 80 % de lo que permite el plan. Con 420 fijo, un plan mas
+# grande seguia soltando cuentas como si tuviera 512. Si no se puede leer el
+# limite, 420, que es lo seguro para el plan chico.
+def _limite_memoria_mb():
+    for ruta in ('/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes'):
+        try:
+            with open(ruta) as f:
+                v = f.read().strip()
+            if v.isdigit() and int(v) < 64 * 1024 ** 3:
+                return int(v) // (1024 * 1024)
+        except OSError:
+            pass
+    return None
+MEMORIA_LIMITE_MB = _limite_memoria_mb()
+MEMORIA_FRENO_MB = int(MEMORIA_LIMITE_MB * 0.8) if MEMORIA_LIMITE_MB else 420
 TURNOS_OCIOSO_SEG = 15 * 60
 _turnos_uso = {}       # subdomain -> ultima vez que se pidio (monotonic)
 
