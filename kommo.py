@@ -2654,6 +2654,8 @@ def health_carga():
         'cuando_el_ultimo_error':     _CARGA['cuando_el_ultimo_error'],
         'eventos_no_guardados':       _CARGA['eventos_no_guardados'],
         'formas_desconocidas_vistas': len(_FORMAS_VISTAS),
+        # Vaciado nocturno del JSON crudo de mas de CRUDO_DIAS dias (05/11).
+        'vaciado_crudo':              _crudo_estado or None,
         'como_leerlo': 'guardando:false es la alarma que importa — llegan '
                        'webhooks y no se estan guardando; el motivo exacto '
                        'esta en ultimo_error_escritura. '
@@ -3098,6 +3100,67 @@ def _sincronizar_eliminados(subdomain, token, ahora=None):
 _eliminados_estado = {}
 _eliminados_hilo = {'hilo': None, 'pid': None}
 
+# --- JSON crudo viejo de 'eventos' (05/11) -----------------------------------
+# Supabase aviso que la base gastaba su presupuesto de disco. 'eventos' pesaba
+# 4,1 GB en una base de 1 GB de RAM, y ~3 GB eran el JSON crudo de cada
+# webhook: lo que el tablero usa ya se copio a las otras tablas al llegar. El
+# JSON solo se relee en los backfills y en los diagnosticos (/health/campos,
+# /health/conversacion), que miran lo reciente. Se guarda CRUDO_DIAS (Juan
+# eligio 15) y despues se vacia; la fila queda, sin el JSON, porque la cobertura
+# y la fecha minima del tablero cuentan filas por dia. Lo viejo, si hace falta,
+# sale del registro de eventos de Kommo (scripts/rellenar_huecos.py).
+#
+# Corre de madrugada, en lotes chicos con pausa, para no gastar el disco de
+# golpe: la primera vez son ~2,4 millones de filas y lleva unas tres noches.
+# Avanza por id con un puntero en kommo_sync, asi no vuelve a recorrer lo ya
+# vaciado.
+CRUDO_DIAS = 15
+CRUDO_LOTE = 2000
+CRUDO_MAX_POR_VUELTA = 15000          # por vuelta del hilo, cada 5 minutos
+CRUDO_HORAS_UTC = range(6, 12)        # 1 a 7 de la mañana en Ecuador, Peru y Panama
+_crudo_estado = {}
+
+def _vaciar_crudo_viejo(forzar=False):
+    ahora = datetime.now()             # el mismo reloj con que se escribe capturado_at
+    if not forzar and datetime.utcnow().hour not in CRUDO_HORAS_UTC:
+        return None
+    corte = (ahora - timedelta(days=CRUDO_DIAS)).isoformat()
+    vaciadas = 0
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT valor FROM kommo_sync WHERE subdomain = '*' AND clave = 'crudo_vaciado_id'")
+        fila = c.fetchone()
+        desde = fila[0] if fila else 0
+        conn.commit()
+        while vaciadas < CRUDO_MAX_POR_VUELTA:
+            hasta = desde + CRUDO_LOTE
+            # El ultimo evento del bloque: si ya es mas nuevo que el corte, este
+            # bloque es el borde y el puntero no pasa de aca.
+            c.execute('SELECT capturado_at FROM eventos WHERE id <= %s AND capturado_at IS NOT NULL '
+                      'ORDER BY id DESC LIMIT 1', (hasta,))
+            ult = c.fetchone()
+            c.execute('UPDATE eventos SET raw_data = NULL WHERE id > %s AND id <= %s '
+                      'AND capturado_at < %s AND raw_data IS NOT NULL', (desde, hasta, corte))
+            vaciadas += c.rowcount
+            borde = not ult or ult[0] >= corte
+            if not borde:
+                # GREATEST: en un deploy pueden correr dos copias a la vez.
+                c.execute('''INSERT INTO kommo_sync (subdomain, clave, valor) VALUES ('*', 'crudo_vaciado_id', %s)
+                             ON CONFLICT (subdomain, clave) DO UPDATE
+                             SET valor = GREATEST(kommo_sync.valor, EXCLUDED.valor)''', (hasta,))
+            conn.commit()
+            if borde:
+                break
+            desde = hasta
+            time.sleep(0.5)
+        return {'vaciadas': vaciadas, 'puntero_id': desde, 'corte': corte, 'al_dia': borde}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 def _bucle_eliminados():
     time.sleep(120)
     while True:
@@ -3112,6 +3175,15 @@ def _bucle_eliminados():
             except Exception as e:
                 _eliminados_estado[subdomain] = {'error': f'{type(e).__name__}: {e}'[:200], 'cuando': int(time.time())}
                 print(f'⚠️ eliminados {subdomain}: {e}')
+        try:
+            r = _vaciar_crudo_viejo()
+            if r is not None:
+                r['cuando'] = int(time.time())
+                _crudo_estado.update(r)
+                _crudo_estado['total_vaciadas_desde_arranque'] = _crudo_estado.get('total_vaciadas_desde_arranque', 0) + r['vaciadas']
+        except Exception as e:
+            _crudo_estado.update({'error': f'{type(e).__name__}: {e}'[:200], 'cuando': int(time.time())})
+            print(f'⚠️ vaciado de crudo: {e}')
         time.sleep(VIGIA_CADA_SEG)
 
 def _bucle_vigia():
