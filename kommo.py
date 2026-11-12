@@ -3313,27 +3313,47 @@ def health_actividad():
     desde = (datetime.utcnow() - timedelta(days=dias)).strftime('%Y-%m-%d')
     hoy = datetime.utcnow().date()
 
+    # Todo por cuenta y por indice (12/11). Antes eran dos consultas sobre
+    # 'eventos' entera —4 GB— que tardaban mas de 90 s y gastaban el disco de
+    # Supabase. Los dias con datos se preguntan dia por dia con EXISTS, como en
+    # _cobertura; solo los ultimos 7 dias se cuentan fila por fila.
+    hace_7 = (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
+    ahora_ts = int(time.time())
+    por_sub, ultimos, mensajes = defaultdict(dict), {}, {}
     conn = get_conn()
     try:
-        c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute(
-            '''SELECT subdomain,
-                      LEFT(capturado_at, 10) AS dia,
-                      COUNT(*)               AS eventos
-               FROM eventos
-               WHERE capturado_at >= %s
-               GROUP BY 1, 2''',
-            (desde,)
-        )
-        filas = c.fetchall()
-        c.execute('SELECT subdomain, MAX(capturado_at) AS ultimo FROM eventos GROUP BY 1')
-        ultimos = {r['subdomain']: r['ultimo'] for r in c.fetchall()}
+        c = conn.cursor()
+        for sub in PULSE_CONFIG:
+            c.execute('SELECT MAX(capturado_at) FROM eventos WHERE subdomain = %s', (sub,))
+            ultimos[sub] = (c.fetchone() or [None])[0]
+            c.execute(
+                '''SELECT to_char(d, 'YYYY-MM-DD')
+                     FROM generate_series(%s::date, %s::date, interval '1 day') AS d
+                    WHERE EXISTS (SELECT 1 FROM eventos e
+                                   WHERE e.subdomain = %s
+                                     AND e.capturado_at >= to_char(d, 'YYYY-MM-DD')
+                                     AND e.capturado_at <  to_char(d + interval '1 day', 'YYYY-MM-DD'))''',
+                (desde, hoy.strftime('%Y-%m-%d'), sub))
+            for (dia,) in c.fetchall():
+                por_sub[sub][dia] = 1
+            c.execute('''SELECT LEFT(capturado_at, 10), COUNT(*) FROM eventos
+                          WHERE subdomain = %s AND capturado_at >= %s GROUP BY 1''', (sub, hace_7))
+            for dia, n in c.fetchall():
+                por_sub[sub][dia] = n
+            # Entrada y salida por separado (12/11): que llegue algo no dice
+            # que lleguen las dos. Sin salientes no hay tiempos que medir.
+            fila = {}
+            for tabla, clave in (('mensajes_cliente', 'entrada'), ('mensajes_asesor', 'salida')):
+                # Separadas: juntas, el MAX ya no sale del indice y recorre
+                # todos los mensajes de la cuenta.
+                c.execute(f'SELECT MAX(ts) FROM {tabla} WHERE subdomain = %s', (sub,))
+                ultimo_ts = (c.fetchone() or [None])[0]
+                c.execute(f'SELECT COUNT(*) FROM {tabla} WHERE subdomain = %s AND ts > %s',
+                          (sub, ahora_ts - 86400))
+                fila[clave] = (ultimo_ts, (c.fetchone() or [0])[0])
+            mensajes[sub] = fila
     finally:
         conn.close()
-
-    por_sub = defaultdict(dict)
-    for f in filas:
-        por_sub[f['subdomain']][f['dia']] = f['eventos']
 
     resultado = {}
     for subdomain in PULSE_CONFIG:
@@ -3392,12 +3412,26 @@ def health_actividad():
                 if dia >= (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
             ),
         }
+        for clave, (ultimo_ts, n) in mensajes.get(subdomain, {}).items():
+            horas = round((ahora_ts - ultimo_ts) / 3600, 1) if ultimo_ts else None
+            resultado[subdomain].update({
+                f'{clave}_llegando':     horas is not None and horas <= HORAS_PARA_DARLO_POR_CAIDO,
+                f'ultima_{clave}':       _ts_to_local(ultimo_ts, cfg_sub['tz_offset']).strftime('%d/%m %H:%M') if ultimo_ts else None,
+                f'horas_sin_{clave}':    horas,
+                f'{clave}_ultimas_24h':  n,
+            })
 
     caidas = [s for s, r in resultado.items() if not r.get('recibiendo')]
+    sin_mensajes = [s for s, r in resultado.items()
+                    if not r.get('sin_datos') and not (r.get('entrada_llegando') and r.get('salida_llegando'))]
     return jsonify({
         # Lo unico que hay que mirar para saber si algo esta roto AHORA.
         'todo_recibiendo': not caidas,
         'caidas_ahora':    caidas,
+        # Cuentas a las que no les llego entrada o salida en las ultimas 20 h.
+        # De noche o en fin de semana puede ser normal; de dia, no.
+        'entrada_y_salida_ok':      not sin_mensajes,
+        'sin_entrada_o_salida':     sin_mensajes,
         'ventana_dias':    dias,
         'subdominios':     resultado,
     })
