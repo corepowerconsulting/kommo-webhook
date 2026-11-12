@@ -2658,6 +2658,8 @@ def health_carga():
         'formas_desconocidas_vistas': len(_FORMAS_VISTAS),
         # Vaciado nocturno del JSON crudo de mas de CRUDO_DIAS dias (05/11).
         'vaciado_crudo':              _crudo_estado or None,
+        # Reporte de cartera (Celltech): si el hilo vive y por donde va.
+        'cartera':                    _estado_cartera(),
         'como_leerlo': 'guardando:false es la alarma que importa — llegan '
                        'webhooks y no se estan guardando; el motivo exacto '
                        'esta en ultimo_error_escritura. '
@@ -7063,6 +7065,26 @@ _cartera = {}                  # sub -> foto de la cuenta (ver _cargar_cartera)
 _cartera_hilo = {'hilo': None, 'pid': None}
 _cartera_candado = threading.Lock()
 _cartera_despertar = threading.Event()
+# Por donde va la lectura en curso, para /health/carga (12/11: quedo media
+# hora en "Leyendo la cuenta" sin error y no habia forma de ver en que estaba).
+_cartera_progreso = {}
+
+def _estado_cartera():
+    ahora = int(time.time())
+    h = _cartera_hilo['hilo']
+    fuera = {'hilo_vivo': bool(h is not None and h.is_alive() and _cartera_hilo['pid'] == os.getpid())}
+    for sub in CARTERA:
+        foto = _cartera.get(sub) or {}
+        prog = _cartera_progreso.get(sub) or {}
+        fuera[sub] = {
+            'cargando':         bool(foto.get('cargando')),
+            'leads_abiertos':   len(foto.get('leads') or []),
+            'hace_seg':         ahora - foto['cuando'] if foto.get('cuando') else None,
+            'error':            foto.get('error'),
+            'lectura_hace_seg': ahora - prog['desde'] if prog.get('desde') else None,
+            'leads_leidos':     prog.get('leads_leidos'),
+        }
+    return fuera
 
 def _kommo_paginas(subdomain, token, ruta, clave):
     """Los elementos de un listado de la API v4, pagina por pagina.
@@ -7107,7 +7129,9 @@ def _cargar_cartera(subdomain):
 
     # Solo los abiertos: ganados y perdidos ya no son negocios que se trabajan.
     leads = []
-    for l in _kommo_paginas(subdomain, token, '/api/v4/leads?with=companies', 'leads'):
+    for i, l in enumerate(_kommo_paginas(subdomain, token, '/api/v4/leads?with=companies', 'leads')):
+        if i % 250 == 0:
+            _cartera_progreso[subdomain] = {'leads_leidos': i, 'desde': _cartera_progreso.get(subdomain, {}).get('desde')}
         if l['status_id'] in (142, 143):
             continue
         cs = (l.get('_embedded') or {}).get('companies') or []
@@ -7125,6 +7149,7 @@ def _refrescar_cartera(subdomain):
     previo = _cartera.get(subdomain) or {}
     previo['cargando'] = True
     _cartera[subdomain] = previo
+    _cartera_progreso[subdomain] = {'leads_leidos': 0, 'desde': int(time.time())}
     try:
         _cartera[subdomain] = _cargar_cartera(subdomain)
     except Exception as e:
